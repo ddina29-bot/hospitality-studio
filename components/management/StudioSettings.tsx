@@ -7,9 +7,10 @@ interface StudioSettingsProps {
   setOrganization: React.Dispatch<React.SetStateAction<OrganizationSettings>>;
   userCount: number;
   propertyCount: number;
+  currentOrgId: string | null;
 }
 
-const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrganization, userCount, propertyCount }) => {
+const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrganization, userCount, propertyCount, currentOrgId }) => {
   const [formData, setFormData] = useState<OrganizationSettings>(organization);
   const [isSaving, setIsSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -37,42 +38,24 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
   };
 
   const handleDeleteOrganization = async () => {
+    if (!currentOrgId) {
+      alert("Error: No active Organization ID found. Please reload the page.");
+      return;
+    }
+
     setIsDeleting(true);
     try {
-      const storedOrg = localStorage.getItem('studio_org_settings');
-      let orgId = null;
-
-      if (storedOrg) {
-        try {
-          const orgData = JSON.parse(storedOrg);
-          orgId = orgData.id;
-        } catch (e) {
-          console.error("Failed to parse org data from local storage", e);
-        }
-      }
-      
-      if (!orgId) {
-         console.warn("No Organization ID found in session. Clearing local state only.");
-         localStorage.clear();
-         sessionStorage.clear();
-         window.location.replace(window.location.origin);
-         return;
-      }
-
-      console.log("Sending delete request for:", orgId);
+      console.log("Sending delete request for:", currentOrgId);
 
       const res = await fetch('/api/auth/delete-organization', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orgId })
+        body: JSON.stringify({ orgId: currentOrgId })
       });
 
       if (!res.ok) {
-        if (res.status === 404) {
-           console.warn("Org not found on server, wiping local.");
-        } else {
-           throw new Error('Server returned an error during deletion.');
-        }
+        const data = await res.json();
+        throw new Error(data.error || 'Server returned an error during deletion.');
       }
 
       // AGGRESSIVE WIPE
@@ -80,11 +63,11 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
       sessionStorage.clear();
       
       // Force reload to login screen
-      window.location.replace(window.location.origin);
+      window.location.href = "/";
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Deletion failed:", error);
-      alert("Error contacting server. Please check your connection.");
+      alert(`Error: ${error.message}`);
       setIsDeleting(false);
     }
   };

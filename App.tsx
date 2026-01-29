@@ -186,6 +186,25 @@ const App: React.FC = () => {
     setShowTaskModal(false);
   };
 
+  // Generic Time Clock Handler for App
+  const handleToggleTimeClock = () => {
+    if (!user) return;
+    
+    // Determine last state
+    const myEntries = timeEntries.filter(e => e.userId === user.id).sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    const isClockedIn = myEntries.length > 0 && myEntries[0].type === 'in';
+    
+    const newType = isClockedIn ? 'out' : 'in';
+    const newEntry: TimeEntry = {
+      id: `time-${Date.now()}`,
+      userId: user.id,
+      type: newType,
+      timestamp: new Date().toISOString()
+    };
+
+    setTimeEntries(prev => [...prev, newEntry]);
+  };
+
   // --- RENDER ---
 
   if (!user) {
@@ -207,7 +226,8 @@ const App: React.FC = () => {
         if (user.role === 'maintenance' || user.role === 'outsourced_maintenance') return <MaintenancePortal users={users} userRole={user.role} shifts={shifts} setShifts={setShifts} setActiveTab={setActiveTab} onLogout={handleLogout} />;
         if (user.role === 'client') return <ClientDashboard user={user} setActiveTab={setActiveTab} onLogout={handleLogout} invoices={invoices} />;
         if (user.role === 'laundry') return <LaundryDashboard user={user} setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} setShifts={setShifts} users={users} properties={properties} onTogglePrepared={(id) => setShifts(prev => prev.map(s => s.id === id ? { ...s, isLaundryPrepared: !s.isLaundryPrepared } : s))} authorizedLaundryUserIds={authorizedLaundryUserIds} onToggleAuthority={(id) => setAuthorizedLaundryUserIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])} timeEntries={timeEntries} setTimeEntries={setTimeEntries} />;
-        return <Dashboard user={user} onLogout={handleLogout} setActiveTab={setActiveTab} shifts={shifts} supplyRequests={supplyRequests} properties={properties} inventoryItems={inventoryItems} onAddSupplyRequest={handleAddSupplyRequest} onUpdateSupplyStatus={(id, status) => setSupplyRequests(prev => prev.map(r => r.id === id ? { ...r, status } : r))} />;
+        // Default Dashboard (Cleaners) receives time entries now
+        return <Dashboard user={user} onLogout={handleLogout} setActiveTab={setActiveTab} shifts={shifts} supplyRequests={supplyRequests} properties={properties} inventoryItems={inventoryItems} onAddSupplyRequest={handleAddSupplyRequest} onUpdateSupplyStatus={(id, status) => setSupplyRequests(prev => prev.map(r => r.id === id ? { ...r, status } : r))} timeEntries={timeEntries} onToggleClock={handleToggleTimeClock} />;
       
       case 'shifts':
         if (['admin', 'housekeeping', 'hr'].includes(user.role)) {
@@ -251,13 +271,13 @@ const App: React.FC = () => {
       case 'users':
         return <AdminPortal view="users" users={users} setUsers={setUsers} setActiveTab={setActiveTab} leaveRequests={leaveRequests} onUpdateLeaveStatus={handleUpdateLeaveStatus} />;
       case 'settings':
-        return <StudioSettings organization={organization} setOrganization={setOrganization} userCount={users.length} propertyCount={properties.length} />;
+        return <StudioSettings organization={organization} setOrganization={setOrganization} userCount={users.length} propertyCount={properties.length} currentOrgId={orgId} />;
       case 'ai':
         return <AISync />;
       case 'manual':
         return <AppManual />;
       default:
-        return <Dashboard user={user} onLogout={handleLogout} setActiveTab={setActiveTab} shifts={shifts} supplyRequests={supplyRequests} properties={properties} inventoryItems={inventoryItems} onAddSupplyRequest={handleAddSupplyRequest} onUpdateSupplyStatus={(id, status) => setSupplyRequests(prev => prev.map(r => r.id === id ? { ...r, status } : r))} />;
+        return <Dashboard user={user} onLogout={handleLogout} setActiveTab={setActiveTab} shifts={shifts} supplyRequests={supplyRequests} properties={properties} inventoryItems={inventoryItems} onAddSupplyRequest={handleAddSupplyRequest} onUpdateSupplyStatus={(id, status) => setSupplyRequests(prev => prev.map(r => r.id === id ? { ...r, status } : r))} timeEntries={timeEntries} onToggleClock={handleToggleTimeClock} />;
     }
   };
 
