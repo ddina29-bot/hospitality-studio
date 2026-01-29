@@ -98,12 +98,40 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
     }
   };
 
-  const getActivationUrl = () => `${window.location.origin}/login?code=${inviteLink}`;
+  const getActivationUrl = (code?: string) => {
+    const finalCode = code || inviteLink;
+    return `${window.location.origin}/?code=${finalCode}`;
+  };
 
-  const handleCopyLink = () => {
-    navigator.clipboard.writeText(getActivationUrl());
-    if (showToast) showToast('LINK COPIED TO CLIPBOARD', 'success');
+  const handleCopyLink = (code?: string) => {
+    const url = getActivationUrl(code);
+    navigator.clipboard.writeText(url);
+    if (showToast) showToast('LINK COPIED', 'success');
     else alert('Link copied to clipboard');
+  };
+
+  const handleResendEmail = async (email: string) => {
+    if (!confirm(`Resend invitation email to ${email}?`)) return;
+    try {
+        const res = await fetch('/api/auth/resend-invite', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            if (data.emailSent) {
+                if (showToast) showToast('EMAIL RESENT', 'success');
+                else alert('Email resent successfully.');
+            } else {
+                alert('Email server not configured. Please use "Copy Link".');
+            }
+        } else {
+            alert(data.error || 'Failed to resend');
+        }
+    } catch (e) {
+        alert('Connection error');
+    }
   };
 
   const handleOpenEmailApp = () => {
@@ -161,13 +189,17 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {pendingUsers.map(u => (
-                <div key={u.id} className="p-5 rounded-[28px] border bg-white border-orange-500/20 flex items-center justify-between gap-4 shadow-sm">
-                  <div className="flex items-center gap-5 flex-1 min-w-0 text-left">
-                    <div className="w-12 h-12 rounded-full bg-orange-50 flex items-center justify-center text-orange-500 font-serif-brand text-lg font-bold">{u.name.charAt(0)}</div>
+                <div key={u.id} className="p-5 rounded-[28px] border bg-white border-orange-500/20 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+                  <div className="flex items-center gap-5 flex-1 min-w-0 text-left w-full sm:w-auto">
+                    <div className="w-12 h-12 rounded-full bg-orange-50 flex items-center justify-center text-orange-500 font-serif-brand text-lg font-bold shrink-0">{u.name.charAt(0)}</div>
                     <div>
                       <h3 className="text-sm font-serif-brand font-bold uppercase truncate text-black">{u.name}</h3>
                       <p className="text-[7px] font-black text-orange-500 uppercase tracking-widest">Invite Sent</p>
                     </div>
+                  </div>
+                  <div className="flex gap-2 w-full sm:w-auto">
+                     <button onClick={() => u.activationToken && handleCopyLink(u.activationToken)} className="flex-1 sm:flex-none px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-[8px] font-black uppercase tracking-widest hover:bg-white hover:border-[#C5A059] transition-all">COPY LINK</button>
+                     <button onClick={() => handleResendEmail(u.email)} className="flex-1 sm:flex-none px-4 py-2 bg-orange-50 border border-orange-200 text-orange-600 rounded-xl text-[8px] font-black uppercase tracking-widest hover:bg-orange-100 transition-all">RESEND</button>
                   </div>
                 </div>
               ))}
@@ -255,7 +287,7 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
                     Compose Email
                  </button>
-                 <button onClick={handleCopyLink} className="flex items-center justify-center gap-2 bg-white border border-gray-200 text-black font-black py-4 rounded-2xl uppercase tracking-[0.2em] text-[8px] hover:bg-gray-50 transition-all active:scale-95">
+                 <button onClick={() => handleCopyLink()} className="flex items-center justify-center gap-2 bg-white border border-gray-200 text-black font-black py-4 rounded-2xl uppercase tracking-[0.2em] text-[8px] hover:bg-gray-50 transition-all active:scale-95">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                     Copy Link
                  </button>

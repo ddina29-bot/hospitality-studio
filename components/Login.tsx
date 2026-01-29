@@ -39,7 +39,17 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
     if (code) {
       setIsVerifyingCode(true);
       fetch(`/api/auth/verify-invite?code=${code}`)
-        .then(res => res.json())
+        .then(async (res) => {
+            if (res.ok) return res.json();
+            const text = await res.text();
+            try {
+                const json = JSON.parse(text);
+                throw new Error(json.error || 'Verification failed');
+            } catch (e) {
+                // If response isn't JSON, it's likely a server 500 HTML page or 404
+                throw new Error('Server returned invalid response. Please try again later.');
+            }
+        })
         .then(data => {
           if (data.email) {
             setIsActivationMode(true);
@@ -47,12 +57,16 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
             setActName(data.name || '');
           } else {
             alert('Invalid or expired invitation link.');
-            // Clean URL
             window.history.replaceState({}, document.title, "/");
           }
         })
-        .catch(() => {
-          alert('Error verifying invitation.');
+        .catch((err) => {
+          console.error("Invitation Verification Error:", err);
+          let msg = 'Error verifying invitation.';
+          if (err instanceof Error) msg = err.message;
+          else if (typeof err === 'string') msg = err;
+          alert(msg);
+          window.history.replaceState({}, document.title, "/");
         })
         .finally(() => setIsVerifyingCode(false));
     }

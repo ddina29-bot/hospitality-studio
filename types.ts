@@ -311,6 +311,8 @@ export interface User {
   hasID?: boolean;
   hasContract?: boolean;
   hasPhoto?: boolean;
+  // Invites
+  activationToken?: string;
 }
 
 export interface CleaningTask {

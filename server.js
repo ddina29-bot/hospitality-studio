@@ -186,7 +186,7 @@ app.post('/api/auth/invite', async (req, res) => {
     saveOrgToDb(org);
 
     const inviteLink = createdUser.activationToken;
-    const activationUrl = `${req.protocol}://${req.get('host')}/login?code=${inviteLink}`;
+    const activationUrl = `${req.protocol}://${req.get('host')}/?code=${inviteLink}`;
 
     let emailSent = false;
     const transporter = createTransporter();
@@ -196,16 +196,81 @@ app.post('/api/auth/invite', async (req, res) => {
           from: `"Reset Studio" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
           to: newUser.email,
           subject: "Invitation to Reset Studio",
-          html: `<p>You have been invited. <a href="${activationUrl}">Click here to activate</a>.</p>`
+          html: `<p>You have been invited to join Reset Studio.</p><p><a href="${activationUrl}">Click here to activate your account</a></p>`
         });
         emailSent = true;
       } catch (e) { console.error("Email error:", e); }
     }
 
-    res.json({ success: true, user: createdUser, inviteLink, emailSent });
+    res.json({ success: true, user: createdUser, inviteLink: activationUrl, emailSent });
   } catch (error) {
     console.error("Invite Error:", error);
     res.status(500).json({ error: 'Failed to invite user.' });
+  }
+});
+
+// 3.1 RESEND INVITE
+app.post('/api/auth/resend-invite', async (req, res) => {
+  const { email } = req.body;
+  try {
+    const org = findOrgByUserEmail(email);
+    if (!org) return res.status(404).json({ error: 'User not found.' });
+
+    const user = org.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    if (!user || user.status !== 'pending') return res.status(400).json({ error: 'User is active or not pending.' });
+
+    // Use existing token
+    const inviteLink = user.activationToken;
+    if (!inviteLink) return res.status(400).json({ error: 'No activation token found.' });
+
+    const activationUrl = `${req.protocol}://${req.get('host')}/?code=${inviteLink}`;
+    let emailSent = false;
+    
+    const transporter = createTransporter();
+    if (transporter) {
+      try {
+        await transporter.sendMail({
+          from: `"Reset Studio" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+          to: email,
+          subject: "Invitation Reminder: Reset Studio",
+          html: `<p>This is a reminder to join Reset Studio.</p><p><a href="${activationUrl}">Click here to activate your account</a></p>`
+        });
+        emailSent = true;
+      } catch (e) { console.error("Email error:", e); }
+    }
+
+    res.json({ success: true, emailSent, inviteLink: activationUrl });
+  } catch (error) {
+    console.error("Resend Invite Error:", error);
+    res.status(500).json({ error: 'Failed to resend invite.' });
+  }
+});
+
+// 3.5 VERIFY INVITE (New)
+app.get('/api/auth/verify-invite', (req, res) => {
+  try {
+    const { code } = req.query;
+    if (!code) return res.status(400).json({ error: 'Missing code' });
+
+    const stmt = db.prepare('SELECT data FROM organizations');
+    for (const row of stmt.iterate()) {
+      try {
+        const org = JSON.parse(row.data);
+        if (!org.users || !Array.isArray(org.users)) continue;
+
+        const user = org.users.find(u => u.activationToken === code && u.status === 'pending');
+        if (user) {
+          return res.json({ email: user.email, name: user.name });
+        }
+      } catch (parseErr) {
+        console.error("Error parsing DB row during verification:", parseErr);
+        continue;
+      }
+    }
+    res.status(404).json({ error: 'Invalid or expired activation link' });
+  } catch (error) {
+    console.error("Verify Invite Error:", error);
+    res.status(500).json({ error: 'Internal server error during verification' });
   }
 });
 
@@ -228,7 +293,8 @@ app.post('/api/auth/activate', async (req, res) => {
       ...details,
       password: password,
       status: 'active',
-      activationDate: new Date().toISOString()
+      activationDate: new Date().toISOString(),
+      activationToken: null // Clear token
     };
 
     saveOrgToDb(org);

@@ -5,7 +5,7 @@ providers = ["node"]
 nixPkgs = ["nodejs", "npm"]
 
 [phases.install]
-# Force removal of lockfile and fresh install to avoid EUSAGE/EINVALID error
+# CRITICAL FIX: Remove existing lockfile to prevent EUSAGE/EINVALID errors during build
 cmds = ["rm -rf package-lock.json node_modules", "npm install"]
 
 [phases.build]
