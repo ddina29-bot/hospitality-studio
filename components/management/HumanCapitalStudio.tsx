@@ -15,7 +15,8 @@ interface HumanCapitalStudioProps {
 const HumanCapitalStudio: React.FC<HumanCapitalStudioProps> = ({ 
   users, setUsers, leaveRequests = [], onUpdateLeaveStatus, onPreviewActivation, showToast 
 }) => {
-  const [activeTab, setActiveTab] = useState<'registry' | 'intelligence'>('intelligence');
+  // CHANGED: Default tab to 'registry' to show staff list immediately
+  const [activeTab, setActiveTab] = useState<'registry' | 'intelligence'>('registry');
   const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
   const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '', category: 'Company' as any });
   // Start with empty announcements for production
@@ -64,20 +65,20 @@ const HumanCapitalStudio: React.FC<HumanCapitalStudioProps> = ({
         <div className="flex gap-2 w-full md:w-auto">
            <div className="p-1 bg-gray-50 border border-gray-200 rounded-2xl flex items-center shadow-inner flex-1 md:flex-none">
              <button 
-               onClick={() => setActiveTab('intelligence')}
-               className={`px-6 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${
-                 activeTab === 'intelligence' ? 'bg-[#C5A059] text-black shadow-lg' : 'text-black/30 hover:text-black/60'
-               }`}
-             >
-               Intelligence
-             </button>
-             <button 
                onClick={() => setActiveTab('registry')}
                className={`px-6 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${
                  activeTab === 'registry' ? 'bg-[#C5A059] text-black shadow-lg' : 'text-black/30 hover:text-black/60'
                }`}
              >
                Staff List
+             </button>
+             <button 
+               onClick={() => setActiveTab('intelligence')}
+               className={`px-6 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${
+                 activeTab === 'intelligence' ? 'bg-[#C5A059] text-black shadow-lg' : 'text-black/30 hover:text-black/60'
+               }`}
+             >
+               Intelligence
              </button>
            </div>
            

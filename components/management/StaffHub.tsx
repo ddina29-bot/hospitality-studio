@@ -46,6 +46,9 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
 
   const pendingUsers = useMemo(() => users.filter(u => u.status === 'pending'), [users]);
 
+  // Determine if there are ANY active users to display
+  const hasActiveUsers = activeStaffGroups.some(g => g.members.length > 0);
+
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUser.email || !newUser.name) return;
@@ -158,27 +161,34 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
 
       {/* ACTIVE USERS */}
       <div className="space-y-10">
-        {activeStaffGroups.map((group, gIdx) => group.members.length > 0 && (
-            <section key={gIdx} className="space-y-4">
-              <div className="flex items-center gap-4 mb-2">
-                <h3 className="text-[10px] font-black uppercase tracking-[0.5em] whitespace-nowrap text-black/20">ACTIVE: {group.title}</h3>
-                <div className="h-px flex-1 bg-black/5"></div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {group.members.map(u => (
-                  <div key={u.id} className="p-5 rounded-[28px] border bg-[#FDF8EE] border-[#D4B476]/30 flex items-center justify-between gap-4 shadow-lg">
-                    <div className="flex items-center gap-5 flex-1 min-w-0 text-left">
-                      <div className="w-12 h-12 rounded-full bg-black border border-[#C5A059]/20 text-[#C5A059] flex items-center justify-center font-serif-brand text-lg font-bold">{u.name.charAt(0)}</div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-sm font-serif-brand font-bold uppercase truncate text-black">{u.name}</h3>
-                        <p className="text-[8px] font-black uppercase tracking-widest text-[#A68342]">{u.role}</p>
+        {!hasActiveUsers ? (
+          <div className="py-20 text-center border-2 border-dashed border-black/10 rounded-[40px]">
+             <p className="text-[10px] font-black text-black/30 uppercase tracking-[0.4em]">NO ACTIVE PERSONNEL FOUND</p>
+             <p className="text-[8px] text-black/20 font-black uppercase mt-2">Use "Add User" to invite staff.</p>
+          </div>
+        ) : (
+          activeStaffGroups.map((group, gIdx) => group.members.length > 0 && (
+              <section key={gIdx} className="space-y-4">
+                <div className="flex items-center gap-4 mb-2">
+                  <h3 className="text-[10px] font-black uppercase tracking-[0.5em] whitespace-nowrap text-black/20">ACTIVE: {group.title}</h3>
+                  <div className="h-px flex-1 bg-black/5"></div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {group.members.map(u => (
+                    <div key={u.id} className="p-5 rounded-[28px] border bg-[#FDF8EE] border-[#D4B476]/30 flex items-center justify-between gap-4 shadow-lg">
+                      <div className="flex items-center gap-5 flex-1 min-w-0 text-left">
+                        <div className="w-12 h-12 rounded-full bg-black border border-[#C5A059]/20 text-[#C5A059] flex items-center justify-center font-serif-brand text-lg font-bold">{u.name.charAt(0)}</div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-sm font-serif-brand font-bold uppercase truncate text-black">{u.name}</h3>
+                          <p className="text-[8px] font-black uppercase tracking-widest text-[#A68342]">{u.role}</p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-        ))}
+                  ))}
+                </div>
+              </section>
+          ))
+        )}
 
         {/* PENDING INVITES */}
         {pendingUsers.length > 0 && (

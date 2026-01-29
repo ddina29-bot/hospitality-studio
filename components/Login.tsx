@@ -260,11 +260,6 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
             </div>
             <div className="pt-2 space-y-4">
               <button type="submit" disabled={isLoading} className={buttonStyle}>{isLoading ? 'VERIFYING...' : 'ENTER STUDIO'}</button>
-              {onSignupClick && (
-                <button type="button" onClick={onSignupClick} className="w-full bg-[#1A1A1A] text-[#C5A059] font-black py-4 rounded-3xl uppercase tracking-[0.3em] text-[9px] shadow-lg border border-[#C5A059]/20 hover:bg-black transition-all">
-                  REGISTER NEW STUDIO
-                </button>
-              )}
             </div>
           </form>
         </div>

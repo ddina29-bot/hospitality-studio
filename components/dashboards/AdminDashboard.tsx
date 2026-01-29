@@ -148,12 +148,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         
         <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 md:gap-3 w-full md:w-auto">
           <button 
-            onClick={() => setActiveTab('users')}
-            className="bg-white border border-gray-200 hover:bg-gray-50 text-black font-black px-4 md:px-6 py-3 rounded-xl text-[8px] md:text-[9px] uppercase tracking-[0.15em] md:tracking-[0.2em] flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95"
-          >
-            ADD USER
-          </button>
-          <button 
             onClick={onOpenManualTask}
             className="bg-black hover:bg-zinc-900 text-[#C5A059] font-black px-4 md:px-6 py-3 rounded-xl text-[8px] md:text-[9px] uppercase tracking-[0.15em] md:tracking-[0.2em] flex items-center justify-center gap-2 transition-all shadow-xl active:scale-95"
           >
