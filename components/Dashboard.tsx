@@ -29,18 +29,8 @@ const Dashboard: React.FC<DashboardProps> = ({
   const todayStr = todayDateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase();
   const tomorrowStr = tomorrowDateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase();
 
-  // Logic: Only show announcements from the last 24 hours for Cleaners
-  const newsFeed = useMemo<Announcement[]>(() => {
-    const raw: Announcement[] = [
-      { id: '1', title: 'Uniform Collection', content: 'Winter gear ready at HQ.', date: '24 OCT', author: 'HR', category: 'Company', timestamp: Date.now() - 1000 * 60 * 60 * 2 },
-      { id: '2', title: 'New Degreaser', content: 'Check tutorial for new spray specs.', date: '24 OCT', author: 'Ops', category: 'Procedure', timestamp: Date.now() - 1000 * 60 * 60 * 5 },
-      { id: '3', title: 'Staff Meeting', content: 'Briefing Monday 08:00 AM.', date: '23 OCT', author: 'Admin', category: 'Company', timestamp: Date.now() - 1000 * 60 * 60 * 18 },
-      { id: '4', title: 'Stale Update', content: 'Should be hidden.', date: '20 OCT', author: 'System', category: 'Company', timestamp: Date.now() - 1000 * 60 * 60 * 48 }
-    ];
-    return raw
-      .filter(item => Date.now() - item.timestamp < 24 * 60 * 60 * 1000)
-      .sort((a, b) => b.timestamp - a.timestamp);
-  }, []);
+  // START EMPTY - No demo feed
+  const newsFeed: Announcement[] = [];
 
   const handleUpdateQty = (id: string, delta: number) => {
     setSelectedItems(prev => {

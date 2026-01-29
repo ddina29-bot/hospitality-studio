@@ -16,7 +16,8 @@ const HRDashboard: React.FC<HRDashboardProps> = ({
 }) => {
   const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
   const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '', category: 'Company' as any });
-  // Initialize with empty array for production
+  
+  // START EMPTY - No demo data
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
 
   const pendingLeaves = useMemo(() => leaveRequests.filter(l => l.status === 'pending'), [leaveRequests]);
@@ -127,6 +128,7 @@ const HRDashboard: React.FC<HRDashboardProps> = ({
              {announcements.length === 0 ? (
                <div className="py-20 text-center border-2 border-dashed border-gray-100 rounded-[40px] opacity-40">
                  <p className="text-[10px] font-black uppercase text-black tracking-widest">No active announcements.</p>
+                 <p className="text-[8px] font-black uppercase text-black/40 mt-1">Use "New Announcement" to broadcast to staff.</p>
                </div>
              ) : (
                announcements.map(ann => (
