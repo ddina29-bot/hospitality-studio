@@ -59,8 +59,9 @@ const App: React.FC = () => {
   const [deepLinkShiftId, setDeepLinkShiftId] = useState<string | null>(null);
   const [savedTaskNames, setSavedTaskNames] = useState<string[]>(['Extra Towels', 'Deep Clean Fridge', 'Balcony Sweep']);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
 
-  // --- 0. INITIAL LOAD (Restore Session) ---
+  // --- 0. INITIAL LOAD (Restore Session & Hydrate) ---
   useEffect(() => {
     const savedUser = localStorage.getItem('current_user_obj');
     const savedOrgSettings = localStorage.getItem('studio_org_settings');
@@ -72,12 +73,53 @@ const App: React.FC = () => {
         
         setUser(u);
         setOrgId(o.id);
-        setOrganization(o.settings || o); 
+        setOrganization(o.settings || o);
+        
+        // IMMEDIATE LOCAL HYDRATION to prevent empty UI on refresh
+        if (o.users) setUsers(o.users);
+        if (o.shifts) setShifts(o.shifts);
+        if (o.properties) setProperties(o.properties);
+        if (o.clients) setClients(o.clients);
+        if (o.inventoryItems) setInventoryItems(o.inventoryItems);
+        if (o.manualTasks) setManualTasks(o.manualTasks);
+        if (o.supplyRequests) setSupplyRequests(o.supplyRequests);
+        if (o.invoices) setInvoices(o.invoices);
+        if (o.timeEntries) setTimeEntries(o.timeEntries);
+
+        setIsLoaded(true);
+
+        // BACKGROUND FETCH: Get latest data from server to catch updates from other users
+        if (o.id) {
+            fetch(`/api/organization/${o.id}`)
+              .then(res => res.json())
+              .then(serverOrg => {
+                 if(serverOrg.error) {
+                    console.error("Server fetch error:", serverOrg.error);
+                    return;
+                 }
+                 // Merge/Update state with server data
+                 if (serverOrg.users) setUsers(serverOrg.users);
+                 if (serverOrg.shifts) setShifts(serverOrg.shifts);
+                 if (serverOrg.properties) setProperties(serverOrg.properties);
+                 if (serverOrg.clients) setClients(serverOrg.clients);
+                 if (serverOrg.inventoryItems) setInventoryItems(serverOrg.inventoryItems);
+                 if (serverOrg.manualTasks) setManualTasks(serverOrg.manualTasks);
+                 if (serverOrg.supplyRequests) setSupplyRequests(serverOrg.supplyRequests);
+                 if (serverOrg.invoices) setInvoices(serverOrg.invoices);
+                 if (serverOrg.timeEntries) setTimeEntries(serverOrg.timeEntries);
+                 
+                 // Update local storage with fresh data
+                 localStorage.setItem('studio_org_settings', JSON.stringify(serverOrg));
+              })
+              .catch(err => console.error("Background sync failed:", err));
+        }
         
       } catch (e) {
         console.error("Failed to restore session", e);
         localStorage.clear();
       }
+    } else {
+        setIsLoaded(true); // Loaded empty
     }
   }, []);
 
@@ -98,6 +140,7 @@ const App: React.FC = () => {
     setInvoices(orgData.invoices || []);
     setTimeEntries(orgData.timeEntries || []);
     
+    setIsLoaded(true);
     setActiveTab('dashboard');
   };
 
@@ -108,17 +151,13 @@ const App: React.FC = () => {
 
   // --- 3. SYNC TO CLOUD (Auto-Save) ---
   useEffect(() => {
-    if (!user || !orgId) return;
+    if (!user || !orgId || !isLoaded) return; // Wait for initial load to finish
 
     const timeout = setTimeout(async () => {
       setIsSyncing(true);
       try {
-        // New Smart Backend Sync Strategy:
-        // We send everything, but the server now intelligently merges specific collections (users)
-        // instead of blindly overwriting. This prevents new admins/users from wiping the DB.
-        
         const payload: any = {
-            users, // Backend now safely merges this
+            users, 
             shifts, 
             properties,
             clients,
@@ -143,10 +182,10 @@ const App: React.FC = () => {
       } finally {
         setIsSyncing(false);
       }
-    }, 3000); // Increased debounce to 3s to reduce traffic
+    }, 3000); // Debounce saves
 
     return () => clearTimeout(timeout);
-  }, [users, shifts, properties, clients, supplyRequests, inventoryItems, manualTasks, organization, invoices, timeEntries, user, orgId]);
+  }, [users, shifts, properties, clients, supplyRequests, inventoryItems, manualTasks, organization, invoices, timeEntries, user, orgId, isLoaded]);
 
   const handleLogout = () => {
     setUser(null);
@@ -157,6 +196,7 @@ const App: React.FC = () => {
     setShifts([]);
     setProperties([]);
     setTimeEntries([]);
+    setIsLoaded(false);
     localStorage.removeItem('current_user_obj');
     localStorage.removeItem('studio_org_settings');
   };

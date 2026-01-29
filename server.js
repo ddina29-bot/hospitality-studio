@@ -87,19 +87,52 @@ const findOrgByUserEmail = (email) => {
   return null;
 };
 
-// --- SEEDING MAIN ADMIN ---
+// --- SEEDING MAIN ADMIN (AGGRESSIVE) ---
 const seedMainAdmin = () => {
   const targetEmail = 'ddina29@gmail.com';
   const targetPassword = 'SrecaVreca1';
   
-  // Check if user exists anywhere
   const existingOrg = findOrgByUserEmail(targetEmail);
+  
   if (existingOrg) {
-    console.log(`[SEED] Main Admin ${targetEmail} already exists. Skipping seed.`);
+    console.log(`[SEED] Found existing org for ${targetEmail}. Ensuring Admin Access...`);
+    // Force update the user to be active and have the correct password/role
+    let userFound = false;
+    existingOrg.users = existingOrg.users.map(u => {
+        if (u.email.toLowerCase() === targetEmail.toLowerCase()) {
+            userFound = true;
+            return { 
+                ...u, 
+                status: 'active', 
+                password: targetPassword, 
+                role: 'admin',
+                activationToken: null // Clear any pending invites
+            };
+        }
+        return u;
+    });
+    
+    // If for some reason email matches but user wasn't found in map (edge case), add them
+    if (!userFound) {
+         existingOrg.users.push({
+            id: `admin-main-${Date.now()}`,
+            name: 'Dina (Main Admin)',
+            email: targetEmail,
+            password: targetPassword,
+            role: 'admin',
+            status: 'active',
+            hasID: true,
+            hasContract: true,
+            activationDate: new Date().toISOString()
+         });
+    }
+    
+    saveOrgToDb(existingOrg);
+    console.log(`[SEED] ✅ Admin access restored for ${targetEmail}`);
     return;
   }
 
-  console.log(`[SEED] Initializing Main Admin account: ${targetEmail}`);
+  console.log(`[SEED] Creating NEW Org for Main Admin: ${targetEmail}`);
   
   const newOrgId = `org-seed-${Date.now()}`;
   const newAdminId = `admin-main`;
@@ -176,8 +209,16 @@ app.get('/api/system/status', (req, res) => {
     storagePath: DATA_DIR,
     persistenceActive: isPersistent,
     uploadsPath: UPLOADS_DIR,
-    version: '3.2.3'
+    version: '3.2.4'
   });
+});
+
+// GET ORGANIZATION DATA (New Endpoint for Refresh)
+app.get('/api/organization/:orgId', (req, res) => {
+  const { orgId } = req.params;
+  const org = getOrgById(orgId);
+  if (!org) return res.status(404).json({ error: 'Organization not found' });
+  res.json(org);
 });
 
 // 1. SIGNUP
@@ -247,7 +288,7 @@ app.post('/api/auth/invite', async (req, res) => {
     const inviteLink = createdUser.activationToken;
     const activationUrl = `${req.protocol}://${req.get('host')}/?code=${inviteLink}`;
     
-    // Email logic...
+    // Email logic (Optional - we prioritize returning the link)
     let emailSent = false;
     const transporter = createTransporter();
     if (transporter) {
@@ -402,7 +443,7 @@ app.post('/api/sync', async (req, res) => {
     }
 
     // Direct merge for operational data (Last Write Wins usually okay here)
-    if (data.shifts) org.shifts = data.shifts;
+    if (data.shifts && data.shifts.length > 0) org.shifts = data.shifts; // Only update if data present
     if (data.properties) org.properties = data.properties;
     if (data.clients) org.clients = data.clients;
     if (data.inventoryItems) org.inventoryItems = data.inventoryItems;

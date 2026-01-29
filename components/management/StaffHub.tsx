@@ -86,8 +86,14 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
       if (!response.ok) throw new Error(data.error);
 
       setUsers(prev => [...prev, data.user]);
-      const token = data.user.activationToken;
-      setInviteToken(token);
+      const token = data.inviteLink; // The backend now returns the full link in inviteLink, or we reconstruct it
+      
+      // If inviteLink is a full URL, extract code if needed, but usually we just want the token
+      // actually backend returns activationUrl as inviteLink.
+      // We will store the token for display.
+      // Let's just use the URL returned or construct it.
+      
+      setInviteToken(data.user.activationToken);
       setInvitedUserEmail(newUser.email);
       setShowSuccessModal(true);
       setShowAddModal(false);
@@ -111,30 +117,6 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
     navigator.clipboard.writeText(url);
     if (showToast) showToast('LINK COPIED TO CLIPBOARD', 'success');
     else alert('Link copied to clipboard');
-  };
-
-  const handleResendEmail = async (email: string) => {
-    if (!confirm(`Resend invitation email to ${email}?`)) return;
-    try {
-        const res = await fetch('/api/auth/resend-invite', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email })
-        });
-        const data = await res.json();
-        if (res.ok) {
-            if (data.emailSent) {
-                if (showToast) showToast('EMAIL RESENT', 'success');
-                else alert('Email resent successfully.');
-            } else {
-                alert('Email server not configured. Please use "Copy Link".');
-            }
-        } else {
-            alert(data.error || 'Failed to resend');
-        }
-    } catch (e) {
-        alert('Connection error');
-    }
   };
 
   return (
@@ -203,8 +185,7 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
                     </div>
                   </div>
                   <div className="flex gap-2 w-full sm:w-auto">
-                     <button onClick={() => u.activationToken && handleCopyLink(u.activationToken)} className="flex-1 sm:flex-none px-4 py-2 bg-white border border-gray-200 rounded-xl text-[8px] font-black uppercase tracking-widest hover:border-[#C5A059] transition-all">COPY LINK</button>
-                     <button onClick={() => handleResendEmail(u.email)} className="flex-1 sm:flex-none px-4 py-2 bg-black text-[#C5A059] rounded-xl text-[8px] font-black uppercase tracking-widest hover:bg-zinc-800 transition-all">RESEND</button>
+                     <button onClick={() => u.activationToken && handleCopyLink(u.activationToken)} className="flex-1 sm:flex-none px-4 py-2 bg-[#C5A059] text-black rounded-xl text-[8px] font-black uppercase tracking-widest hover:bg-[#d4b476] transition-all shadow-md">COPY LINK</button>
                   </div>
                 </div>
               ))}
@@ -219,14 +200,14 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
               <button type="button" onClick={() => setShowAddModal(false)} className="absolute top-10 right-10 text-black/20 hover:text-black"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
               
               <div className="space-y-2 text-center md:text-left">
-                 <h2 className="text-2xl font-serif-brand font-bold uppercase text-black">Invite New Member</h2>
-                 <p className="text-[8px] font-black text-[#A68342] uppercase tracking-[0.4em]">Send Activation Link</p>
+                 <h2 className="text-2xl font-serif-brand font-bold uppercase text-black">Create User</h2>
+                 <p className="text-[8px] font-black text-[#A68342] uppercase tracking-[0.4em]">Instant Link Generation</p>
               </div>
 
               <form onSubmit={handleInvite} className="space-y-6">
                  <div className="space-y-4">
                     <div><label className={labelStyle}>Full Name</label><input required className={inputStyle} value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} placeholder="E.G. MARIA BORG" /></div>
-                    <div><label className={labelStyle}>Email Address</label><input required type="email" className={inputStyle} value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} placeholder="EMAIL@DOMAIN.COM" /></div>
+                    <div><label className={labelStyle}>Email Address (For ID)</label><input required type="email" className={inputStyle} value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} placeholder="EMAIL@DOMAIN.COM" /></div>
                     <div>
                        <label className={labelStyle}>Assigned Role</label>
                        <select className={inputStyle} value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value as UserRole})}>
@@ -240,12 +221,7 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
                     </div>
                  </div>
                  <button type="submit" disabled={isSending} className="w-full bg-black text-[#C5A059] font-black py-5 rounded-2xl uppercase tracking-[0.4em] text-[10px] shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3">
-                    {isSending ? (
-                      <>
-                        <span className="w-3 h-3 border-2 border-[#C5A059] border-t-transparent rounded-full animate-spin"></span>
-                        SENDING...
-                      </>
-                    ) : 'SEND INVITATION'}
+                    {isSending ? 'GENERATING LINK...' : 'GENERATE LINK'}
                  </button>
               </form>
            </div>
@@ -257,13 +233,10 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
            <div className="bg-[#FDF8EE] border border-green-500/30 rounded-[48px] w-full max-w-lg p-10 space-y-8 shadow-2xl relative text-center">
               <div className="space-y-3">
                  <h2 className="text-2xl font-serif-brand font-bold uppercase text-black tracking-tight">
-                    {showSuccessModal ? 'Invitation Ready' : 'Manual Dispatch'}
+                    User Created Successfully
                  </h2>
                  <p className="text-[10px] text-black/60 font-medium leading-relaxed max-w-xs mx-auto">
-                    {isSending 
-                      ? `An email attempt was made for ${invitedUserEmail}.`
-                      : "Share this link with the new user to let them set their password:"
-                    }
+                    Please copy the link below and send it to {invitedUserEmail} via WhatsApp or SMS.
                  </p>
               </div>
 
