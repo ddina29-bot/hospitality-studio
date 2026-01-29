@@ -11,18 +11,18 @@ interface AdminDashboardProps {
   users?: User[];
   supplyRequests?: SupplyRequest[];
   leaveRequests?: LeaveRequest[];
-  setLeaveRequests?: React.Dispatch<React.SetStateAction<LeaveRequest[]>>;
-  setAuditReports?: React.Dispatch<React.SetStateAction<AuditReport[]>>;
-  onResolveLogistics: (shiftId: string, field: 'isDelivered' | 'isCollected' | 'keysAtOffice', reason?: string) => void;
+  setLeaveRequests?: React.Dispatch<React.SetStateAction<LeaveRequest[]>>; 
+  setAuditReports?: React.Dispatch<React.SetStateAction<AuditReport[]>>; 
+  onResolveLogistics: (shiftId: string, field: 'isDelivered' | 'isCollected' | 'keysAtOffice', reason?: string) => void; 
   onAuditDeepLink?: (shiftId: string) => void;
   onOpenManualTask?: () => void;
   manualTasks?: ManualTask[];
   setManualTasks?: React.Dispatch<React.SetStateAction<ManualTask[]>>;
-  onToggleLaundryPrepared: (shiftId: string) => void;
+  onToggleLaundryPrepared: (shiftId: string) => void; 
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
-  user, setActiveTab, onLogout, shifts = [], setShifts, users = [], supplyRequests = [], leaveRequests = [], setLeaveRequests, onResolveLogistics, onAuditDeepLink, onOpenManualTask, manualTasks = [], setManualTasks, onToggleLaundryPrepared
+  user, setActiveTab, onLogout, shifts = [], setShifts, users = [], supplyRequests = [], leaveRequests = [], onAuditDeepLink, onOpenManualTask
 }) => {
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
   
@@ -35,48 +35,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const reviewQueue = useMemo(() => shifts.filter(s => s.status === 'completed' && s.approvalStatus === 'pending'), [shifts]);
   const rejectedQueue = useMemo(() => shifts.filter(s => s.approvalStatus === 'rejected' && s.correctionStatus !== 'fixing'), [shifts]);
-  const extraTimeRequests = useMemo(() => shifts.filter(s => s.messReport && s.messReport.status === 'pending'), [shifts]);
+  
   const pendingLeaves = useMemo(() => (leaveRequests || []).filter(l => l.status === 'pending'), [leaveRequests]);
   const pendingSupplies = useMemo(() => (supplyRequests || []).filter(r => r.status === 'pending'), [supplyRequests]);
   
-  const todayStr = useMemo(() => new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase(), []);
-  const currentHour = new Date().getHours();
-
   const hasUnpublishedShifts = useMemo(() => shifts.some(s => !s.isPublished), [shifts]);
-
-  const myExtraTasks = useMemo(() => 
-    manualTasks.filter(t => t.userId === user.id && t.status === 'pending'),
-  [manualTasks, user.id]);
-
-  const toggleTaskDone = (id: string) => {
-    setManualTasks?.(prev => prev.map(t => t.id === id ? { ...t, status: 'completed' } : t));
-  };
-
-  const handleExtraTimeDecision = (shiftId: string, decision: 'approved' | 'rejected') => {
-    setShifts(prev => prev.map(s => {
-      if (s.id === shiftId && s.messReport) {
-        return {
-          ...s,
-          messReport: { ...s.messReport, status: decision }
-        };
-      }
-      return s;
-    }));
-  };
-
-  const logisticsAlerts = useMemo(() => {
-    if (currentHour < 15) return [];
-    const todayLogistics = shifts.filter(s => s.date === todayStr);
-    const alerts: { id: string, type: 'isDelivered' | 'isCollected' | 'keysAtOffice', message: string, prop: string, reason?: string }[] = [];
-    todayLogistics.forEach(s => {
-      if (!s.isDelivered) alerts.push({ id: s.id, type: 'isDelivered', prop: s.propertyName || 'Unknown', message: 'LINEN DELIVERY PENDING' });
-      if (!s.isCollected) alerts.push({ id: s.id, type: 'isCollected', prop: s.propertyName || 'Unknown', message: 'LAUNDRY COLLECTION PENDING' });
-      if (s.keysHandled && !s.keysAtOffice) {
-        alerts.push({ id: s.id, type: 'keysAtOffice', prop: s.propertyName || 'Unknown', message: 'KEYS MISSING FROM OFFICE', reason: s.keyLocationReason });
-      }
-    });
-    return alerts;
-  }, [shifts, todayStr, currentHour]);
 
   // Group active reports by Shift
   const shiftsWithIncidents = useMemo(() => {
@@ -152,7 +115,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-700 text-left pb-24">
-      {/* ... (Existing Alerts Section kept same) ... */}
+      {/* Alerts Section */}
       <div className="flex flex-col gap-4">
         {hasUnpublishedShifts && (
           <section className="bg-[#FDF8EE] border-2 border-red-500 p-6 rounded-[32px] shadow-2xl flex flex-col md:flex-row items-center justify-between gap-6 animate-in slide-in-from-top-4">
@@ -232,7 +195,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       </div>
 
-      {/* NEW: FIELD INCIDENT CENTER (Maintenance, Damage, Missing) */}
+      {/* FIELD INCIDENT CENTER (Maintenance, Damage, Missing) */}
       {shiftsWithIncidents.length > 0 && (
         <section className="bg-white border-2 border-[#C5A059] p-8 rounded-[40px] shadow-2xl space-y-8 animate-in slide-in-from-bottom-4">
            <div className="flex justify-between items-center px-2">
@@ -278,7 +241,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </section>
       )}
 
-      {/* Main Incident Management Modal (Same as before but uses updated assignment modal below) */}
+      {/* Main Incident Management Modal */}
       {viewingIncidentShift && (
          <div className="fixed inset-0 bg-black/70 z-[400] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
             <div className="bg-[#FDF8EE] border border-[#C5A059]/40 rounded-[40px] w-full max-w-4xl p-8 md:p-10 space-y-8 shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar">
@@ -320,9 +283,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                      </div>
                   )}
 
-                  {/* Damage & Missing sections similar to Maintenance... (Kept for brevity, assumes logic handles all types) */}
-                  {/* Reuse maintenance logic pattern for Damage and Missing below if present */}
-                  {/* ... Damage Reports logic ... */}
+                  {/* Damage Section */}
                   {viewingIncidentShift.damageReports && viewingIncidentShift.damageReports.length > 0 && (
                      <div className="space-y-3">
                         <div className="flex items-center gap-3 border-b border-black/5 pb-2">
@@ -351,7 +312,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         ))}
                      </div>
                   )}
-                  {/* ... Missing Reports logic ... */}
+
+                  {/* Missing Items Section */}
                   {viewingIncidentShift.missingReports && viewingIncidentShift.missingReports.length > 0 && (
                      <div className="space-y-6">
                         {getMissingItemsBreakdown(viewingIncidentShift.missingReports).apartment.length > 0 && (
@@ -385,7 +347,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
          </div>
       )}
 
-      {/* Assignment Modal - UPDATED FOR EXTERNAL VENDOR HIGHLIGHT */}
+      {/* Assignment Modal */}
       {assigningReport && (
         <div className="fixed inset-0 bg-black/80 z-[500] flex items-center justify-center p-4 backdrop-blur-sm animate-in zoom-in-95">
            <div className="bg-[#FDF8EE] border border-[#C5A059]/40 rounded-[40px] w-full max-w-md p-8 space-y-6 shadow-2xl relative">
@@ -429,7 +391,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
-      {/* Extra Time/Rejected Queue sections... (Kept as is, just ensuring closing tag match) */}
+      {/* Extra Time/Rejected Queue sections */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Verification Queue Section */}
         <section className={`bg-[#FDF8EE] p-6 rounded-[32px] border-2 border-[#C5A059] shadow-xl space-y-6 ${reviewQueue.length === 0 ? 'opacity-30 grayscale' : ''}`}>
