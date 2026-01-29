@@ -218,6 +218,22 @@ app.post('/api/auth/activate', (req, res) => {
   res.json({ success: true, user: updatedUser, organization: db.organizations[foundOrgIndex] });
 });
 
+// NEW ENDPOINT: Delete Organization
+app.post('/api/auth/delete-organization', (req, res) => {
+  const { orgId } = req.body;
+  const db = getDb();
+  
+  const initialLength = db.organizations.length;
+  db.organizations = db.organizations.filter(o => o.id !== orgId);
+
+  if (db.organizations.length === initialLength) {
+    return res.status(404).json({ error: 'Organization not found' });
+  }
+
+  saveDb(db);
+  res.json({ success: true });
+});
+
 app.post('/api/sync', (req, res) => {
   const { orgId, data } = req.body;
   const db = getDb();

@@ -13,6 +13,7 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
   const [formData, setFormData] = useState<OrganizationSettings>(organization);
   const [isSaving, setIsSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Reset form data when organization prop changes (e.g. after a save or external update)
   useEffect(() => {
@@ -39,14 +40,48 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
     }, 800);
   };
 
-  const handleDeleteOrganization = () => {
-    // Complete data wipe for the entire application to reset to factory state
-    localStorage.clear();
-    sessionStorage.clear();
+  const handleDeleteOrganization = async () => {
+    setIsDeleting(true);
+    try {
+      // Retrieve the persistent Org ID from local session storage
+      const storedOrg = localStorage.getItem('studio_org_settings');
+      
+      if (!storedOrg) {
+         // Fallback if session is corrupted: just wipe client side
+         localStorage.clear();
+         sessionStorage.clear();
+         window.location.href = window.location.origin;
+         window.location.reload();
+         return;
+      }
 
-    // Force reload to reset application state to initial demo/login
-    window.location.href = window.location.origin;
-    window.location.reload();
+      const orgData = JSON.parse(storedOrg);
+      const orgId = orgData.id;
+
+      // Call Backend to perform actual deletion
+      const res = await fetch('/api/auth/delete-organization', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgId })
+      });
+
+      if (!res.ok) {
+        throw new Error('Server failed to delete organization.');
+      }
+
+      // Complete data wipe for the entire application to reset to factory state
+      localStorage.clear();
+      sessionStorage.clear();
+
+      // Force reload to reset application state to initial demo/login
+      window.location.href = window.location.origin;
+      window.location.reload();
+
+    } catch (error) {
+      console.error("Deletion failed:", error);
+      alert("Failed to delete organization from server. Please try again or contact support.");
+      setIsDeleting(false);
+    }
   };
 
   const labelStyle = "text-[7px] font-black text-[#8B6B2E] uppercase tracking-[0.4em] mb-2 block px-1";
@@ -206,18 +241,20 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
                  <h2 className="text-2xl font-serif-brand font-bold uppercase text-red-600 tracking-tight">Confirm Deletion</h2>
                  <p className="text-[10px] font-black text-black/40 uppercase tracking-widest leading-relaxed">
                     This action is <span className="text-red-600 underline">irreversible</span>.<br/>
-                    All organization data will be wiped and you will be redirected to the login/setup screen.
+                    All organization data will be wiped from the server and you will be redirected to the login screen.
                  </p>
               </div>
               <div className="flex flex-col gap-3">
                  <button 
                    onClick={handleDeleteOrganization}
-                   className="w-full bg-red-600 text-white font-black py-4 rounded-xl uppercase text-[10px] tracking-[0.2em] shadow-xl hover:bg-red-700 active:scale-95 transition-all"
+                   disabled={isDeleting}
+                   className="w-full bg-red-600 text-white font-black py-4 rounded-xl uppercase text-[10px] tracking-[0.2em] shadow-xl hover:bg-red-700 active:scale-95 transition-all disabled:opacity-50"
                  >
-                   YES, DELETE EVERYTHING
+                   {isDeleting ? 'DELETING...' : 'YES, DELETE EVERYTHING'}
                  </button>
                  <button 
                    onClick={() => setShowDeleteConfirm(false)}
+                   disabled={isDeleting}
                    className="w-full bg-gray-100 text-black/60 font-black py-4 rounded-xl uppercase text-[10px] tracking-[0.2em] hover:bg-gray-200 transition-all"
                  >
                    ABORT ACTION
