@@ -14,7 +14,10 @@ interface StaffHubProps {
 const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldOpenAddModal, setShouldOpenAddModal }) => {
   const [search, setSearch] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [invitedUserEmail, setInvitedUserEmail] = useState<string | null>(null);
+  const [isSending, setIsSending] = useState(false);
   
   const currentUser = JSON.parse(localStorage.getItem('current_user_obj') || '{}');
   const canManage = ['admin', 'housekeeping', 'hr'].includes(currentUser.role);
@@ -46,12 +49,14 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUser.email || !newUser.name) return;
+    setIsSending(true);
 
     try {
       const savedOrg = JSON.parse(localStorage.getItem('studio_org_settings') || '{}');
       
       if (!savedOrg.id) {
         alert("Session Error: Organization ID missing. Please Log Out and Log In again to restore session data.");
+        setIsSending(false);
         return;
       }
 
@@ -72,13 +77,40 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
       if (!response.ok) throw new Error(data.error);
 
       setUsers(prev => [...prev, data.user]);
-      setInviteLink(data.inviteLink);
+      
+      if (data.emailSent) {
+        setInvitedUserEmail(newUser.email);
+        setShowSuccessModal(true);
+        setInviteLink(null); 
+      } else {
+        // Fallback to manual if no email server configured
+        setInviteLink(data.inviteLink);
+        setInvitedUserEmail(newUser.email);
+      }
+
       setShowAddModal(false);
       setNewUser({ name: '', email: '', role: 'cleaner' });
       
     } catch (err: any) {
       alert(err.message);
+    } finally {
+      setIsSending(false);
     }
+  };
+
+  const getActivationUrl = () => `${window.location.origin}/login?code=${inviteLink}`;
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(getActivationUrl());
+    if (showToast) showToast('LINK COPIED TO CLIPBOARD', 'success');
+    else alert('Link copied to clipboard');
+  };
+
+  const handleOpenEmailApp = () => {
+    if (!invitedUserEmail) return;
+    const subject = encodeURIComponent("Welcome to Reset Hospitality Studio");
+    const body = encodeURIComponent(`You have been invited to join the Reset Hospitality Studio platform.\n\nPlease click the link below to activate your account and set your password:\n\n${getActivationUrl()}\n\nWelcome to the team.`);
+    window.open(`mailto:${invitedUserEmail}?subject=${subject}&body=${body}`);
   };
 
   return (
@@ -172,24 +204,64 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
                        </select>
                     </div>
                  </div>
-                 <button type="submit" className="w-full bg-black text-[#C5A059] font-black py-5 rounded-2xl uppercase tracking-[0.4em] text-[10px] shadow-2xl active:scale-95 transition-all">SEND INVITATION</button>
+                 <button type="submit" disabled={isSending} className="w-full bg-black text-[#C5A059] font-black py-5 rounded-2xl uppercase tracking-[0.4em] text-[10px] shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3">
+                    {isSending ? (
+                      <>
+                        <span className="w-3 h-3 border-2 border-[#C5A059] border-t-transparent rounded-full animate-spin"></span>
+                        SENDING...
+                      </>
+                    ) : 'SEND INVITATION'}
+                 </button>
               </form>
            </div>
         </div>
       )}
 
-      {/* INVITE SUCCESS LINK */}
+      {/* SUCCESS MODAL (EMAIL SENT) */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 bg-black/90 z-[600] flex items-center justify-center p-4 backdrop-blur-xl animate-in fade-in">
+           <div className="bg-[#FDF8EE] border border-green-500/30 rounded-[48px] w-full max-w-lg p-12 space-y-8 shadow-2xl relative text-center">
+              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 text-green-600 animate-in zoom-in spin-in-12 duration-500">
+                 <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>
+              </div>
+              <div className="space-y-3">
+                 <h2 className="text-3xl font-serif-brand font-bold uppercase text-black tracking-tight">Invitation Sent</h2>
+                 <p className="text-[10px] text-black/60 font-medium leading-relaxed max-w-xs mx-auto">
+                    A secure activation link has been emailed to <strong>{invitedUserEmail}</strong>.
+                 </p>
+              </div>
+              <button onClick={() => setShowSuccessModal(false)} className="bg-black text-white font-black py-4 px-12 rounded-2xl uppercase tracking-[0.3em] text-[9px] shadow-xl hover:bg-zinc-800 transition-all active:scale-95">
+                 Done
+              </button>
+           </div>
+        </div>
+      )}
+
+      {/* FALLBACK MANUAL LINK (IF NO EMAIL SERVER) */}
       {inviteLink && (
         <div className="fixed inset-0 bg-black/90 z-[600] flex items-center justify-center p-4 backdrop-blur-xl">
-           <div className="bg-[#FDF8EE] border border-green-500/30 rounded-[48px] w-full max-w-lg p-10 space-y-10 shadow-2xl relative text-center">
+           <div className="bg-[#FDF8EE] border border-green-500/30 rounded-[48px] w-full max-w-lg p-10 space-y-8 shadow-2xl relative text-center">
               <div className="space-y-2">
-                 <h2 className="text-2xl font-serif-brand font-bold uppercase text-black">Invitation Generated</h2>
-                 <p className="text-[10px] text-black/40 font-black uppercase tracking-widest">Share this verification link with the member:</p>
+                 <h2 className="text-2xl font-serif-brand font-bold uppercase text-black">Manual Dispatch</h2>
+                 <p className="text-[10px] text-black/40 font-black uppercase tracking-widest">Email server not configured. Share link manually:</p>
               </div>
-              <div className="bg-white p-4 rounded-xl border border-gray-200 break-all text-[10px] font-mono">
-                 {window.location.origin}/login?code={inviteLink} <br/> (Simulated Email: "Click here to activate")
+              
+              <div className="bg-white p-4 rounded-xl border border-gray-200 break-all text-[10px] font-mono select-all">
+                 {getActivationUrl()}
               </div>
-              <button onClick={() => setInviteLink(null)} className="w-full bg-black text-[#C5A059] font-black py-5 rounded-2xl uppercase tracking-[0.4em] text-[10px]">DONE</button>
+
+              <div className="grid grid-cols-2 gap-4 pt-2">
+                 <button onClick={handleOpenEmailApp} className="flex items-center justify-center gap-2 bg-[#C5A059] text-black font-black py-4 rounded-2xl uppercase tracking-[0.2em] text-[8px] hover:bg-[#d4b476] transition-all shadow-lg active:scale-95">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                    Compose Email
+                 </button>
+                 <button onClick={handleCopyLink} className="flex items-center justify-center gap-2 bg-white border border-gray-200 text-black font-black py-4 rounded-2xl uppercase tracking-[0.2em] text-[8px] hover:bg-gray-50 transition-all active:scale-95">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    Copy Link
+                 </button>
+              </div>
+
+              <button onClick={() => setInviteLink(null)} className="text-[9px] font-black text-black/30 uppercase tracking-[0.3em] hover:text-black transition-colors mt-4">Close Window</button>
            </div>
         </div>
       )}

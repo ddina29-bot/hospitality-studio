@@ -7,6 +7,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
 import fs from 'fs';
+import nodemailer from 'nodemailer';
 
 // Load environment variables
 dotenv.config();
@@ -22,29 +23,41 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'dist')));
 
 // --- PERSISTENCE (RAILWAY VOLUME) ---
-// This is where the magic happens. Data is saved to the persistent volume.
 const STORAGE_ROOT = process.env.RAILWAY_VOLUME_MOUNT_PATH || __dirname;
 const DB_FILE = path.join(STORAGE_ROOT, 'database.json');
 const UPLOADS_DIR = path.join(STORAGE_ROOT, 'uploads');
 
-// Ensure storage exists
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 if (!fs.existsSync(DB_FILE)) {
   fs.writeFileSync(DB_FILE, JSON.stringify({ organizations: [] }, null, 2));
 }
 
-// Helper to read/write DB
 const getDb = () => JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
 const saveDb = (data) => fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
 
+// --- EMAIL TRANSPORTER SETUP ---
+// Configures only if environment variables are present
+const createTransporter = () => {
+  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+    return nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: process.env.SMTP_PORT || 587,
+      secure: false, // true for 465, false for other ports
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    });
+  }
+  return null;
+};
+
 // --- AUTH & ORGANIZATION ENDPOINTS ---
 
-// 1. SIGN UP (Create New Organization)
 app.post('/api/auth/signup', (req, res) => {
   const { adminUser, organization } = req.body;
   const db = getDb();
 
-  // Check if email already exists globally
   const emailExists = db.organizations.some(org => 
     org.users.some(u => u.email.toLowerCase() === adminUser.email.toLowerCase())
   );
@@ -76,7 +89,6 @@ app.post('/api/auth/signup', (req, res) => {
   res.json({ success: true, user: newOrganization.users[0], organization: newOrganization });
 });
 
-// 2. LOGIN (Find User & Org)
 app.post('/api/auth/login', (req, res) => {
   const { email, password } = req.body; 
   const db = getDb();
@@ -101,8 +113,7 @@ app.post('/api/auth/login', (req, res) => {
   res.json({ success: true, user: foundUser, organization: foundOrg });
 });
 
-// 3. INVITE MEMBER
-app.post('/api/auth/invite', (req, res) => {
+app.post('/api/auth/invite', async (req, res) => {
   const { orgId, newUser } = req.body;
   const db = getDb();
   
@@ -122,10 +133,57 @@ app.post('/api/auth/invite', (req, res) => {
   db.organizations[orgIndex].users.push(createdUser);
   saveDb(db);
 
-  res.json({ success: true, user: createdUser, inviteLink: createdUser.activationToken });
+  const inviteLink = createdUser.activationToken;
+  const activationUrl = `${req.protocol}://${req.get('host')}/login?code=${inviteLink}`;
+  
+  // Try sending real email
+  let emailSent = false;
+  const transporter = createTransporter();
+  
+  if (transporter) {
+    try {
+      await transporter.sendMail({
+        from: `"Reset Studio" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+        to: newUser.email,
+        subject: "Action Required: Reset Hospitality Studio Access",
+        html: `
+          <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #1a1a1a; max-width: 600px; margin: 0 auto; padding: 40px 20px; background-color: #ffffff; border: 1px solid #e5e5e5;">
+            <div style="text-align: center; margin-bottom: 30px;">
+               <h1 style="color: #000; font-size: 24px; text-transform: uppercase; letter-spacing: 4px; margin: 0;">Reset</h1>
+               <span style="color: #C5A059; font-size: 10px; text-transform: uppercase; letter-spacing: 2px; font-weight: bold;">Hospitality Studio</span>
+            </div>
+            
+            <div style="background-color: #FDF8EE; padding: 30px; border-left: 4px solid #C5A059;">
+              <h2 style="color: #000; font-size: 18px; margin-top: 0; margin-bottom: 15px;">Welcome to the Team</h2>
+              <p style="font-size: 14px; line-height: 1.6; color: #4a4a4a; margin-bottom: 20px;">
+                You have been invited to join the <strong>Reset Hospitality Studio</strong> platform. As a member of our team, you will use this portal to manage your shifts, tasks, and reports.
+              </p>
+              <div style="text-align: center; margin: 35px 0;">
+                <a href="${activationUrl}" style="background-color: #000000; color: #C5A059; font-weight: bold; text-decoration: none; padding: 16px 32px; border-radius: 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 2px; display: inline-block;">Setup Your Account</a>
+              </div>
+              <p style="font-size: 12px; color: #888; line-height: 1.5; text-align: center;">
+                If the button above does not work, copy and paste this link into your browser:<br/>
+                <a href="${activationUrl}" style="color: #C5A059; text-decoration: none;">${activationUrl}</a>
+              </p>
+            </div>
+            
+            <div style="text-align: center; margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px;">
+              <p style="font-size: 10px; color: #aaa; text-transform: uppercase; letter-spacing: 1px;">© Reset Hospitality Studio. Automated System Message.</p>
+            </div>
+          </div>
+        `
+      });
+      emailSent = true;
+      console.log(`Email sent successfully to ${newUser.email}`);
+    } catch (error) {
+      console.error("Failed to send email:", error);
+      // We don't fail the request, we just fallback to returning the link for manual sharing
+    }
+  }
+
+  res.json({ success: true, user: createdUser, inviteLink: inviteLink, emailSent });
 });
 
-// 4. VERIFY/ACTIVATE ACCOUNT
 app.post('/api/auth/activate', (req, res) => {
   const { email, password, details } = req.body;
   const db = getDb();
@@ -160,7 +218,6 @@ app.post('/api/auth/activate', (req, res) => {
   res.json({ success: true, user: updatedUser, organization: db.organizations[foundOrgIndex] });
 });
 
-// --- DATA SYNC ---
 app.post('/api/sync', (req, res) => {
   const { orgId, data } = req.body;
   const db = getDb();
@@ -168,7 +225,6 @@ app.post('/api/sync', (req, res) => {
 
   if (orgIndex === -1) return res.status(404).json({ error: 'Organization not found' });
 
-  // Merge data
   const org = db.organizations[orgIndex];
   if(data.users) org.users = data.users;
   if(data.shifts) org.shifts = data.shifts;
@@ -184,7 +240,6 @@ app.post('/api/sync', (req, res) => {
   res.json({ success: true });
 });
 
-// --- FILE UPLOAD ---
 app.use('/uploads', express.static(UPLOADS_DIR));
 
 const diskStorage = multer.diskStorage({
@@ -205,7 +260,6 @@ app.post('/api/upload', (req, res) => {
   });
 });
 
-// --- AI ---
 let ai;
 if (process.env.API_KEY) {
   ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
