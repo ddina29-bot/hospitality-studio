@@ -15,7 +15,7 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
   const [search, setSearch] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [inviteToken, setInviteToken] = useState<string | null>(null); // Changed to Token only
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [invitedUserEmail, setInvitedUserEmail] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   
@@ -24,7 +24,6 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
 
   const [newUser, setNewUser] = useState<Partial<User>>({ name: '', email: '', role: 'cleaner' });
 
-  // Effect to handle external trigger for modal opening
   useEffect(() => {
     if (shouldOpenAddModal) {
       setShowAddModal(true);
@@ -35,18 +34,26 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
   const labelStyle = "text-[7px] font-black text-[#C5A059] uppercase tracking-[0.4em] opacity-80 mb-1.5 block px-1 text-left";
   const inputStyle = "w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-black text-[10px] font-bold uppercase tracking-widest outline-none focus:border-[#C5A059] transition-all";
 
+  const getRoleBadgeStyle = (role: string) => {
+    switch (role) {
+      case 'admin': return 'bg-black text-[#C5A059] border-black';
+      case 'supervisor': return 'bg-purple-100 text-purple-700 border-purple-200';
+      case 'driver': return 'bg-orange-100 text-orange-700 border-orange-200';
+      case 'cleaner': return 'bg-green-100 text-green-700 border-green-200';
+      default: return 'bg-gray-100 text-gray-600 border-gray-200';
+    }
+  };
+
   const activeStaffGroups = useMemo(() => {
     const filtered = users.filter(u => u.status === 'active' && u.name.toLowerCase().includes(search.toLowerCase()));
     return [
-      { title: 'HOUSEKEEPING FIELD STAFF', members: filtered.filter(u => ['cleaner', 'supervisor'].includes(u.role)) },
-      { title: 'LOGISTICS & MANAGEMENT', members: filtered.filter(u => ['admin', 'housekeeping', 'hr', 'finance', 'driver'].includes(u.role)) },
-      { title: 'TECHNICAL & LAUNDRY', members: filtered.filter(u => ['maintenance', 'laundry', 'outsourced_maintenance', 'client'].includes(u.role)) }
+      { title: 'MANAGEMENT & ADMIN', members: filtered.filter(u => ['admin', 'housekeeping', 'hr', 'finance'].includes(u.role)) },
+      { title: 'FIELD STAFF (CLEANING)', members: filtered.filter(u => ['cleaner', 'supervisor'].includes(u.role)) },
+      { title: 'LOGISTICS & OPERATIONS', members: filtered.filter(u => ['driver', 'maintenance', 'laundry', 'outsourced_maintenance', 'client'].includes(u.role)) }
     ];
   }, [users, search]);
 
   const pendingUsers = useMemo(() => users.filter(u => u.status === 'pending'), [users]);
-
-  // Determine if there are ANY active users to display
   const hasActiveUsers = activeStaffGroups.some(g => g.members.length > 0);
 
   const handleInvite = async (e: React.FormEvent) => {
@@ -56,7 +63,6 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
 
     try {
       const savedOrg = JSON.parse(localStorage.getItem('studio_org_settings') || '{}');
-      
       if (!savedOrg.id) {
         alert("Session Error: Organization ID missing. Please Log Out and Log In again to restore session data.");
         setIsSending(false);
@@ -80,15 +86,10 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
       if (!response.ok) throw new Error(data.error);
 
       setUsers(prev => [...prev, data.user]);
-      
-      // Store just the token to avoid double-url issues
       const token = data.user.activationToken;
       setInviteToken(token);
       setInvitedUserEmail(newUser.email);
-      
-      // Always show success modal now so they can copy the link immediately if needed
       setShowSuccessModal(true);
-
       setShowAddModal(false);
       setNewUser({ name: '', email: '', role: 'cleaner' });
       
@@ -102,7 +103,6 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
   const getActivationUrl = (code?: string) => {
     const finalCode = code || inviteToken;
     if (!finalCode) return '';
-    // Ensure we use the current window origin to avoid protocol mismatches
     return `${window.location.origin}/?code=${finalCode}`;
   };
 
@@ -146,13 +146,13 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
         </div>
         
         {canManage && (
-            <button onClick={() => setShowAddModal(true)} className="bg-[#C5A059] text-black px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl whitespace-nowrap active:scale-95 transition-all hover:bg-[#d4b476]">
+            <button onClick={() => setShowAddModal(true)} className="bg-[#C5A059] text-black px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl whitespace-nowrap active:scale-95 transition-all hover:bg-[#d4b476] flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               ADD USER
             </button>
         )}
       </header>
 
-      {/* ACTIVE USERS */}
       <div className="space-y-10">
         {!hasActiveUsers ? (
           <div className="py-20 text-center border-2 border-dashed border-black/10 rounded-[40px]">
@@ -163,19 +163,22 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
           activeStaffGroups.map((group, gIdx) => group.members.length > 0 && (
               <section key={gIdx} className="space-y-4">
                 <div className="flex items-center gap-4 mb-2">
-                  <h3 className="text-[10px] font-black uppercase tracking-[0.5em] whitespace-nowrap text-black/20">ACTIVE: {group.title}</h3>
+                  <h3 className="text-[10px] font-black uppercase tracking-[0.5em] whitespace-nowrap text-black/20">{group.title}</h3>
                   <div className="h-px flex-1 bg-black/5"></div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {group.members.map(u => (
-                    <div key={u.id} className="p-5 rounded-[28px] border bg-[#FDF8EE] border-[#D4B476]/30 flex items-center justify-between gap-4 shadow-lg">
+                    <div key={u.id} className="p-5 rounded-[28px] border bg-white border-gray-100 flex items-center justify-between gap-4 shadow-sm hover:border-[#D4B476]/50 transition-all">
                       <div className="flex items-center gap-5 flex-1 min-w-0 text-left">
-                        <div className="w-12 h-12 rounded-full bg-black border border-[#C5A059]/20 text-[#C5A059] flex items-center justify-center font-serif-brand text-lg font-bold">{u.name.charAt(0)}</div>
+                        <div className="w-12 h-12 rounded-full bg-gray-50 border border-gray-100 text-black/40 flex items-center justify-center font-serif-brand text-lg font-bold">{u.name.charAt(0)}</div>
                         <div className="flex-1 min-w-0">
-                          <h3 className="text-sm font-serif-brand font-bold uppercase truncate text-black">{u.name}</h3>
-                          <p className="text-[8px] font-black uppercase tracking-widest text-[#A68342]">{u.role}</p>
+                          <h3 className="text-sm font-bold uppercase truncate text-black">{u.name}</h3>
+                          <p className="text-[9px] text-black/40 truncate">{u.email}</p>
                         </div>
                       </div>
+                      <span className={`px-3 py-1 rounded-lg text-[7px] font-black uppercase tracking-widest border ${getRoleBadgeStyle(u.role)}`}>
+                        {u.role}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -183,7 +186,6 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
           ))
         )}
 
-        {/* PENDING INVITES */}
         {pendingUsers.length > 0 && (
           <section className="space-y-4 pt-10">
             <div className="flex items-center gap-4 mb-2">
@@ -192,17 +194,17 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {pendingUsers.map(u => (
-                <div key={u.id} className="p-5 rounded-[28px] border bg-white border-orange-500/20 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+                <div key={u.id} className="p-5 rounded-[28px] border bg-[#FDF8EE] border-[#D4B476]/30 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
                   <div className="flex items-center gap-5 flex-1 min-w-0 text-left w-full sm:w-auto">
-                    <div className="w-12 h-12 rounded-full bg-orange-50 flex items-center justify-center text-orange-500 font-serif-brand text-lg font-bold shrink-0">{u.name.charAt(0)}</div>
+                    <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 font-serif-brand text-lg font-bold shrink-0">{u.name.charAt(0)}</div>
                     <div>
                       <h3 className="text-sm font-serif-brand font-bold uppercase truncate text-black">{u.name}</h3>
-                      <p className="text-[7px] font-black text-orange-500 uppercase tracking-widest">Invite Sent</p>
+                      <p className="text-[7px] font-black text-orange-600 uppercase tracking-widest">Awaiting Login</p>
                     </div>
                   </div>
                   <div className="flex gap-2 w-full sm:w-auto">
-                     <button onClick={() => u.activationToken && handleCopyLink(u.activationToken)} className="flex-1 sm:flex-none px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-[8px] font-black uppercase tracking-widest hover:bg-white hover:border-[#C5A059] transition-all">COPY LINK</button>
-                     <button onClick={() => handleResendEmail(u.email)} className="flex-1 sm:flex-none px-4 py-2 bg-orange-50 border border-orange-200 text-orange-600 rounded-xl text-[8px] font-black uppercase tracking-widest hover:bg-orange-100 transition-all">RESEND</button>
+                     <button onClick={() => u.activationToken && handleCopyLink(u.activationToken)} className="flex-1 sm:flex-none px-4 py-2 bg-white border border-gray-200 rounded-xl text-[8px] font-black uppercase tracking-widest hover:border-[#C5A059] transition-all">COPY LINK</button>
+                     <button onClick={() => handleResendEmail(u.email)} className="flex-1 sm:flex-none px-4 py-2 bg-black text-[#C5A059] rounded-xl text-[8px] font-black uppercase tracking-widest hover:bg-zinc-800 transition-all">RESEND</button>
                   </div>
                 </div>
               ))}
@@ -211,14 +213,13 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
         )}
       </div>
 
-      {/* INVITE MODAL */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/80 z-[500] flex items-center justify-center p-4 backdrop-blur-md animate-in zoom-in-95">
            <div className="bg-[#FDF8EE] border border-[#D4B476]/40 rounded-[48px] w-full max-w-lg p-8 md:p-12 space-y-10 shadow-2xl relative text-left">
               <button type="button" onClick={() => setShowAddModal(false)} className="absolute top-10 right-10 text-black/20 hover:text-black"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
               
               <div className="space-y-2 text-center md:text-left">
-                 <h2 className="text-2xl font-serif-brand font-bold uppercase text-black">Member Registration</h2>
+                 <h2 className="text-2xl font-serif-brand font-bold uppercase text-black">Invite New Member</h2>
                  <p className="text-[8px] font-black text-[#A68342] uppercase tracking-[0.4em]">Send Activation Link</p>
               </div>
 
@@ -227,14 +228,13 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
                     <div><label className={labelStyle}>Full Name</label><input required className={inputStyle} value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} placeholder="E.G. MARIA BORG" /></div>
                     <div><label className={labelStyle}>Email Address</label><input required type="email" className={inputStyle} value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} placeholder="EMAIL@DOMAIN.COM" /></div>
                     <div>
-                       <label className={labelStyle}>Role</label>
+                       <label className={labelStyle}>Assigned Role</label>
                        <select className={inputStyle} value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value as UserRole})}>
                           <option value="cleaner">CLEANER</option>
                           <option value="supervisor">SUPERVISOR</option>
                           <option value="driver">DRIVER</option>
                           <option value="admin">ADMIN</option>
-                          <option value="housekeeping">HOUSEKEEPING</option>
-                          <option value="hr">HR</option>
+                          <option value="housekeeping">HOUSEKEEPING (MANAGER)</option>
                           <option value="maintenance">MAINTENANCE</option>
                        </select>
                     </div>
@@ -252,7 +252,6 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
         </div>
       )}
 
-      {/* SUCCESS / MANUAL LINK MODAL */}
       {(showSuccessModal || inviteToken) && (
         <div className="fixed inset-0 bg-black/90 z-[600] flex items-center justify-center p-4 backdrop-blur-xl animate-in zoom-in-95">
            <div className="bg-[#FDF8EE] border border-green-500/30 rounded-[48px] w-full max-w-lg p-10 space-y-8 shadow-2xl relative text-center">
@@ -263,13 +262,13 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
                  <p className="text-[10px] text-black/60 font-medium leading-relaxed max-w-xs mx-auto">
                     {isSending 
                       ? `An email attempt was made for ${invitedUserEmail}.`
-                      : "Please copy and share this activation link manually:"
+                      : "Share this link with the new user to let them set their password:"
                     }
                  </p>
               </div>
 
               {inviteToken && (
-                <div className="bg-white p-4 rounded-xl border border-gray-200 break-all text-[10px] font-mono select-all text-left">
+                <div className="bg-white p-4 rounded-xl border border-gray-200 break-all text-[10px] font-mono select-all text-left shadow-inner">
                     {getActivationUrl()}
                 </div>
               )}

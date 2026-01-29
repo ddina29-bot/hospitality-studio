@@ -87,6 +87,57 @@ const findOrgByUserEmail = (email) => {
   return null;
 };
 
+// --- SEEDING MAIN ADMIN ---
+const seedMainAdmin = () => {
+  const targetEmail = 'ddina29@gmail.com';
+  const targetPassword = 'SrecaVreca1';
+  
+  // Check if user exists anywhere
+  const existingOrg = findOrgByUserEmail(targetEmail);
+  if (existingOrg) {
+    console.log(`[SEED] Main Admin ${targetEmail} already exists. Skipping seed.`);
+    return;
+  }
+
+  console.log(`[SEED] Initializing Main Admin account: ${targetEmail}`);
+  
+  const newOrgId = `org-seed-${Date.now()}`;
+  const newAdminId = `admin-main`;
+  
+  const newOrg = {
+    id: newOrgId,
+    settings: {
+      name: 'RESET HOSPITALITY STUDIO',
+      address: 'Malta',
+      email: targetEmail,
+      phone: '',
+      website: '',
+      legalEntity: 'Reset Hospitality',
+      taxId: ''
+    },
+    users: [{
+      id: newAdminId,
+      name: 'Dina (Main Admin)',
+      email: targetEmail,
+      password: targetPassword,
+      role: 'admin',
+      status: 'active',
+      hasID: true,
+      hasContract: true,
+      activationDate: new Date().toISOString()
+    }],
+    shifts: [], properties: [], clients: [], supplyRequests: [], 
+    inventoryItems: [], manualTasks: [], leaveRequests: [], invoices: [], tutorials: [],
+    timeEntries: [] 
+  };
+  
+  saveOrgToDb(newOrg);
+  console.log(`[SEED] ✅ Main Admin created successfully.`);
+};
+
+// Run seed on startup
+seedMainAdmin();
+
 // --- FILE STORAGE (Images) ---
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads'); 
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -125,7 +176,7 @@ app.get('/api/system/status', (req, res) => {
     storagePath: DATA_DIR,
     persistenceActive: isPersistent,
     uploadsPath: UPLOADS_DIR,
-    version: '3.2.2'
+    version: '3.2.3'
   });
 });
 
@@ -318,8 +369,7 @@ app.post('/api/sync', async (req, res) => {
     if (!org) return res.status(404).json({ error: "Organization not found" });
 
     // --- SMART MERGE LOGIC FOR USERS ---
-    // This logic ensures that if the incoming data is missing users (accidental deletion),
-    // we preserve the users currently in the DB.
+    // Protect against overwriting 'active' users with 'pending' status from an outdated client
     if (data.users && Array.isArray(data.users)) {
         // 1. Create a map of existing DB users for easy lookup
         const dbUsersMap = new Map((org.users || []).map(u => [u.id, u]));
@@ -329,25 +379,29 @@ app.post('/api/sync', async (req, res) => {
             const existingUser = dbUsersMap.get(incomingUser.id);
             
             if (existingUser) {
-                // PROTECTION: Don't overwrite 'active' status with 'pending' (prevents stale client data from locking out active users)
+                // PROTECTION: Don't overwrite 'active' status with 'pending'
                 if (existingUser.status === 'active' && incomingUser.status === 'pending') {
                     return; 
                 }
                 
-                // Update the user record
+                // Keep password if client sends none (client shouldn't send passwords usually, but safe guard)
+                if (existingUser.password && !incomingUser.password) {
+                    incomingUser.password = existingUser.password;
+                }
+
                 dbUsersMap.set(incomingUser.id, incomingUser);
             } else {
-                // New user found in payload (e.g. invited by admin on this device)
+                // New user found in payload
                 dbUsersMap.set(incomingUser.id, incomingUser);
             }
         });
         
         // 3. Convert map back to array.
-        // CRITICAL: This includes users that were in DB but NOT in payload, preventing accidental wipes.
+        // This preserves users that were in DB but might be missing from this client's view
         org.users = Array.from(dbUsersMap.values());
     }
 
-    // Direct merge for operational data (Last Write Wins usually okay here, but could be improved similarly)
+    // Direct merge for operational data (Last Write Wins usually okay here)
     if (data.shifts) org.shifts = data.shifts;
     if (data.properties) org.properties = data.properties;
     if (data.clients) org.clients = data.clients;
