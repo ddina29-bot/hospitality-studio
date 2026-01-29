@@ -209,7 +209,7 @@ app.get('/api/system/status', (req, res) => {
     storagePath: DATA_DIR,
     persistenceActive: isPersistent,
     uploadsPath: UPLOADS_DIR,
-    version: '3.2.4'
+    version: '3.2.5'
   });
 });
 
@@ -400,6 +400,32 @@ app.post('/api/auth/delete-organization', async (req, res) => {
   }
 });
 
+// 5.5 RESET OPERATIONAL DATA (Clear Testing Data)
+app.post('/api/admin/reset-data', async (req, res) => {
+  const { orgId } = req.body;
+  try {
+    const org = getOrgById(orgId);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+
+    // Clear operational arrays but keep Users, Properties, Clients and Settings
+    org.shifts = [];
+    org.manualTasks = [];
+    org.supplyRequests = [];
+    org.invoices = [];
+    org.leaveRequests = [];
+    org.timeEntries = [];
+    
+    // Note: We are keeping 'properties' and 'clients' and 'inventoryItems' based on user request to just clear "testing data like payslips, worksheets".
+    // Payslips come from 'shifts'.
+    
+    saveOrgToDb(org);
+    res.json({ success: true, organization: org });
+  } catch (error) {
+    console.error("Reset Error:", error);
+    res.status(500).json({ error: "Failed to reset data." });
+  }
+});
+
 // 6. SYNC DATA (The main engine with Smart Merge)
 app.post('/api/sync', async (req, res) => {
   const { orgId, data } = req.body;
@@ -425,7 +451,7 @@ app.post('/api/sync', async (req, res) => {
                     return; 
                 }
                 
-                // Keep password if client sends none (client shouldn't send passwords usually, but safe guard)
+                // Keep password if client sends none
                 if (existingUser.password && !incomingUser.password) {
                     incomingUser.password = existingUser.password;
                 }
@@ -438,12 +464,12 @@ app.post('/api/sync', async (req, res) => {
         });
         
         // 3. Convert map back to array.
-        // This preserves users that were in DB but might be missing from this client's view
         org.users = Array.from(dbUsersMap.values());
     }
 
-    // Direct merge for operational data (Last Write Wins usually okay here)
-    if (data.shifts && data.shifts.length > 0) org.shifts = data.shifts; // Only update if data present
+    // Direct merge for operational data (Last Write Wins)
+    // FIX: Removed checks for length > 0 to allow syncing empty arrays (deletions)
+    if (data.shifts) org.shifts = data.shifts; 
     if (data.properties) org.properties = data.properties;
     if (data.clients) org.clients = data.clients;
     if (data.inventoryItems) org.inventoryItems = data.inventoryItems;

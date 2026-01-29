@@ -14,7 +14,8 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
   const [formData, setFormData] = useState<OrganizationSettings>(organization);
   const [isSaving, setIsSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [systemStatus, setSystemStatus] = useState<{ persistenceActive: boolean, version: string } | null>(null);
 
   useEffect(() => {
@@ -49,7 +50,7 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
       return;
     }
 
-    setIsDeleting(true);
+    setIsProcessing(true);
     try {
       console.log("Sending delete request for:", currentOrgId);
 
@@ -74,7 +75,39 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
     } catch (error: any) {
       console.error("Deletion failed:", error);
       alert(`Error: ${error.message}`);
-      setIsDeleting(false);
+      setIsProcessing(false);
+    }
+  };
+
+  const handleResetData = async () => {
+    if (!currentOrgId) return;
+    setIsProcessing(true);
+    try {
+        const res = await fetch('/api/admin/reset-data', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orgId: currentOrgId })
+        });
+        
+        if (!res.ok) throw new Error('Reset failed');
+        
+        // Clear local storage partially to force reload of fresh data
+        const savedOrg = JSON.parse(localStorage.getItem('studio_org_settings') || '{}');
+        // Manually clear local arrays
+        savedOrg.shifts = [];
+        savedOrg.manualTasks = [];
+        savedOrg.supplyRequests = [];
+        savedOrg.invoices = [];
+        savedOrg.timeEntries = [];
+        localStorage.setItem('studio_org_settings', JSON.stringify(savedOrg));
+        
+        alert("Operational Data Cleared. The system will now reload.");
+        window.location.reload();
+        
+    } catch (e) {
+        console.error(e);
+        alert("Failed to reset data.");
+        setIsProcessing(false);
     }
   };
 
@@ -219,6 +252,12 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
               <div className="space-y-3 w-full md:w-auto text-right">
                  <div className="flex flex-col gap-3">
                     <button 
+                      onClick={() => setShowResetConfirm(true)}
+                      className="w-full bg-[#D4B476] text-black border border-[#D4B476]/30 px-8 py-4 rounded-2xl font-black uppercase text-[9px] tracking-widest transition-all hover:bg-[#C5A059] shadow-lg"
+                    >
+                      CLEAR OPERATIONAL DATA
+                    </button>
+                    <button 
                       onClick={() => setShowDeleteConfirm(true)}
                       className="w-full bg-black text-[#F6E6C2] border border-black/10 px-8 py-4 rounded-2xl font-black uppercase text-[9px] tracking-widest transition-all hover:bg-zinc-800 shadow-xl"
                     >
@@ -248,17 +287,52 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
               <div className="flex flex-col gap-3">
                  <button 
                    onClick={handleDeleteOrganization}
-                   disabled={isDeleting}
+                   disabled={isProcessing}
                    className="w-full bg-red-600 text-white font-black py-4 rounded-xl uppercase text-[10px] tracking-[0.2em] shadow-xl hover:bg-red-700 active:scale-95 transition-all disabled:opacity-50"
                  >
-                   {isDeleting ? 'DELETING...' : 'YES, DELETE EVERYTHING'}
+                   {isProcessing ? 'DELETING...' : 'YES, DELETE EVERYTHING'}
                  </button>
                  <button 
                    onClick={() => setShowDeleteConfirm(false)}
-                   disabled={isDeleting}
+                   disabled={isProcessing}
                    className="w-full bg-gray-100 text-black/60 font-black py-4 rounded-xl uppercase text-[10px] tracking-[0.2em] hover:bg-gray-200 transition-all"
                  >
                    ABORT ACTION
+                 </button>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* Reset Confirmation Modal */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 bg-black/80 z-[500] flex items-center justify-center p-4 backdrop-blur-md animate-in fade-in">
+           <div className="bg-[#FDF8EE] border-2 border-[#D4B476] rounded-[40px] w-full max-w-md p-10 space-y-8 shadow-2xl relative text-center">
+              <div className="w-16 h-16 bg-[#D4B476]/20 rounded-full flex items-center justify-center mx-auto text-[#D4B476] animate-pulse">
+                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+              </div>
+              <div className="space-y-2">
+                 <h2 className="text-2xl font-serif-brand font-bold uppercase text-black tracking-tight">Factory Reset Data</h2>
+                 <p className="text-[10px] font-black text-black/40 uppercase tracking-widest leading-relaxed">
+                    This will clear all <strong>Schedules, Shifts, Tasks, Reports, and Invoices</strong>.<br/>
+                    <br/>
+                    <span className="text-black font-bold">Safe Action:</span> Users, Clients, and Properties will remain intact. Use this to clear testing data before going live.
+                 </p>
+              </div>
+              <div className="flex flex-col gap-3">
+                 <button 
+                   onClick={handleResetData}
+                   disabled={isProcessing}
+                   className="w-full bg-[#D4B476] text-black font-black py-4 rounded-xl uppercase text-[10px] tracking-[0.2em] shadow-xl hover:bg-[#C5A059] active:scale-95 transition-all disabled:opacity-50"
+                 >
+                   {isProcessing ? 'RESETTING...' : 'CONFIRM RESET'}
+                 </button>
+                 <button 
+                   onClick={() => setShowResetConfirm(false)}
+                   disabled={isProcessing}
+                   className="w-full bg-white border border-gray-200 text-black/40 font-black py-4 rounded-xl uppercase text-[10px] tracking-[0.2em] hover:text-black transition-all"
+                 >
+                   CANCEL
                  </button>
               </div>
            </div>

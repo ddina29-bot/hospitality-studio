@@ -28,6 +28,23 @@ import ClientDashboard from './components/dashboards/ClientDashboard';
 import HousekeeperDashboard from './components/dashboards/HousekeeperDashboard';
 import LaundryDashboard from './components/dashboards/LaundryDashboard';
 
+// Helper for Smart Merging Arrays by ID
+// Preserves local items if they are missing from server (e.g. just created)
+const mergeLists = <T extends { id: string }>(localList: T[], serverList: T[] | undefined): T[] => {
+  if (!serverList) return localList;
+  const serverMap = new Map(serverList.map(i => [i.id, i]));
+  const merged = [...serverList];
+  
+  // Find items in local that are NOT in server (potential unsynced new items)
+  localList.forEach(localItem => {
+    if (!serverMap.has(localItem.id)) {
+      merged.push(localItem);
+    }
+  });
+  
+  return merged;
+};
+
 const App: React.FC = () => {
   // --- AUTH STATE ---
   const [user, setUser] = useState<User | null>(null);
@@ -77,19 +94,31 @@ const App: React.FC = () => {
         setOrganization(o.settings || o);
         
         // IMMEDIATE LOCAL HYDRATION to prevent empty UI on refresh
-        if (o.users) setUsers(o.users);
-        if (o.shifts) setShifts(o.shifts);
-        if (o.properties) setProperties(o.properties);
-        if (o.clients) setClients(o.clients);
-        if (o.inventoryItems) setInventoryItems(o.inventoryItems);
-        if (o.manualTasks) setManualTasks(o.manualTasks);
-        if (o.supplyRequests) setSupplyRequests(o.supplyRequests);
-        if (o.invoices) setInvoices(o.invoices);
-        if (o.timeEntries) setTimeEntries(o.timeEntries);
+        // These are the "Local Truths" until server confirms or updates
+        const localUsers = o.users || [];
+        const localShifts = o.shifts || [];
+        const localProperties = o.properties || [];
+        const localClients = o.clients || [];
+        const localInventory = o.inventoryItems || [];
+        const localTasks = o.manualTasks || [];
+        const localSupplies = o.supplyRequests || [];
+        const localInvoices = o.invoices || [];
+        const localTime = o.timeEntries || [];
+
+        if (o.users) setUsers(localUsers);
+        if (o.shifts) setShifts(localShifts);
+        if (o.properties) setProperties(localProperties);
+        if (o.clients) setClients(localClients);
+        if (o.inventoryItems) setInventoryItems(localInventory);
+        if (o.manualTasks) setManualTasks(localTasks);
+        if (o.supplyRequests) setSupplyRequests(localSupplies);
+        if (o.invoices) setInvoices(localInvoices);
+        if (o.timeEntries) setTimeEntries(localTime);
 
         setIsLoaded(true);
 
         // BACKGROUND FETCH: Get latest data from server to catch updates from other users
+        // CRITICAL FIX: Merge server data with local data to prevent overwriting unsynced new items
         if (o.id) {
             fetch(`/api/organization/${o.id}`)
               .then(res => res.json())
@@ -98,20 +127,34 @@ const App: React.FC = () => {
                     console.error("Server fetch error:", serverOrg.error);
                     return;
                  }
-                 // Merge/Update state with server data
-                 if (serverOrg.users) setUsers(serverOrg.users);
-                 if (serverOrg.shifts) setShifts(serverOrg.shifts);
-                 if (serverOrg.properties) setProperties(serverOrg.properties);
-                 if (serverOrg.clients) setClients(serverOrg.clients);
-                 if (serverOrg.inventoryItems) setInventoryItems(serverOrg.inventoryItems);
-                 if (serverOrg.manualTasks) setManualTasks(serverOrg.manualTasks);
-                 if (serverOrg.supplyRequests) setSupplyRequests(serverOrg.supplyRequests);
-                 if (serverOrg.invoices) setInvoices(serverOrg.invoices);
-                 if (serverOrg.timeEntries) setTimeEntries(serverOrg.timeEntries);
+                 
+                 // Smart Merges for ALL Critical Data
+                 if (serverOrg.users) setUsers(prev => mergeLists(prev, serverOrg.users));
+                 if (serverOrg.shifts) setShifts(prev => mergeLists(prev, serverOrg.shifts));
+                 if (serverOrg.properties) setProperties(prev => mergeLists(prev, serverOrg.properties));
+                 if (serverOrg.clients) setClients(prev => mergeLists(prev, serverOrg.clients));
+                 if (serverOrg.inventoryItems) setInventoryItems(prev => mergeLists(prev, serverOrg.inventoryItems));
+                 if (serverOrg.manualTasks) setManualTasks(prev => mergeLists(prev, serverOrg.manualTasks));
+                 if (serverOrg.supplyRequests) setSupplyRequests(prev => mergeLists(prev, serverOrg.supplyRequests));
+                 if (serverOrg.invoices) setInvoices(prev => mergeLists(prev, serverOrg.invoices));
+                 if (serverOrg.timeEntries) setTimeEntries(prev => mergeLists(prev, serverOrg.timeEntries));
+                 
                  if (serverOrg.settings) setOrganization(serverOrg.settings);
                  
-                 // Update local storage with fresh data immediately
-                 localStorage.setItem('studio_org_settings', JSON.stringify(serverOrg));
+                 // Update local storage with fresh merged data immediately
+                 // This ensures the next refresh starts with the consolidated state
+                 const mergedState = {
+                    ...serverOrg,
+                    users: mergeLists(localUsers, serverOrg.users),
+                    properties: mergeLists(localProperties, serverOrg.properties),
+                    clients: mergeLists(localClients, serverOrg.clients),
+                    shifts: mergeLists(localShifts, serverOrg.shifts),
+                    manualTasks: mergeLists(localTasks, serverOrg.manualTasks),
+                    supplyRequests: mergeLists(localSupplies, serverOrg.supplyRequests),
+                    invoices: mergeLists(localInvoices, serverOrg.invoices),
+                    timeEntries: mergeLists(localTime, serverOrg.timeEntries)
+                 };
+                 localStorage.setItem('studio_org_settings', JSON.stringify(mergedState));
               })
               .catch(err => console.error("Background sync failed:", err));
         }
@@ -172,7 +215,7 @@ const App: React.FC = () => {
     // 3a. Save to Local Storage Immediately (Persistence on Refresh)
     localStorage.setItem('studio_org_settings', JSON.stringify(payload));
 
-    // 3b. Sync to Server (Debounced)
+    // 3b. Sync to Server (Debounced) - REDUCED to 500ms
     const timeout = setTimeout(async () => {
       setIsSyncing(true);
       try {
@@ -189,10 +232,22 @@ const App: React.FC = () => {
       } finally {
         setIsSyncing(false);
       }
-    }, 2000); // 2 seconds debounce
+    }, 500); // Faster debounce to catch quick refreshes
 
     return () => clearTimeout(timeout);
   }, [users, shifts, properties, clients, supplyRequests, inventoryItems, manualTasks, organization, invoices, timeEntries, user, orgId, isLoaded]);
+
+  // Protect against closing while syncing
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isSyncing) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isSyncing]);
 
   const handleLogout = () => {
     setUser(null);
@@ -202,6 +257,7 @@ const App: React.FC = () => {
     setUsers([]);
     setShifts([]);
     setProperties([]);
+    setClients([]); // Clear clients too
     setTimeEntries([]);
     setIsLoaded(false);
     localStorage.removeItem('current_user_obj');
