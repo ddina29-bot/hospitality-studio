@@ -81,12 +81,14 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role
       icon: Icons.Sparkles, 
       roles: ['admin', 'housekeeping'] 
     },
+    /* Maintenance Disabled as requested
     { 
       id: 'maintenance', 
       label: 'MAINTENANCE', 
       icon: Icons.Maintenance, 
       roles: ['admin', 'outsourced_maintenance'] 
     },
+    */
     { 
       id: 'reports', 
       label: 'REPORTS', 

@@ -18,10 +18,8 @@ const HumanCapitalStudio: React.FC<HumanCapitalStudioProps> = ({
   const [activeTab, setActiveTab] = useState<'registry' | 'intelligence'>('intelligence');
   const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
   const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '', category: 'Company' as any });
-  const [announcements, setAnnouncements] = useState<Announcement[]>([
-    { id: '1', title: 'Winter Uniform Distribution', content: 'Please visit the office this Friday to collect your winter fleece and jackets.', date: '24 OCT', author: 'HR Sarah', category: 'Company', timestamp: Date.now() },
-    { id: '2', title: 'New Safety Protocol: Chemicals', content: 'Mandatory gloves required for all Degreaser Spray usage starting immediately.', date: '22 OCT', author: 'Operations', category: 'Safety', timestamp: Date.now() - 1000 * 60 * 60 * 1 }
-  ]);
+  // Start with empty announcements for production
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
 
   const pendingLeaves = useMemo(() => leaveRequests.filter(l => l.status === 'pending'), [leaveRequests]);
   
@@ -70,7 +68,7 @@ const HumanCapitalStudio: React.FC<HumanCapitalStudioProps> = ({
                activeTab === 'registry' ? 'bg-[#C5A059] text-black shadow-lg' : 'text-black/30 hover:text-black/60'
              }`}
            >
-             Registry & Onboarding
+             Manage Staff / Add User
            </button>
         </div>
       </header>
@@ -141,22 +139,28 @@ const HumanCapitalStudio: React.FC<HumanCapitalStudioProps> = ({
             </div>
 
             <div className="space-y-4">
-               {announcements.map(ann => (
-                 <div key={ann.id} className="bg-white border border-gray-100 p-8 rounded-[40px] shadow-lg hover:shadow-2xl transition-all group relative overflow-hidden text-left">
-                    <div className={`absolute top-0 right-0 px-6 py-2 rounded-bl-[20px] text-[8px] font-black uppercase tracking-widest ${
-                      ann.category === 'Safety' ? 'bg-red-600 text-white' : 'bg-[#C5A059] text-black'
-                    }`}>
-                      {ann.category}
-                    </div>
-                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-                       <div className="space-y-3 flex-1">
-                          <p className="text-[9px] font-black text-[#C5A059] uppercase tracking-widest">{ann.date} • {ann.author.toUpperCase()}</p>
-                          <h4 className="text-xl font-serif-brand font-bold text-black uppercase tracking-tight leading-tight">{ann.title}</h4>
-                          <p className="text-[11px] text-black/60 leading-relaxed font-medium">{ann.content}</p>
-                       </div>
-                    </div>
+               {announcements.length === 0 ? (
+                 <div className="py-20 text-center border-2 border-dashed border-gray-100 rounded-[40px] opacity-40">
+                   <p className="text-[10px] font-black uppercase text-black tracking-widest">No active announcements.</p>
                  </div>
-               ))}
+               ) : (
+                 announcements.map(ann => (
+                   <div key={ann.id} className="bg-white border border-gray-100 p-8 rounded-[40px] shadow-lg hover:shadow-2xl transition-all group relative overflow-hidden text-left">
+                      <div className={`absolute top-0 right-0 px-6 py-2 rounded-bl-[20px] text-[8px] font-black uppercase tracking-widest ${
+                        ann.category === 'Safety' ? 'bg-red-600 text-white' : 'bg-[#C5A059] text-black'
+                      }`}>
+                        {ann.category}
+                      </div>
+                      <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                         <div className="space-y-3 flex-1">
+                            <p className="text-[9px] font-black text-[#C5A059] uppercase tracking-widest">{ann.date} • {ann.author.toUpperCase()}</p>
+                            <h4 className="text-xl font-serif-brand font-bold text-black uppercase tracking-tight leading-tight">{ann.title}</h4>
+                            <p className="text-[11px] text-black/60 leading-relaxed font-medium">{ann.content}</p>
+                         </div>
+                      </div>
+                   </div>
+                 ))
+               )}
             </div>
           </div>
         </div>
