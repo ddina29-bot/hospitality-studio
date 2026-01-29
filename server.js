@@ -7,14 +7,10 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
 import fs from 'fs';
-import { v2 as cloudinary } from 'cloudinary';
-import { CloudinaryStorage } from 'multer-storage-cloudinary';
-import mongoose from 'mongoose';
 
 // Load environment variables
 dotenv.config();
 
-// Configure paths for ES Modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -23,200 +19,207 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
-
-// Serve static files from the React build directory (dist)
 app.use(express.static(path.join(__dirname, 'dist')));
 
-// --- PERSISTENCE CONFIGURATION (RAILWAY VOLUME) ---
-// If RAILWAY_VOLUME_MOUNT_PATH is set (e.g., /app/data), we use that.
-// Otherwise, we fallback to the current directory (local development).
+// --- PERSISTENCE (RAILWAY VOLUME) ---
+// This is where the magic happens. Data is saved to the persistent volume.
 const STORAGE_ROOT = process.env.RAILWAY_VOLUME_MOUNT_PATH || __dirname;
 const DB_FILE = path.join(STORAGE_ROOT, 'database.json');
+const UPLOADS_DIR = path.join(STORAGE_ROOT, 'uploads');
 
-console.log(`💾 Data Storage Path: ${STORAGE_ROOT}`);
-console.log(`📄 Database File: ${DB_FILE}`);
-
-// --- MONGODB CONNECTION (Optional Backup) ---
-const MONGO_URL = process.env.MONGO_URL || process.env.MONGODB_URI;
-let isMongoConnected = false;
-
-if (MONGO_URL) {
-  mongoose.connect(MONGO_URL)
-    .then(() => {
-      console.log('✅ Connected to MongoDB');
-      isMongoConnected = true;
-    })
-    .catch(err => console.error('❌ MongoDB Connection Error:', err));
+// Ensure storage exists
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+if (!fs.existsSync(DB_FILE)) {
+  fs.writeFileSync(DB_FILE, JSON.stringify({ organizations: [] }, null, 2));
 }
 
-// Define a unified schema for the entire application state
-const StudioSchema = new mongoose.Schema({
-  identifier: { type: String, default: 'main_studio' }, // Singleton identifier
-  users: { type: Array, default: [] },
-  shifts: { type: Array, default: [] },
-  properties: { type: Array, default: [] },
-  clients: { type: Array, default: [] },
-  supplyRequests: { type: Array, default: [] },
-  inventoryItems: { type: Array, default: [] },
-  manualTasks: { type: Array, default: [] },
-  leaveRequests: { type: Array, default: [] },
-  invoices: { type: Array, default: [] },
-  tutorials: { type: Array, default: [] },
-  organization: { type: Object, default: {} },
-  lastUpdated: { type: Date, default: Date.now }
+// Helper to read/write DB
+const getDb = () => JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+const saveDb = (data) => fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+
+// --- AUTH & ORGANIZATION ENDPOINTS ---
+
+// 1. SIGN UP (Create New Organization)
+app.post('/api/auth/signup', (req, res) => {
+  const { adminUser, organization } = req.body;
+  const db = getDb();
+
+  // Check if email already exists globally
+  const emailExists = db.organizations.some(org => 
+    org.users.some(u => u.email.toLowerCase() === adminUser.email.toLowerCase())
+  );
+
+  if (emailExists) {
+    return res.status(400).json({ error: 'Email already registered.' });
+  }
+
+  const newOrgId = `org-${Date.now()}`;
+  
+  const newOrganization = {
+    id: newOrgId,
+    settings: { ...organization },
+    users: [{ ...adminUser, id: `admin-${Date.now()}`, role: 'admin', status: 'active' }],
+    shifts: [],
+    properties: [],
+    clients: [],
+    supplyRequests: [],
+    inventoryItems: [],
+    manualTasks: [],
+    leaveRequests: [],
+    invoices: [],
+    tutorials: []
+  };
+
+  db.organizations.push(newOrganization);
+  saveDb(db);
+
+  res.json({ success: true, user: newOrganization.users[0], organization: newOrganization });
 });
 
-const StudioModel = mongoose.model('StudioData', StudioSchema);
+// 2. LOGIN (Find User & Org)
+app.post('/api/auth/login', (req, res) => {
+  const { email, password } = req.body; 
+  const db = getDb();
 
-// --- STORAGE CONFIGURATION ---
+  let foundUser = null;
+  let foundOrg = null;
 
-let upload;
-const useCloudStorage = process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET;
-
-if (useCloudStorage) {
-  console.log("☁️  Using Cloudinary Storage for Uploads");
-  cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET
-  });
-  const cloudStorage = new CloudinaryStorage({
-    cloudinary: cloudinary,
-    params: {
-      folder: 'reset-studio-uploads',
-      allowed_formats: ['jpg', 'png', 'jpeg', 'webp'],
-    },
-  });
-  upload = multer({ storage: cloudStorage, limits: { fileSize: 10 * 1024 * 1024 } });
-} else {
-  // If not using Cloudinary, save uploads to the Persistent Volume
-  console.log("💾 Using Disk Storage for Uploads");
-  
-  const uploadsDir = path.join(STORAGE_ROOT, 'uploads');
-  
-  if (!fs.existsSync(uploadsDir)){
-      fs.mkdirSync(uploadsDir, { recursive: true });
-  }
-  
-  // Important: We need to serve this folder publicly
-  app.use('/uploads', express.static(uploadsDir));
-  
-  const diskStorage = multer.diskStorage({
-    destination: function (req, file, cb) {
-      if (!fs.existsSync(uploadsDir)){
-          fs.mkdirSync(uploadsDir, { recursive: true });
+  for (const org of db.organizations) {
+    const user = org.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    if (user) {
+      if (user.password === password || user.status === 'pending') { 
+        foundUser = user;
+        foundOrg = org;
+        break;
       }
-      cb(null, uploadsDir)
-    },
-    filename: function (req, file, cb) {
-      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
-      const ext = path.extname(file.originalname);
-      cb(null, file.fieldname + '-' + uniqueSuffix + ext)
+    }
+  }
+
+  if (!foundUser) return res.status(401).json({ error: 'Invalid credentials.' });
+  if (foundUser.status === 'inactive') return res.status(403).json({ error: 'Account suspended.' });
+
+  res.json({ success: true, user: foundUser, organization: foundOrg });
+});
+
+// 3. INVITE MEMBER
+app.post('/api/auth/invite', (req, res) => {
+  const { orgId, newUser } = req.body;
+  const db = getDb();
+  
+  const orgIndex = db.organizations.findIndex(o => o.id === orgId);
+  if (orgIndex === -1) return res.status(404).json({ error: 'Organization not found' });
+
+  const userExists = db.organizations[orgIndex].users.find(u => u.email === newUser.email);
+  if (userExists) return res.status(400).json({ error: 'User already exists in this studio.' });
+
+  const createdUser = {
+    ...newUser,
+    id: `u-${Date.now()}`,
+    status: 'pending',
+    activationToken: Math.random().toString(36).substring(7) 
+  };
+
+  db.organizations[orgIndex].users.push(createdUser);
+  saveDb(db);
+
+  res.json({ success: true, user: createdUser, inviteLink: createdUser.activationToken });
+});
+
+// 4. VERIFY/ACTIVATE ACCOUNT
+app.post('/api/auth/activate', (req, res) => {
+  const { email, password, details } = req.body;
+  const db = getDb();
+
+  let foundOrgIndex = -1;
+  let foundUserIndex = -1;
+
+  db.organizations.forEach((org, oIdx) => {
+    const uIdx = org.users.findIndex(u => u.email.toLowerCase() === email.toLowerCase());
+    if (uIdx > -1) {
+      foundOrgIndex = oIdx;
+      foundUserIndex = uIdx;
     }
   });
-  upload = multer({ storage: diskStorage, limits: { fileSize: 20 * 1024 * 1024 } });
-}
 
-// --- AI CONFIGURATION ---
-let ai;
-if (process.env.API_KEY) {
-  try {
-    ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  } catch (error) {
-    console.error("Failed to initialize GoogleGenAI:", error);
+  if (foundOrgIndex === -1) return res.status(404).json({ error: 'User not found.' });
+
+  const user = db.organizations[foundOrgIndex].users[foundUserIndex];
+  if (user.status !== 'pending') return res.status(400).json({ error: 'Account already active.' });
+
+  const updatedUser = {
+    ...user,
+    ...details,
+    password: password, 
+    status: 'active',
+    activationDate: new Date().toISOString()
+  };
+
+  db.organizations[foundOrgIndex].users[foundUserIndex] = updatedUser;
+  saveDb(db);
+
+  res.json({ success: true, user: updatedUser, organization: db.organizations[foundOrgIndex] });
+});
+
+// --- DATA SYNC ---
+app.post('/api/sync', (req, res) => {
+  const { orgId, data } = req.body;
+  const db = getDb();
+  const orgIndex = db.organizations.findIndex(o => o.id === orgId);
+
+  if (orgIndex === -1) return res.status(404).json({ error: 'Organization not found' });
+
+  // Merge data
+  const org = db.organizations[orgIndex];
+  if(data.users) org.users = data.users;
+  if(data.shifts) org.shifts = data.shifts;
+  if(data.properties) org.properties = data.properties;
+  if(data.clients) org.clients = data.clients;
+  if(data.inventoryItems) org.inventoryItems = data.inventoryItems;
+  if(data.manualTasks) org.manualTasks = data.manualTasks;
+  if(data.supplyRequests) org.supplyRequests = data.supplyRequests;
+  
+  db.organizations[orgIndex] = org;
+  saveDb(db);
+  
+  res.json({ success: true });
+});
+
+// --- FILE UPLOAD ---
+app.use('/uploads', express.static(UPLOADS_DIR));
+
+const diskStorage = multer.diskStorage({
+  destination: function (req, file, cb) { cb(null, UPLOADS_DIR) },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
+    const ext = path.extname(file.originalname);
+    cb(null, file.fieldname + '-' + uniqueSuffix + ext)
   }
-} else {
-  console.warn("⚠️ API_KEY is missing. AI features will be disabled.");
-}
-
-// --- API ENDPOINTS ---
+});
+const upload = multer({ storage: diskStorage, limits: { fileSize: 20 * 1024 * 1024 } });
 
 app.post('/api/upload', (req, res) => {
   upload.single('file')(req, res, (err) => {
-    if (err) return res.status(500).json({ error: err.message || 'File upload failed' });
-    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    
-    // If using disk storage, construct the URL relative to the server
-    const fileUrl = useCloudStorage 
-      ? req.file.path 
-      : `/uploads/${req.file.filename}`;
-      
-    res.json({ url: fileUrl });
+    if (err) return res.status(500).json({ error: err.message });
+    if (!req.file) return res.status(400).json({ error: 'No file' });
+    res.json({ url: `/uploads/${req.file.filename}` });
   });
 });
 
+// --- AI ---
+let ai;
+if (process.env.API_KEY) {
+  ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+}
 app.post('/api/chat', async (req, res) => {
-  if (!ai) {
-    console.error('AI Request failed: API_KEY not set');
-    return res.status(503).json({ text: "System Notice: AI capabilities are currently offline. Please contact the administrator to configure the API Key." });
-  }
+  if (!ai) return res.status(503).json({ text: "AI Offline" });
   try {
-    const { query } = req.body;
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: query,
-      config: {
-        systemInstruction: `You are RESET HOSPITALITY STUDIO AI, a sophisticated operations assistant.`,
-      },
+      contents: req.body.query,
     });
     res.json({ text: response.text });
   } catch (error) {
-    console.error('Backend AI Error:', error);
-    res.status(500).json({ error: 'Failed to process request' });
-  }
-});
-
-// --- DATA SYNC ENDPOINTS ---
-
-app.post('/api/sync', async (req, res) => {
-  const data = req.body;
-  
-  if (isMongoConnected) {
-    try {
-      // Upsert: Update if exists, Insert if not
-      await StudioModel.findOneAndUpdate(
-        { identifier: 'main_studio' }, 
-        { ...data, lastUpdated: new Date() }, 
-        { upsert: true, new: true }
-      );
-      res.json({ success: true, mode: 'mongo' });
-    } catch (err) {
-      console.error('Mongo Save Error:', err);
-      res.status(500).json({ error: 'Database Write Failed' });
-    }
-  } else {
-    // Fallback to file system (Persistent Volume if configured)
-    try {
-      fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
-      res.json({ success: true, mode: 'disk', path: DB_FILE });
-    } catch (error) {
-      console.error('DB Save Error:', error);
-      res.status(500).json({ error: 'Failed to save data' });
-    }
-  }
-});
-
-app.get('/api/sync', async (req, res) => {
-  if (isMongoConnected) {
-    try {
-      const doc = await StudioModel.findOne({ identifier: 'main_studio' });
-      res.json(doc || null);
-    } catch (err) {
-      console.error('Mongo Fetch Error:', err);
-      res.status(500).json({ error: 'Database Read Failed' });
-    }
-  } else {
-    try {
-      if (fs.existsSync(DB_FILE)) {
-        const data = fs.readFileSync(DB_FILE, 'utf8');
-        res.json(JSON.parse(data));
-      } else {
-        res.json(null);
-      }
-    } catch (error) {
-      console.error('DB Load Error:', error);
-      res.status(500).json({ error: 'Failed to load data' });
-    }
+    res.status(500).json({ error: 'AI Error' });
   }
 });
 
