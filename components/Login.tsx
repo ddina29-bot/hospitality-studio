@@ -301,14 +301,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
             <div className="pt-2 space-y-6">
               <button type="submit" disabled={isLoading} className={buttonStyle}>{isLoading ? 'VERIFYING...' : 'ENTER STUDIO'}</button>
               
-              <div className="text-center border-t border-black/5 pt-6 space-y-4">
-                <button 
-                  type="button" 
-                  onClick={onSignupClick}
-                  className="bg-black/5 hover:bg-black/10 text-black/60 font-black px-6 py-3 rounded-xl text-[9px] uppercase tracking-widest transition-all w-full"
-                >
-                  Register New Studio
-                </button>
+              <div className="text-center border-t border-black/5 pt-6">
                 <button 
                   type="button" 
                   onClick={handleFactoryReset}

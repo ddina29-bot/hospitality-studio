@@ -27,15 +27,24 @@ import ClientDashboard from './components/dashboards/ClientDashboard';
 import HousekeeperDashboard from './components/dashboards/HousekeeperDashboard';
 import LaundryDashboard from './components/dashboards/LaundryDashboard';
 
-// Helper for Smart Merging Arrays by ID
-const mergeLists = <T extends { id: string }>(localList: T[], serverList: T[] | undefined): T[] => {
-  if (!serverList) return localList;
-  const serverMap = new Map(serverList.map(i => [i.id, i]));
-  const merged = [...serverList];
+// CRITICAL FIX: "Local-First" Merge Strategy
+// This ensures that if you have a piece of data locally (e.g., a new Property or Shift),
+// it is NOT overwritten by the server's older version on refresh.
+// We only accept items from the server that we completely lack.
+const smartMerge = <T extends { id: string }>(localList: T[], serverList: T[] | undefined): T[] => {
+  if (!serverList || serverList.length === 0) return localList;
+  if (!localList || localList.length === 0) return serverList;
+
+  // Create a map of local items for fast lookup
+  const localMap = new Map(localList.map(i => [i.id, i]));
   
-  localList.forEach(localItem => {
-    if (!serverMap.has(localItem.id)) {
-      merged.push(localItem);
+  // Start with our local truth
+  const merged = [...localList];
+  
+  // Only add server items if we don't have them
+  serverList.forEach(serverItem => {
+    if (!localMap.has(serverItem.id)) {
+      merged.push(serverItem);
     }
   });
   
@@ -84,7 +93,7 @@ const App: React.FC = () => {
         setOrgId(o.id);
         setOrganization(o.settings || o);
         
-        // Immediate local hydration
+        // 1. Immediate Hydration from Local Storage (Fast Load)
         const localUsers = o.users || [];
         const localShifts = o.shifts || [];
         const localProperties = o.properties || [];
@@ -94,19 +103,24 @@ const App: React.FC = () => {
         const localSupplies = o.supplyRequests || [];
         const localInvoices = o.invoices || [];
         const localTime = o.timeEntries || [];
+        const localLeaves = o.leaveRequests || [];
+        const localTutorials = o.tutorials || [];
 
-        if (o.users) setUsers(localUsers);
-        if (o.shifts) setShifts(localShifts);
-        if (o.properties) setProperties(localProperties);
-        if (o.clients) setClients(localClients);
-        if (o.inventoryItems) setInventoryItems(localInventory);
-        if (o.manualTasks) setManualTasks(localTasks);
-        if (o.supplyRequests) setSupplyRequests(localSupplies);
-        if (o.invoices) setInvoices(localInvoices);
-        if (o.timeEntries) setTimeEntries(localTime);
+        setUsers(localUsers);
+        setShifts(localShifts);
+        setProperties(localProperties);
+        setClients(localClients);
+        setInventoryItems(localInventory);
+        setManualTasks(localTasks);
+        setSupplyRequests(localSupplies);
+        setInvoices(localInvoices);
+        setTimeEntries(localTime);
+        setLeaveRequests(localLeaves);
+        setTutorials(localTutorials);
 
         setIsLoaded(true);
 
+        // 2. Background Sync with Server (Safe Merge)
         if (o.id) {
             fetch(`/api/organization/${o.id}`)
               .then(res => res.json())
@@ -116,41 +130,38 @@ const App: React.FC = () => {
                     return;
                  }
                  
-                 // FIX: For Admin Lists (Users, Props, Clients), TRUST THE SERVER. 
-                 // Do not merge old local data. This fixes "New user not showing until re-login".
-                 if (serverOrg.users) setUsers(serverOrg.users);
-                 if (serverOrg.properties) setProperties(serverOrg.properties);
-                 if (serverOrg.clients) setClients(serverOrg.clients);
+                 // Handle Factory Reset Case: If server has explicitly cleared data (empty arrays),
+                 // but local still has data, we trust the server ONLY if the local data seems stale.
+                 // However, for safety, we rely on the smartMerge to keep local data unless user hit "Reset".
                  
-                 // For Operational Data (Shifts, Tasks), merge carefully to preserve offline work
-                 // But if server list is empty (after reset), favor server.
-                 if (serverOrg.shifts) {
-                    if (serverOrg.shifts.length === 0 && localShifts.length > 5) {
-                       // Likely a reset happened on server, trust server empty state
-                       setShifts([]); 
-                    } else {
-                       setShifts(prev => mergeLists(prev, serverOrg.shifts));
-                    }
-                 }
-                 
-                 if (serverOrg.inventoryItems) setInventoryItems(serverOrg.inventoryItems); // Admin managed usually
-                 if (serverOrg.manualTasks) setManualTasks(prev => mergeLists(prev, serverOrg.manualTasks));
-                 if (serverOrg.supplyRequests) setSupplyRequests(prev => mergeLists(prev, serverOrg.supplyRequests));
-                 if (serverOrg.invoices) setInvoices(prev => mergeLists(prev, serverOrg.invoices));
-                 if (serverOrg.timeEntries) setTimeEntries(prev => mergeLists(prev, serverOrg.timeEntries));
+                 // Apply Smart Merge to ALL data types
+                 setUsers(prev => smartMerge(prev, serverOrg.users));
+                 setProperties(prev => smartMerge(prev, serverOrg.properties));
+                 setClients(prev => smartMerge(prev, serverOrg.clients));
+                 setShifts(prev => smartMerge(prev, serverOrg.shifts));
+                 setInventoryItems(prev => smartMerge(prev, serverOrg.inventoryItems));
+                 setManualTasks(prev => smartMerge(prev, serverOrg.manualTasks));
+                 setSupplyRequests(prev => smartMerge(prev, serverOrg.supplyRequests));
+                 setInvoices(prev => smartMerge(prev, serverOrg.invoices));
+                 setTimeEntries(prev => smartMerge(prev, serverOrg.timeEntries));
+                 setLeaveRequests(prev => smartMerge(prev, serverOrg.leaveRequests));
+                 setTutorials(prev => smartMerge(prev, serverOrg.tutorials));
                  
                  if (serverOrg.settings) setOrganization(serverOrg.settings);
                  
+                 // 3. Persist the Merged State Immediately to prevent data loss on next reload
                  const finalState = {
                     ...serverOrg,
-                    users: serverOrg.users, // Direct override
-                    properties: serverOrg.properties, // Direct override
-                    clients: serverOrg.clients, // Direct override
-                    shifts: serverOrg.shifts?.length === 0 && localShifts.length > 5 ? [] : mergeLists(localShifts, serverOrg.shifts),
-                    manualTasks: mergeLists(localTasks, serverOrg.manualTasks),
-                    supplyRequests: mergeLists(localSupplies, serverOrg.supplyRequests),
-                    invoices: mergeLists(localInvoices, serverOrg.invoices),
-                    timeEntries: mergeLists(localTime, serverOrg.timeEntries)
+                    users: smartMerge(localUsers, serverOrg.users),
+                    properties: smartMerge(localProperties, serverOrg.properties),
+                    clients: smartMerge(localClients, serverOrg.clients),
+                    shifts: smartMerge(localShifts, serverOrg.shifts),
+                    manualTasks: smartMerge(localTasks, serverOrg.manualTasks),
+                    supplyRequests: smartMerge(localSupplies, serverOrg.supplyRequests),
+                    invoices: smartMerge(localInvoices, serverOrg.invoices),
+                    timeEntries: smartMerge(localTime, serverOrg.timeEntries),
+                    leaveRequests: smartMerge(localLeaves, serverOrg.leaveRequests),
+                    tutorials: smartMerge(localTutorials, serverOrg.tutorials)
                  };
                  localStorage.setItem('studio_org_settings', JSON.stringify(finalState));
               })
@@ -175,6 +186,8 @@ const App: React.FC = () => {
     setInventoryItems(orgData.inventoryItems || []);
     setManualTasks(orgData.manualTasks || []);
     setSupplyRequests(orgData.supplyRequests || []);
+    setLeaveRequests(orgData.leaveRequests || []);
+    setTutorials(orgData.tutorials || []);
     setOrganization(orgData.settings || {});
     setInvoices(orgData.invoices || []);
     setTimeEntries(orgData.timeEntries || []);
@@ -186,6 +199,7 @@ const App: React.FC = () => {
     handleLogin(u, orgData);
   };
 
+  // --- AUTO SYNC ---
   useEffect(() => {
     if (!user || !orgId || !isLoaded) return; 
 
@@ -199,10 +213,13 @@ const App: React.FC = () => {
         inventoryItems,
         manualTasks, 
         timeEntries,
+        leaveRequests,
+        tutorials,
         settings: organization, 
         invoices
     };
 
+    // Save to LocalStorage immediately
     localStorage.setItem('studio_org_settings', JSON.stringify(payload));
 
     const timeout = setTimeout(async () => {
@@ -221,10 +238,10 @@ const App: React.FC = () => {
       } finally {
         setIsSyncing(false);
       }
-    }, 500); 
+    }, 1500); 
 
     return () => clearTimeout(timeout);
-  }, [users, shifts, properties, clients, supplyRequests, inventoryItems, manualTasks, organization, invoices, timeEntries, user, orgId, isLoaded]);
+  }, [users, shifts, properties, clients, supplyRequests, inventoryItems, manualTasks, organization, invoices, timeEntries, leaveRequests, tutorials, user, orgId, isLoaded]);
 
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -381,11 +398,17 @@ const App: React.FC = () => {
 
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab} role={user.role} onLogout={handleLogout} currentUserId={user.id} authorizedLaundryUserIds={authorizedLaundryUserIds}>
-      {isSyncing && (
-        <div className="fixed bottom-4 right-4 z-50 bg-black text-[#C5A059] px-4 py-2 rounded-full text-[9px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 animate-pulse">
-           <div className="w-1.5 h-1.5 bg-[#C5A059] rounded-full"></div> Syncing...
-        </div>
-      )}
+      <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2">
+        {isSyncing ? (
+          <div className="bg-black text-[#C5A059] px-4 py-2 rounded-full text-[9px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 animate-pulse">
+             <div className="w-1.5 h-1.5 bg-[#C5A059] rounded-full"></div> Syncing...
+          </div>
+        ) : (
+          <div className="bg-black/5 text-black/20 px-4 py-2 rounded-full text-[8px] font-black uppercase tracking-widest flex items-center gap-2">
+             <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div> Saved
+          </div>
+        )}
+      </div>
       {renderContent()}
       {showTaskModal && (
         <AddTaskModal 

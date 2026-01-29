@@ -63,13 +63,23 @@ console.log(`✅ Connected to SQLite Database at ${DB_PATH}`);
 // --- HELPER FUNCTIONS ---
 
 const saveOrgToDb = (org) => {
-  const stmt = db.prepare('INSERT OR REPLACE INTO organizations (id, data) VALUES (?, ?)');
-  stmt.run(org.id, JSON.stringify(org));
+  try {
+    const stmt = db.prepare('INSERT OR REPLACE INTO organizations (id, data) VALUES (?, ?)');
+    stmt.run(org.id, JSON.stringify(org));
+  } catch (err) {
+    console.error(`[DB ERROR] Failed to save org ${org.id}:`, err);
+    throw err;
+  }
 };
 
 const getOrgById = (id) => {
-  const row = db.prepare('SELECT data FROM organizations WHERE id = ?').get(id);
-  return row ? JSON.parse(row.data) : null;
+  try {
+    const row = db.prepare('SELECT data FROM organizations WHERE id = ?').get(id);
+    return row ? JSON.parse(row.data) : null;
+  } catch (err) {
+    console.error(`[DB ERROR] Failed to get org ${id}:`, err);
+    return null;
+  }
 };
 
 const findOrgByUserEmail = (email) => {
@@ -415,10 +425,8 @@ app.post('/api/admin/reset-data', async (req, res) => {
     org.leaveRequests = [];
     org.timeEntries = [];
     
-    // Note: We are keeping 'properties' and 'clients' and 'inventoryItems' based on user request to just clear "testing data like payslips, worksheets".
-    // Payslips come from 'shifts'.
-    
     saveOrgToDb(org);
+    console.log(`[RESET] Cleared operational data for Org ${orgId}`);
     res.json({ success: true, organization: org });
   } catch (error) {
     console.error("Reset Error:", error);
@@ -436,50 +444,38 @@ app.post('/api/sync', async (req, res) => {
     if (!org) return res.status(404).json({ error: "Organization not found" });
 
     // --- SMART MERGE LOGIC FOR USERS ---
-    // Protect against overwriting 'active' users with 'pending' status from an outdated client
     if (data.users && Array.isArray(data.users)) {
-        // 1. Create a map of existing DB users for easy lookup
         const dbUsersMap = new Map((org.users || []).map(u => [u.id, u]));
-        
-        // 2. Iterate through incoming users to update or add
         data.users.forEach(incomingUser => {
             const existingUser = dbUsersMap.get(incomingUser.id);
-            
             if (existingUser) {
-                // PROTECTION: Don't overwrite 'active' status with 'pending'
-                if (existingUser.status === 'active' && incomingUser.status === 'pending') {
-                    return; 
-                }
-                
-                // Keep password if client sends none
-                if (existingUser.password && !incomingUser.password) {
-                    incomingUser.password = existingUser.password;
-                }
-
+                // Don't overwrite active with pending
+                if (existingUser.status === 'active' && incomingUser.status === 'pending') return; 
+                // Preserve passwords
+                if (existingUser.password && !incomingUser.password) incomingUser.password = existingUser.password;
                 dbUsersMap.set(incomingUser.id, incomingUser);
             } else {
-                // New user found in payload
                 dbUsersMap.set(incomingUser.id, incomingUser);
             }
         });
-        
-        // 3. Convert map back to array.
         org.users = Array.from(dbUsersMap.values());
     }
 
-    // Direct merge for operational data (Last Write Wins)
-    // FIX: Removed checks for length > 0 to allow syncing empty arrays (deletions)
+    // Direct merge for operational data (Last Write Wins from active Client)
     if (data.shifts) org.shifts = data.shifts; 
     if (data.properties) org.properties = data.properties;
     if (data.clients) org.clients = data.clients;
     if (data.inventoryItems) org.inventoryItems = data.inventoryItems;
     if (data.manualTasks) org.manualTasks = data.manualTasks;
     if (data.supplyRequests) org.supplyRequests = data.supplyRequests;
-    if (data.organization) org.settings = data.organization;
+    if (data.settings) org.settings = data.settings;
     if (data.invoices) org.invoices = data.invoices;
     if (data.timeEntries) org.timeEntries = data.timeEntries;
+    if (data.leaveRequests) org.leaveRequests = data.leaveRequests;
+    if (data.tutorials) org.tutorials = data.tutorials;
 
     saveOrgToDb(org);
+    console.log(`[SYNC] Updated Org ${orgId}. Props: ${org.properties?.length}, Clients: ${org.clients?.length}`);
     res.json({ success: true });
   } catch (error) {
     console.error("Sync Error:", error);
