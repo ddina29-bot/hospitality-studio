@@ -81,13 +81,6 @@ const HumanCapitalStudio: React.FC<HumanCapitalStudioProps> = ({
                Intelligence
              </button>
            </div>
-           
-           <button 
-             onClick={handleAddUserClick}
-             className="bg-black text-[#C5A059] px-6 py-2.5 rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-xl active:scale-95 transition-all hover:bg-zinc-900 border border-[#C5A059]/30"
-           >
-             ADD USER
-           </button>
         </div>
       </header>
 

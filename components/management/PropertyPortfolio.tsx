@@ -25,7 +25,7 @@ const PropertyPortfolio: React.FC<PropertyPortfolioProps> = ({
   const [requestInput, setRequestInput] = useState('');
   
   // Rate configuration state
-  const [rateServiceType, setRateServiceType] = useState('REFRESH'); 
+  const [rateServiceType, setRateServiceType] = useState('BEDS ONLY'); 
   const [ratePrice, setRatePrice] = useState(''); // Changed to string to handle decimal input correctly
 
   // Package Configuration State
@@ -195,6 +195,17 @@ const PropertyPortfolio: React.FC<PropertyPortfolioProps> = ({
         ...prev,
         clientServiceRates: {
             ...prev.clientServiceRates,
+            [type]: isNaN(price) ? 0 : price
+        }
+    }));
+  };
+
+  const handleUpdateServiceRate = (type: string, value: string) => {
+    const price = parseFloat(value);
+    setForm(prev => ({
+        ...prev,
+        serviceRates: {
+            ...prev.serviceRates,
             [type]: isNaN(price) ? 0 : price
         }
     }));
@@ -412,10 +423,10 @@ const PropertyPortfolio: React.FC<PropertyPortfolioProps> = ({
                         <div className="space-y-4 pt-4 border-t border-black/5">
                             <h5 className="text-[9px] font-black text-black/40 uppercase tracking-[0.2em]">COST CONFIGURATION (CLEANER)</h5>
                             
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                {/* Cleaner Price - Smaller (1 col) */}
-                                <div className="md:col-span-1">
-                                    <label className={labelStyle}>Price for Cleaner (Default)</label>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Fixed Explicit Rates */}
+                                <div>
+                                    <label className={labelStyle}>Standard Cleaning (Turnover)</label>
                                     <div className="relative">
                                         <span className="absolute left-3 top-3 text-[10px] text-black/20">€</span>
                                         <input 
@@ -428,43 +439,79 @@ const PropertyPortfolio: React.FC<PropertyPortfolioProps> = ({
                                     </div>
                                     <p className="text-[7px] text-black/30 mt-1 italic uppercase tracking-wider">Base rate</p>
                                 </div>
-
-                                {/* Specific Rates - Larger (2 cols) */}
-                                <div className="md:col-span-2 space-y-2 bg-white/40 p-4 rounded-2xl border border-[#D4B476]/10">
-                                    <label className={labelStyle}>Specific Service Rates</label>
-                                    <div className="flex gap-2">
-                                        <select className={`${inputStyle} w-1/2`} value={rateServiceType} onChange={e => setRateServiceType(e.target.value)}>
-                                            {['REFRESH', 'BEDS ONLY', 'TO CHECK APARTMENT'].map(t => (
-                                                <option key={t} value={t}>{t}</option>
-                                            ))}
-                                        </select>
-                                        <div className="relative w-1/4">
-                                            <span className="absolute left-2 top-2.5 text-[10px] text-black/20">€</span>
-                                            <input 
-                                                type="number" 
-                                                className={`${inputStyle} pl-6`} 
-                                                placeholder="0.00" 
-                                                value={ratePrice} 
-                                                onChange={e => setRatePrice(e.target.value)} 
-                                            />
-                                        </div>
-                                        <button type="button" onClick={handleAddServiceRate} className="w-10 bg-[#C5A059] text-black font-black rounded-lg flex items-center justify-center text-lg active:scale-95">+</button>
+                                <div>
+                                    <label className={labelStyle}>Refresh Rate</label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-3 text-[10px] text-black/20">€</span>
+                                        <input 
+                                            type="number" 
+                                            className={`${inputStyle} pl-8`} 
+                                            value={form.serviceRates?.['REFRESH'] || ''} 
+                                            onChange={e => handleUpdateServiceRate('REFRESH', e.target.value)} 
+                                        />
                                     </div>
-                                    
-                                    {Object.keys(form.serviceRates || {}).length > 0 && (
-                                        <div className="grid grid-cols-1 gap-2 pt-2">
-                                            {Object.entries(form.serviceRates || {}).map(([type, price]) => (
-                                                <div key={type} className="flex justify-between items-center bg-white px-3 py-2 rounded-lg border border-gray-100">
-                                                    <span className="text-[9px] font-bold uppercase">{type}</span>
-                                                    <div className="flex items-center gap-3">
-                                                        <span className="text-[9px] font-bold text-green-700">€{(price as number).toFixed(2)}</span>
-                                                        <button type="button" onClick={() => handleRemoveServiceRate(type)} className="text-red-400 hover:text-red-600 font-bold">×</button>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
                                 </div>
+                                <div>
+                                    <label className={labelStyle}>Mid Stay Rate</label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-3 text-[10px] text-black/20">€</span>
+                                        <input 
+                                            type="number" 
+                                            className={`${inputStyle} pl-8`} 
+                                            value={form.serviceRates?.['MID STAY CLEANING'] || ''} 
+                                            onChange={e => handleUpdateServiceRate('MID STAY CLEANING', e.target.value)} 
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className={labelStyle}>Audit (Check Apt)</label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-3 text-[10px] text-black/20">€</span>
+                                        <input 
+                                            type="number" 
+                                            className={`${inputStyle} pl-8`} 
+                                            value={form.serviceRates?.['TO CHECK APARTMENT'] || ''} 
+                                            onChange={e => handleUpdateServiceRate('TO CHECK APARTMENT', e.target.value)} 
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Generic Adder for other types */}
+                            <div className="md:col-span-2 space-y-2 bg-white/40 p-4 rounded-2xl border border-[#D4B476]/10 mt-2">
+                                <label className={labelStyle}>Other Service Rates (e.g. Beds Only)</label>
+                                <div className="flex gap-2">
+                                    <select className={`${inputStyle} w-1/2`} value={rateServiceType} onChange={e => setRateServiceType(e.target.value)}>
+                                        {['BEDS ONLY', 'LINEN DROP / COLLECTION'].map(t => (
+                                            <option key={t} value={t}>{t}</option>
+                                        ))}
+                                    </select>
+                                    <div className="relative w-1/4">
+                                        <span className="absolute left-2 top-2.5 text-[10px] text-black/20">€</span>
+                                        <input 
+                                            type="number" 
+                                            className={`${inputStyle} pl-6`} 
+                                            placeholder="0.00" 
+                                            value={ratePrice} 
+                                            onChange={e => setRatePrice(e.target.value)} 
+                                        />
+                                    </div>
+                                    <button type="button" onClick={handleAddServiceRate} className="w-10 bg-[#C5A059] text-black font-black rounded-lg flex items-center justify-center text-lg active:scale-95">+</button>
+                                </div>
+                                
+                                {Object.keys(form.serviceRates || {}).length > 0 && (
+                                    <div className="grid grid-cols-1 gap-2 pt-2">
+                                        {Object.entries(form.serviceRates || {}).filter(([type]) => !['REFRESH', 'MID STAY CLEANING', 'TO CHECK APARTMENT'].includes(type)).map(([type, price]) => (
+                                            <div key={type} className="flex justify-between items-center bg-white px-3 py-2 rounded-lg border border-gray-100">
+                                                <span className="text-[9px] font-bold uppercase">{type}</span>
+                                                <div className="flex items-center gap-3">
+                                                    <span className="text-[9px] font-bold text-green-700">€{(price as number).toFixed(2)}</span>
+                                                    <button type="button" onClick={() => handleRemoveServiceRate(type)} className="text-red-400 hover:text-red-600 font-bold">×</button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -532,8 +579,6 @@ const PropertyPortfolio: React.FC<PropertyPortfolioProps> = ({
                 </div>
               </div>
 
-              {/* ... (Rest of the form UI remains unchanged: Location, Photos, Inventory, Special Requests) ... */}
-              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
                 <div className="space-y-6">
                   <h4 className="text-[10px] font-black text-black/30 uppercase tracking-[0.5em] border-l-2 border-[#8B6B2E] pl-4">3. Location Intel</h4>

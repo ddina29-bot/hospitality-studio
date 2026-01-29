@@ -73,6 +73,7 @@ const App: React.FC = () => {
         
         setUser(u);
         setOrgId(o.id);
+        // Important: Handle both flat structure and nested 'settings' structure
         setOrganization(o.settings || o);
         
         // IMMEDIATE LOCAL HYDRATION to prevent empty UI on refresh
@@ -107,8 +108,9 @@ const App: React.FC = () => {
                  if (serverOrg.supplyRequests) setSupplyRequests(serverOrg.supplyRequests);
                  if (serverOrg.invoices) setInvoices(serverOrg.invoices);
                  if (serverOrg.timeEntries) setTimeEntries(serverOrg.timeEntries);
+                 if (serverOrg.settings) setOrganization(serverOrg.settings);
                  
-                 // Update local storage with fresh data
+                 // Update local storage with fresh data immediately
                  localStorage.setItem('studio_org_settings', JSON.stringify(serverOrg));
               })
               .catch(err => console.error("Background sync failed:", err));
@@ -116,7 +118,7 @@ const App: React.FC = () => {
         
       } catch (e) {
         console.error("Failed to restore session", e);
-        localStorage.clear();
+        // Don't clear on error, just let it fail gracefully or user can re-login
       }
     } else {
         setIsLoaded(true); // Loaded empty
@@ -149,26 +151,31 @@ const App: React.FC = () => {
     handleLogin(u, orgData);
   };
 
-  // --- 3. SYNC TO CLOUD (Auto-Save) ---
+  // --- 3. SYNC TO CLOUD (Auto-Save) & PERSIST LOCAL ---
   useEffect(() => {
     if (!user || !orgId || !isLoaded) return; // Wait for initial load to finish
 
+    const payload: any = {
+        id: orgId,
+        users, 
+        shifts, 
+        properties,
+        clients,
+        supplyRequests, 
+        inventoryItems,
+        manualTasks, 
+        timeEntries,
+        settings: organization, // Save as 'settings' to match server structure
+        invoices
+    };
+
+    // 3a. Save to Local Storage Immediately (Persistence on Refresh)
+    localStorage.setItem('studio_org_settings', JSON.stringify(payload));
+
+    // 3b. Sync to Server (Debounced)
     const timeout = setTimeout(async () => {
       setIsSyncing(true);
       try {
-        const payload: any = {
-            users, 
-            shifts, 
-            properties,
-            clients,
-            supplyRequests, 
-            inventoryItems,
-            manualTasks, 
-            timeEntries,
-            organization,
-            invoices
-        };
-
         await fetch('/api/sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -182,7 +189,7 @@ const App: React.FC = () => {
       } finally {
         setIsSyncing(false);
       }
-    }, 3000); // Debounce saves
+    }, 2000); // 2 seconds debounce
 
     return () => clearTimeout(timeout);
   }, [users, shifts, properties, clients, supplyRequests, inventoryItems, manualTasks, organization, invoices, timeEntries, user, orgId, isLoaded]);

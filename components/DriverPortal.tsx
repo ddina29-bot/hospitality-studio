@@ -93,25 +93,44 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
   };
 
   const currentManualTasks = useMemo(() => {
-    return manualTasks.filter(t => 
+    // Basic filter first
+    const relevantTasks = manualTasks.filter(t => 
       t.date.split('T')[0] === viewedDate &&
       (t.userId === activeUserId || (isOnlyDriver && !overrideDriverId))
     );
-  }, [manualTasks, viewedDate, activeUserId, isOnlyDriver, overrideDriverId]);
+
+    // Advanced Filter: Hide tasks if they are for a property that has a DRAFT shift today
+    // This prevents leakage of testing data
+    return relevantTasks.filter(t => {
+       const shiftForProp = shifts.find(s => s.propertyId === t.propertyId && s.date === viewedDateStr);
+       // If there is a shift, and it is NOT published, hide this task
+       if (shiftForProp && !shiftForProp.isPublished) return false;
+       return true;
+    });
+  }, [manualTasks, viewedDate, activeUserId, isOnlyDriver, overrideDriverId, shifts, viewedDateStr]);
 
   const logisticsTasks = useMemo(() => {
     return (shifts || []).filter(s => {
-      const shiftDate = s.date;
-      const isLogisticsJob = s.serviceType === 'BEDS ONLY' || s.serviceType === 'LINEN DROP / COLLECTION' || s.isPublished;
+      // 1. MUST BE PUBLISHED (Hides Building Mode Drafts)
+      if (!s.isPublished) return false;
       
-      // Filter out laundry if excluded
+      // 2. Exclude Laundry if set
       if (s.excludeLaundry) return false;
 
-      // Updated Filtering: If only 1 driver, they see all published logistics for the day automatically.
-      // Otherwise, they see only what is explicitly assigned to them.
-      const isAssigned = s.userIds.includes(activeUserId) || (isOnlyDriver && !overrideDriverId && isLogisticsJob);
+      // 3. Match Date
+      if (s.date !== viewedDateStr) return false;
+
+      // 4. Determine Assignment
+      const isLogisticsType = s.serviceType === 'BEDS ONLY' || s.serviceType === 'LINEN DROP / COLLECTION';
+      const isAssigned = s.userIds.includes(activeUserId) || (isOnlyDriver && !overrideDriverId);
       
-      return shiftDate === viewedDateStr && isLogisticsJob && isAssigned;
+      // Driver sees:
+      // A) Any shift explicitly assigned to them (e.g. for keys or transport)
+      // B) Any purely logistics shift (if they are the only driver or if assigned)
+      if (isLogisticsType && isAssigned) return true;
+      if (s.userIds.includes(activeUserId)) return true;
+
+      return false;
     }).map(s => {
       const prop = properties.find(p => p.id === s.propertyId);
       const cleanerId = s.userIds.find(uid => {
@@ -355,7 +374,7 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
       <div className="space-y-6">
         <div className="space-y-6">
           {logisticsTasks.length === 0 ? (
-            <div className="py-20 text-center border-2 border-dashed border-black/5 rounded-[40px] opacity-10 italic text-[10px] font-black uppercase tracking-[0.4em]">No assigned stops for this profile on selected date.</div>
+            <div className="py-20 text-center border-2 border-dashed border-black/5 rounded-[40px] opacity-10 italic text-[10px] font-black uppercase tracking-[0.4em]">No active route assignments.</div>
           ) : logisticsTasks.map(task => (
             <div key={task.id} className="bg-[#FDF8EE] p-6 rounded-[32px] border border-[#D4B476]/30 shadow-xl space-y-6 transition-all hover:border-[#D4B476]">
               <div className="flex justify-between items-start">

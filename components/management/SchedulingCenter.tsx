@@ -697,7 +697,6 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
     ].filter(g => g.members.length > 0);
   }, [users, search, shifts]);
 
-  // ... (rest of the component)
   return (
     <div className="space-y-6 animate-in fade-in duration-700 text-left pb-24 max-w-full overflow-hidden">
       <header className="space-y-4 px-1">
@@ -733,7 +732,6 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
         </div>
       </header>
 
-      {/* Grid and List views omitted for brevity as they are unchanged structure-wise, just ensure they are included in the final file content below */}
       {viewMode === 'grid' ? (
         <div className="bg-white rounded-[32px] border border-gray-300 overflow-hidden shadow-2xl mt-2 relative">
           <div className="overflow-x-auto custom-scrollbar">

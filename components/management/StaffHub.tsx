@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { User, UserRole } from '../../types';
+import { User, UserRole, EmploymentType, PaymentType } from '../../types';
 
 interface StaffHubProps {
   users: User[];
@@ -14,15 +14,20 @@ interface StaffHubProps {
 const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldOpenAddModal, setShouldOpenAddModal }) => {
   const [search, setSearch] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  
+  // Invite State
   const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [invitedUserEmail, setInvitedUserEmail] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
+  const [newUser, setNewUser] = useState<Partial<User>>({ name: '', email: '', role: 'cleaner' });
+
+  // Edit State
+  const [editingUser, setEditingUser] = useState<User | null>(null);
   
   const currentUser = JSON.parse(localStorage.getItem('current_user_obj') || '{}');
   const canManage = ['admin', 'housekeeping', 'hr'].includes(currentUser.role);
-
-  const [newUser, setNewUser] = useState<Partial<User>>({ name: '', email: '', role: 'cleaner' });
 
   useEffect(() => {
     if (shouldOpenAddModal) {
@@ -45,7 +50,7 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
   };
 
   const activeStaffGroups = useMemo(() => {
-    const filtered = users.filter(u => u.status === 'active' && u.name.toLowerCase().includes(search.toLowerCase()));
+    const filtered = users.filter(u => (u.status === 'active' || u.status === 'inactive') && u.name.toLowerCase().includes(search.toLowerCase()));
     return [
       { title: 'MANAGEMENT & ADMIN', members: filtered.filter(u => ['admin', 'housekeeping', 'hr', 'finance'].includes(u.role)) },
       { title: 'FIELD STAFF (CLEANING)', members: filtered.filter(u => ['cleaner', 'supervisor'].includes(u.role)) },
@@ -85,13 +90,8 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
 
+      // IMMEDIATE STATE UPDATE
       setUsers(prev => [...prev, data.user]);
-      const token = data.inviteLink; // The backend now returns the full link in inviteLink, or we reconstruct it
-      
-      // If inviteLink is a full URL, extract code if needed, but usually we just want the token
-      // actually backend returns activationUrl as inviteLink.
-      // We will store the token for display.
-      // Let's just use the URL returned or construct it.
       
       setInviteToken(data.user.activationToken);
       setInvitedUserEmail(newUser.email);
@@ -104,6 +104,18 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
     } finally {
       setIsSending(false);
     }
+  };
+
+  const handleSaveEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    
+    // Optimistic Update
+    setUsers(prev => prev.map(u => u.id === editingUser.id ? editingUser : u));
+    
+    setShowEditModal(false);
+    setEditingUser(null);
+    if (showToast) showToast('PERSONNEL RECORD UPDATED', 'success');
   };
 
   const getActivationUrl = (code?: string) => {
@@ -119,6 +131,11 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
     else alert('Link copied to clipboard');
   };
 
+  const openEditModal = (u: User) => {
+    setEditingUser(u);
+    setShowEditModal(true);
+  };
+
   return (
     <div className="space-y-12 animate-in fade-in duration-500 text-left pb-24 max-w-6xl mx-auto relative px-2">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
@@ -126,13 +143,6 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
           <h2 className="text-2xl font-serif-brand text-black uppercase font-bold tracking-tight text-left">Personnel Intelligence</h2>
           <p className="text-[8px] font-bold text-[#A68342] uppercase tracking-[0.4em] mt-1 opacity-80 text-left">TEAM REGISTRY</p>
         </div>
-        
-        {canManage && (
-            <button onClick={() => setShowAddModal(true)} className="bg-[#C5A059] text-black px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl whitespace-nowrap active:scale-95 transition-all hover:bg-[#d4b476] flex items-center gap-2">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              ADD USER
-            </button>
-        )}
       </header>
 
       <div className="space-y-10">
@@ -150,17 +160,38 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {group.members.map(u => (
-                    <div key={u.id} className="p-5 rounded-[28px] border bg-white border-gray-100 flex items-center justify-between gap-4 shadow-sm hover:border-[#D4B476]/50 transition-all">
+                    <div 
+                      key={u.id} 
+                      onClick={() => openEditModal(u)}
+                      className={`p-5 rounded-[28px] border flex items-center justify-between gap-4 shadow-sm cursor-pointer transition-all group ${u.status === 'inactive' ? 'bg-gray-50 border-gray-200 opacity-60' : 'bg-white border-gray-100 hover:border-[#D4B476]'}`}
+                    >
                       <div className="flex items-center gap-5 flex-1 min-w-0 text-left">
-                        <div className="w-12 h-12 rounded-full bg-gray-50 border border-gray-100 text-black/40 flex items-center justify-center font-serif-brand text-lg font-bold">{u.name.charAt(0)}</div>
+                        <div className={`w-12 h-12 rounded-full border border-gray-100 flex items-center justify-center font-serif-brand text-lg font-bold transition-colors relative ${u.status === 'inactive' ? 'bg-gray-200 text-gray-400' : 'bg-gray-50 text-black/40 group-hover:bg-[#C5A059]/10 group-hover:text-[#C5A059]'}`}>
+                            {u.name.charAt(0)}
+                            <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${u.status === 'active' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                        </div>
                         <div className="flex-1 min-w-0">
                           <h3 className="text-sm font-bold uppercase truncate text-black">{u.name}</h3>
-                          <p className="text-[9px] text-black/40 truncate">{u.email}</p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                             <p className="text-[9px] text-black/40 truncate">{u.email}</p>
+                             {u.status === 'active' ? (
+                                <span className="text-[6px] bg-green-100 text-green-600 px-1.5 py-0.5 rounded uppercase font-black tracking-wider">ACTIVE</span>
+                             ) : (
+                                <span className="text-[6px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded uppercase font-black tracking-wider">SUSPENDED</span>
+                             )}
+                          </div>
+                          <div className="flex gap-2 mt-1">
+                             <span className="text-[7px] text-black/30 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">{u.employmentType || 'NOT SET'}</span>
+                             {u.payRate && <span className="text-[7px] text-green-700 bg-green-50 px-1.5 py-0.5 rounded border border-green-100">€{u.payRate}</span>}
+                          </div>
                         </div>
                       </div>
-                      <span className={`px-3 py-1 rounded-lg text-[7px] font-black uppercase tracking-widest border ${getRoleBadgeStyle(u.role)}`}>
-                        {u.role}
-                      </span>
+                      <div className="flex flex-col items-end gap-2">
+                        <span className={`px-3 py-1 rounded-lg text-[7px] font-black uppercase tracking-widest border ${getRoleBadgeStyle(u.role)}`}>
+                            {u.role}
+                        </span>
+                        <span className="text-[7px] font-black text-[#C5A059] uppercase opacity-0 group-hover:opacity-100 transition-opacity">EDIT &rarr;</span>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -194,6 +225,7 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
         )}
       </div>
 
+      {/* ADD USER MODAL */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/80 z-[500] flex items-center justify-center p-4 backdrop-blur-md animate-in zoom-in-95">
            <div className="bg-[#FDF8EE] border border-[#D4B476]/40 rounded-[48px] w-full max-w-lg p-8 md:p-12 space-y-10 shadow-2xl relative text-left">
@@ -223,6 +255,90 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
                  <button type="submit" disabled={isSending} className="w-full bg-black text-[#C5A059] font-black py-5 rounded-2xl uppercase tracking-[0.4em] text-[10px] shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3">
                     {isSending ? 'GENERATING LINK...' : 'GENERATE LINK'}
                  </button>
+              </form>
+           </div>
+        </div>
+      )}
+
+      {/* EDIT USER MODAL */}
+      {showEditModal && editingUser && (
+        <div className="fixed inset-0 bg-black/80 z-[500] flex items-center justify-center p-4 backdrop-blur-md animate-in zoom-in-95 overflow-y-auto">
+           <div className="bg-[#FDF8EE] border border-[#D4B476]/40 rounded-[48px] w-full max-w-2xl p-8 md:p-12 space-y-8 shadow-2xl relative text-left my-auto">
+              <button type="button" onClick={() => setShowEditModal(false)} className="absolute top-10 right-10 text-black/20 hover:text-black"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+              
+              <div className="space-y-2">
+                 <h2 className="text-2xl font-serif-brand font-bold uppercase text-black">Edit Personnel</h2>
+                 <p className="text-[8px] font-black text-[#A68342] uppercase tracking-[0.4em]">Configuration & Payroll</p>
+              </div>
+
+              <form onSubmit={handleSaveEdit} className="space-y-8">
+                 <div className="space-y-4">
+                    <h4 className="text-[10px] font-black text-black/30 uppercase tracking-[0.5em] border-l-2 border-[#C5A059] pl-3">Identity & Access</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div><label className={labelStyle}>Full Name</label><input required className={inputStyle} value={editingUser.name} onChange={e => setEditingUser({...editingUser, name: e.target.value})} /></div>
+                        <div><label className={labelStyle}>Email</label><input required type="email" className={inputStyle} value={editingUser.email} onChange={e => setEditingUser({...editingUser, email: e.target.value})} /></div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div><label className={labelStyle}>Phone</label><input className={inputStyle} value={editingUser.phone || ''} onChange={e => setEditingUser({...editingUser, phone: e.target.value})} placeholder="+356..." /></div>
+                        <div>
+                           <label className={labelStyle}>Role</label>
+                           <select className={inputStyle} value={editingUser.role} onChange={e => setEditingUser({...editingUser, role: e.target.value as UserRole})}>
+                              <option value="cleaner">CLEANER</option>
+                              <option value="supervisor">SUPERVISOR</option>
+                              <option value="driver">DRIVER</option>
+                              <option value="admin">ADMIN</option>
+                              <option value="housekeeping">HOUSEKEEPING</option>
+                              <option value="maintenance">MAINTENANCE</option>
+                           </select>
+                        </div>
+                    </div>
+                 </div>
+
+                 <div className="space-y-4">
+                    <h4 className="text-[10px] font-black text-black/30 uppercase tracking-[0.5em] border-l-2 border-[#C5A059] pl-3">Employment & Payroll</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                           <label className={labelStyle}>Employment Type</label>
+                           <select className={inputStyle} value={editingUser.employmentType || 'Full-Time'} onChange={e => setEditingUser({...editingUser, employmentType: e.target.value as EmploymentType})}>
+                              <option value="Full-Time">Full-Time</option>
+                              <option value="Part-Time">Part-Time</option>
+                              <option value="Casual">Casual</option>
+                              <option value="Contractor">Contractor</option>
+                           </select>
+                        </div>
+                        <div>
+                           <label className={labelStyle}>Payment Model</label>
+                           <select className={inputStyle} value={editingUser.paymentType || 'Per Clean'} onChange={e => setEditingUser({...editingUser, paymentType: e.target.value as PaymentType})}>
+                              <option value="Per Clean">Per Clean</option>
+                              <option value="Per Hour">Per Hour</option>
+                              <option value="Fixed Wage">Fixed Wage</option>
+                           </select>
+                        </div>
+                        <div>
+                           <label className={labelStyle}>Base Rate (€)</label>
+                           <input type="number" step="0.50" className={inputStyle} value={editingUser.payRate || ''} onChange={e => setEditingUser({...editingUser, payRate: parseFloat(e.target.value)})} placeholder="5.50" />
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div><label className={labelStyle}>ID / Passport No.</label><input className={inputStyle} value={editingUser.idPassportNumber || ''} onChange={e => setEditingUser({...editingUser, idPassportNumber: e.target.value})} placeholder="NO SPACES" /></div>
+                        <div><label className={labelStyle}>IBAN</label><input className={inputStyle} value={editingUser.iban || ''} onChange={e => setEditingUser({...editingUser, iban: e.target.value})} placeholder="MT..." /></div>
+                    </div>
+                 </div>
+
+                 <div className="pt-4 flex gap-4">
+                    <button type="submit" className="flex-1 bg-[#C5A059] text-black font-black py-4 rounded-2xl uppercase tracking-[0.3em] text-[10px] shadow-xl active:scale-95 transition-all hover:bg-[#d4b476]">
+                        Save Changes
+                    </button>
+                    {editingUser.status === 'active' ? (
+                        <button type="button" onClick={() => setEditingUser({...editingUser, status: 'inactive'})} className="px-6 border border-red-200 text-red-500 font-black py-4 rounded-2xl uppercase tracking-widest text-[9px] hover:bg-red-50 transition-all">
+                            ARCHIVE / SUSPEND
+                        </button>
+                    ) : (
+                        <button type="button" onClick={() => setEditingUser({...editingUser, status: 'active'})} className="px-6 border border-green-200 text-green-600 font-black py-4 rounded-2xl uppercase tracking-widest text-[9px] hover:bg-green-50 transition-all">
+                            REACTIVATE USER
+                        </button>
+                    )}
+                 </div>
               </form>
            </div>
         </div>
