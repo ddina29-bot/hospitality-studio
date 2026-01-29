@@ -259,6 +259,18 @@ app.post('/api/auth/delete-organization', async (req, res) => {
   }
 });
 
+// 9. NUKE SYSTEM (Emergency Reset)
+app.post('/api/auth/nuke-system', async (req, res) => {
+  try {
+    db.exec('DELETE FROM organizations');
+    console.log('[DB] System Nuked. All organizations deleted.');
+    res.json({ success: true, message: 'System reset complete.' });
+  } catch (error) {
+    console.error("Nuke Error:", error);
+    res.status(500).json({ error: 'Failed to reset system.' });
+  }
+});
+
 // 6. SYNC DATA (The main engine)
 app.post('/api/sync', async (req, res) => {
   const { orgId, data } = req.body;

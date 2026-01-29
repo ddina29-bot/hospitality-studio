@@ -1,11 +1,12 @@
+
 providers = ["node"]
 
 [phases.setup]
 nixPkgs = ["nodejs", "npm"]
 
 [phases.install]
-# We remove package-lock.json to prevent "npm ci" from running or failing due to platform mismatches
-cmds = ["rm -f package-lock.json", "npm install"]
+# Force removal of lockfile and fresh install to avoid EUSAGE/EINVALID error
+cmds = ["rm -rf package-lock.json node_modules", "npm install"]
 
 [phases.build]
 cmds = ["npm run build"]

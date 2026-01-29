@@ -84,6 +84,22 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
     }
   };
 
+  const handleSystemReset = async () => {
+    if (!confirm("⚠️ DANGER: This will delete ALL users, organizations, and data from the system.\n\nYou will need to sign up again.\n\nAre you sure?")) return;
+    try {
+        const res = await fetch('/api/auth/nuke-system', { method: 'POST' });
+        if (res.ok) {
+            localStorage.clear();
+            alert("System has been wiped. You can now sign up again.");
+            window.location.reload();
+        } else {
+            alert("Failed to reset.");
+        }
+    } catch (e) {
+        alert("Error resetting system. Server might be unreachable.");
+    }
+  };
+
   if (isActivationMode) {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 md:p-10 font-sans">
@@ -132,6 +148,12 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
               )}
             </div>
           </form>
+          
+          <div className="text-center">
+             <button type="button" onClick={handleSystemReset} className="text-[8px] font-black text-red-300 uppercase tracking-widest hover:text-red-600 transition-colors py-2 px-4 border border-transparent hover:border-red-100 rounded-lg">
+                EMERGENCY SYSTEM RESET
+             </button>
+          </div>
         </div>
       </div>
     </div>
