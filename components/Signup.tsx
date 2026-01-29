@@ -63,6 +63,10 @@ const Signup: React.FC<SignupProps> = ({ onSignupComplete, onBackToLogin }) => {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Signup failed');
 
+      // CRITICAL: Save session data for components that rely on it
+      localStorage.setItem('current_user_obj', JSON.stringify(data.user));
+      localStorage.setItem('studio_org_settings', JSON.stringify(data.organization));
+
       // Success
       onSignupComplete(data.user, data.organization);
 

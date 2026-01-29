@@ -20,6 +20,9 @@ const HumanCapitalStudio: React.FC<HumanCapitalStudioProps> = ({
   const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '', category: 'Company' as any });
   // Start with empty announcements for production
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  
+  // New state to auto-trigger the Add User modal in child component
+  const [shouldOpenAddModal, setShouldOpenAddModal] = useState(false);
 
   const pendingLeaves = useMemo(() => leaveRequests.filter(l => l.status === 'pending'), [leaveRequests]);
   
@@ -43,6 +46,11 @@ const HumanCapitalStudio: React.FC<HumanCapitalStudioProps> = ({
     setShowAnnouncementModal(false);
     setNewAnnouncement({ title: '', content: '', category: 'Company' });
     if (showToast) showToast('BROADCAST DISPATCHED', 'success');
+  };
+
+  const handleAddUserClick = () => {
+    setActiveTab('registry');
+    setShouldOpenAddModal(true);
   };
 
   return (
@@ -74,7 +82,7 @@ const HumanCapitalStudio: React.FC<HumanCapitalStudioProps> = ({
            </div>
            
            <button 
-             onClick={() => setActiveTab('registry')}
+             onClick={handleAddUserClick}
              className="bg-black text-[#C5A059] px-6 py-2.5 rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-xl active:scale-95 transition-all hover:bg-zinc-900 border border-[#C5A059]/30"
            >
              ADD USER
@@ -180,6 +188,8 @@ const HumanCapitalStudio: React.FC<HumanCapitalStudioProps> = ({
              setUsers={setUsers} 
              onPreviewActivation={onPreviewActivation}
              showToast={showToast}
+             shouldOpenAddModal={shouldOpenAddModal}
+             setShouldOpenAddModal={setShouldOpenAddModal}
            />
         </div>
       )}

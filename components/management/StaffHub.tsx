@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { User, UserRole } from '../../types';
 
 interface StaffHubProps {
@@ -7,18 +7,27 @@ interface StaffHubProps {
   setUsers: React.Dispatch<React.SetStateAction<User[]>>;
   onPreviewActivation?: (user: User) => void;
   showToast?: (message: string, type: 'success' | 'error' | 'info') => void;
+  shouldOpenAddModal?: boolean;
+  setShouldOpenAddModal?: (val: boolean) => void;
 }
 
-const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast }) => {
+const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldOpenAddModal, setShouldOpenAddModal }) => {
   const [search, setSearch] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   
   const currentUser = JSON.parse(localStorage.getItem('current_user_obj') || '{}');
-  // UPDATED: Added 'hr' to permissions list
   const canManage = ['admin', 'housekeeping', 'hr'].includes(currentUser.role);
 
   const [newUser, setNewUser] = useState<Partial<User>>({ name: '', email: '', role: 'cleaner' });
+
+  // Effect to handle external trigger for modal opening
+  useEffect(() => {
+    if (shouldOpenAddModal) {
+      setShowAddModal(true);
+      if (setShouldOpenAddModal) setShouldOpenAddModal(false);
+    }
+  }, [shouldOpenAddModal, setShouldOpenAddModal]);
 
   const labelStyle = "text-[7px] font-black text-[#C5A059] uppercase tracking-[0.4em] opacity-80 mb-1.5 block px-1 text-left";
   const inputStyle = "w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-black text-[10px] font-bold uppercase tracking-widest outline-none focus:border-[#C5A059] transition-all";
@@ -41,6 +50,11 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast }) => {
     try {
       const savedOrg = JSON.parse(localStorage.getItem('studio_org_settings') || '{}');
       
+      if (!savedOrg.id) {
+        alert("Session Error: Organization ID missing. Please Log Out and Log In again to restore session data.");
+        return;
+      }
+
       const response = await fetch('/api/auth/invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

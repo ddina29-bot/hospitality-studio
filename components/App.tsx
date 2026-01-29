@@ -59,12 +59,40 @@ const App: React.FC = () => {
   const [savedTaskNames, setSavedTaskNames] = useState<string[]>(['Extra Towels', 'Deep Clean Fridge', 'Balcony Sweep']);
   const [isSyncing, setIsSyncing] = useState(false);
 
+  // --- 0. INITIAL LOAD (Restore Session) ---
+  useEffect(() => {
+    const savedUser = localStorage.getItem('current_user_obj');
+    const savedOrgSettings = localStorage.getItem('studio_org_settings');
+    
+    if (savedUser && savedOrgSettings) {
+      try {
+        const u = JSON.parse(savedUser);
+        const o = JSON.parse(savedOrgSettings);
+        
+        setUser(u);
+        setOrgId(o.id);
+        setOrganization(o.settings || o); // Handle structure variation
+        
+        // Note: Ideally we would fetch fresh data from API here using the OrgID.
+        // For now, we rely on the user being logged in to access the UI.
+        // If the array data (shifts, users) is missing from local state, 
+        // it will be empty until a sync/fetch occurs or re-login.
+        // To fix empty data on refresh without a backend fetch endpoint implemented:
+        // We recommend the user logs out and logs back in to re-hydrate the full state from the /login response.
+        
+      } catch (e) {
+        console.error("Failed to restore session", e);
+        localStorage.clear();
+      }
+    }
+  }, []);
+
   // --- 1. LOGIN HANDLER ---
   const handleLogin = (u: User, orgData: any) => {
     setUser(u);
     setOrgId(orgData.id);
     
-    // Hydrate State from the Organization Data
+    // Hydrate State from the Organization Data (Database)
     setUsers(orgData.users || []);
     setShifts(orgData.shifts || []);
     setProperties(orgData.properties || []);
@@ -79,7 +107,7 @@ const App: React.FC = () => {
 
   // --- 2. SIGNUP HANDLER ---
   const handleSignupComplete = (u: User, orgData: any) => {
-    handleLogin(u, orgData); // Same logic, just load the fresh empty data
+    handleLogin(u, orgData);
   };
 
   // --- 3. SYNC TO CLOUD (Auto-Save) ---
@@ -117,9 +145,10 @@ const App: React.FC = () => {
     setUsers([]);
     setShifts([]);
     setProperties([]);
+    localStorage.removeItem('current_user_obj');
+    localStorage.removeItem('studio_org_settings');
   };
 
-  // ... (Keep existing handler functions like handleUpdateLeaveStatus, etc.) ...
   const handleUpdateLeaveStatus = (id: string, status: 'approved' | 'rejected') => {
     setLeaveRequests(prev => prev.map(l => l.id === id ? { ...l, status } : l));
   };
@@ -170,7 +199,6 @@ const App: React.FC = () => {
     return <Login onLogin={handleLogin} onSignupClick={() => setAuthMode('signup')} />;
   }
 
-  // ... (Keep existing renderContent switch) ...
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':

@@ -46,6 +46,10 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
         throw new Error(data.error || 'Login failed');
       }
 
+      // CRITICAL: Save session data for components that rely on it (like StaffHub)
+      localStorage.setItem('current_user_obj', JSON.stringify(data.user));
+      localStorage.setItem('studio_org_settings', JSON.stringify(data.organization));
+
       onLogin(data.user, data.organization);
     } catch (err: any) {
       alert(err.message);
@@ -69,6 +73,10 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       
+      // CRITICAL: Save session data for components that rely on it
+      localStorage.setItem('current_user_obj', JSON.stringify(data.user));
+      localStorage.setItem('studio_org_settings', JSON.stringify(data.organization));
+
       onLogin(data.user, data.organization);
     } catch (err: any) {
       alert(err.message);
