@@ -27,6 +27,7 @@ const Layout = ({
   
   const isLaundryTabVisible = 
     role === 'admin' || 
+    role === 'laundry' ||
     (['supervisor', 'driver'].includes(role) && (authorizedLaundryUserIds || []).includes(currentUserId));
 
   const allNavItems: { id: TabType; label: string; icon: React.FC; roles: UserRole[] }[] = [
@@ -42,7 +43,7 @@ const Layout = ({
       icon: () => (
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M3 12h18"/><path d="M3 18h18"/></svg>
       ),
-      roles: ['admin', 'supervisor', 'driver'],
+      roles: ['admin', 'supervisor', 'driver', 'laundry'],
     },
     { 
       id: 'shifts', 
@@ -201,7 +202,7 @@ const Layout = ({
       </aside>
 
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative bg-white">
-        <header className="md:hidden sticky top-0 bg-white/80 backdrop-blur-xl border-b border-gray-100 flex justify-between items-center px-6 py-4 z-50">
+        <header className="md:hidden sticky top-0 bg-white/80 backdrop-blur-xl border-b border-gray-100 flex justify-between items-center px-6 py-4 z-50 pt-[calc(1rem+env(safe-area-inset-top))]">
           <h1 className="font-serif-brand flex flex-col tracking-tight uppercase leading-none scale-75 origin-left">
             <span className="text-black/30 text-[10px] font-black tracking-[0.4em]">RESET</span>
             <span className="text-black font-bold text-xl">HOSPITALITY</span>
@@ -224,13 +225,13 @@ const Layout = ({
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-6 md:p-10 pb-28 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-6 md:p-10 pb-32 md:pb-10 custom-scrollbar">
           <div className="max-w-6xl mx-auto w-full">
             {children}
           </div>
         </div>
 
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-gray-100 flex items-center px-4 py-4 z-50 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] overflow-x-auto no-scrollbar gap-8">
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-gray-100 flex items-center px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] z-50 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] overflow-x-auto no-scrollbar gap-8">
           {navItems.map((item) => (
             <button
               key={item.id}

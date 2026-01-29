@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
 import CleanerPortal from './components/CleanerPortal';
@@ -15,7 +15,7 @@ import TutorialsHub from './components/TutorialsHub';
 import AddTaskModal from './components/management/AddTaskModal';
 import StudioSettings from './components/management/StudioSettings';
 import AppManual from './components/AppManual';
-import { TabType, Shift, SupplyRequest, User, Client, Property, SupplyItem, AuditReport, Tutorial, LeaveRequest, ManualTask, OrganizationSettings, Invoice } from './types';
+import { TabType, Shift, SupplyRequest, User, Client, Property, SupplyItem, AuditReport, Tutorial, LeaveRequest, ManualTask, OrganizationSettings, Invoice, TimeEntry } from './types';
 
 // Role-specific Dashboards
 import AdminDashboard from './components/dashboards/AdminDashboard';
@@ -45,6 +45,7 @@ const App: React.FC = () => {
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [tutorials, setTutorials] = useState<Tutorial[]>([]);
+  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
   const [organization, setOrganization] = useState<OrganizationSettings>({
     name: '', legalEntity: '', taxId: '', address: '', email: '', phone: '', website: ''
   });
@@ -58,6 +59,27 @@ const App: React.FC = () => {
   const [deepLinkShiftId, setDeepLinkShiftId] = useState<string | null>(null);
   const [savedTaskNames, setSavedTaskNames] = useState<string[]>(['Extra Towels', 'Deep Clean Fridge', 'Balcony Sweep']);
   const [isSyncing, setIsSyncing] = useState(false);
+
+  // --- 0. INITIAL LOAD (Restore Session) ---
+  useEffect(() => {
+    const savedUser = localStorage.getItem('current_user_obj');
+    const savedOrgSettings = localStorage.getItem('studio_org_settings');
+    
+    if (savedUser && savedOrgSettings) {
+      try {
+        const u = JSON.parse(savedUser);
+        const o = JSON.parse(savedOrgSettings);
+        
+        setUser(u);
+        setOrgId(o.id);
+        setOrganization(o.settings || o); // Handle structure variation
+        
+      } catch (e) {
+        console.error("Failed to restore session", e);
+        localStorage.clear();
+      }
+    }
+  }, []);
 
   // --- 1. LOGIN HANDLER ---
   const handleLogin = (u: User, orgData: any) => {
@@ -73,6 +95,7 @@ const App: React.FC = () => {
     setManualTasks(orgData.manualTasks || []);
     setSupplyRequests(orgData.supplyRequests || []);
     setOrganization(orgData.settings || {});
+    setTimeEntries(orgData.timeEntries || []);
     
     setActiveTab('dashboard');
   };
@@ -95,7 +118,7 @@ const App: React.FC = () => {
           body: JSON.stringify({
             orgId,
             data: {
-              users, shifts, properties, clients, supplyRequests, inventoryItems, manualTasks, organization
+              users, shifts, properties, clients, supplyRequests, inventoryItems, manualTasks, organization, timeEntries
             }
           })
         });
@@ -104,10 +127,10 @@ const App: React.FC = () => {
       } finally {
         setIsSyncing(false);
       }
-    }, 3000); // Auto-save every 3 seconds if changes detected
+    }, 2000); // Debounce saves
 
     return () => clearTimeout(timeout);
-  }, [users, shifts, properties, clients, supplyRequests, inventoryItems, manualTasks, organization]);
+  }, [users, shifts, properties, clients, supplyRequests, inventoryItems, manualTasks, organization, timeEntries]);
 
   const handleLogout = () => {
     setUser(null);
@@ -117,6 +140,9 @@ const App: React.FC = () => {
     setUsers([]);
     setShifts([]);
     setProperties([]);
+    setTimeEntries([]);
+    localStorage.removeItem('current_user_obj');
+    localStorage.removeItem('studio_org_settings');
   };
 
   const handleUpdateLeaveStatus = (id: string, status: 'approved' | 'rejected') => {
@@ -172,7 +198,7 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
-        if (user.role === 'admin') return <AdminDashboard user={user} setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} setShifts={setShifts} users={users} supplyRequests={supplyRequests} leaveRequests={leaveRequests} onResolveLogistics={handleResolveLogistics} onAuditDeepLink={handleAuditDeepLink} onOpenManualTask={() => setShowTaskModal(true)} manualTasks={manualTasks} setManualTasks={setManualTasks} onToggleLaundryPrepared={(id) => setShifts(prev => prev.map(s => s.id === id ? { ...s, isLaundryPrepared: !s.isLaundryPrepared } : s))} />;
+        if (user.role === 'admin') return <AdminDashboard user={user} setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} setShifts={setShifts} users={users} supplyRequests={supplyRequests} leaveRequests={leaveRequests} onResolveLogistics={handleResolveLogistics} onAuditDeepLink={handleAuditDeepLink} onOpenManualTask={() => setShowTaskModal(true)} manualTasks={manualTasks} setManualTasks={setManualTasks} />;
         if (user.role === 'housekeeping') return <HousekeeperDashboard user={user} setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} setShifts={setShifts} users={users} properties={properties} supplyRequests={supplyRequests} leaveRequests={leaveRequests} onResolveLogistics={handleResolveLogistics} onAuditDeepLink={handleAuditDeepLink} onOpenManualTask={() => setShowTaskModal(true)} manualTasks={manualTasks} setManualTasks={setManualTasks} />;
         if (user.role === 'hr') return <AdminPortal view="users" users={users} setUsers={setUsers} setActiveTab={setActiveTab} leaveRequests={leaveRequests} onUpdateLeaveStatus={handleUpdateLeaveStatus} />;
         if (user.role === 'finance') return <FinanceDashboard setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} setShifts={setShifts} users={users} properties={properties} invoices={invoices} setInvoices={setInvoices} clients={clients} organization={organization} manualTasks={manualTasks} />;
@@ -180,17 +206,28 @@ const App: React.FC = () => {
         if (user.role === 'driver') return <DriverDashboard user={user} setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} properties={properties} onResolveLogistics={handleResolveLogistics} onTogglePickedUp={(id) => setShifts(prev => prev.map(s => s.id === id ? { ...s, isLaundryPickedUp: !s.isLaundryPickedUp } : s))} onToggleLaundryPrepared={(id) => setShifts(prev => prev.map(s => s.id === id ? { ...s, isLaundryPrepared: !s.isLaundryPrepared } : s))} />;
         if (user.role === 'maintenance' || user.role === 'outsourced_maintenance') return <MaintenancePortal users={users} userRole={user.role} shifts={shifts} setShifts={setShifts} setActiveTab={setActiveTab} onLogout={handleLogout} />;
         if (user.role === 'client') return <ClientDashboard user={user} setActiveTab={setActiveTab} onLogout={handleLogout} invoices={invoices} />;
-        if (user.role === 'laundry') return <LaundryDashboard user={user} setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} setShifts={setShifts} users={users} properties={properties} onTogglePrepared={(id) => setShifts(prev => prev.map(s => s.id === id ? { ...s, isLaundryPrepared: !s.isLaundryPrepared } : s))} authorizedLaundryUserIds={authorizedLaundryUserIds} onToggleAuthority={(id) => setAuthorizedLaundryUserIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])} />;
+        if (user.role === 'laundry') return <LaundryDashboard user={user} setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} setShifts={setShifts} users={users} properties={properties} onTogglePrepared={(id) => setShifts(prev => prev.map(s => s.id === id ? { ...s, isLaundryPrepared: !s.isLaundryPrepared } : s))} authorizedLaundryUserIds={authorizedLaundryUserIds} onToggleAuthority={(id) => setAuthorizedLaundryUserIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])} timeEntries={timeEntries} setTimeEntries={setTimeEntries} />;
         return <Dashboard user={user} onLogout={handleLogout} setActiveTab={setActiveTab} shifts={shifts} supplyRequests={supplyRequests} properties={properties} inventoryItems={inventoryItems} onAddSupplyRequest={handleAddSupplyRequest} onUpdateSupplyStatus={(id, status) => setSupplyRequests(prev => prev.map(r => r.id === id ? { ...r, status } : r))} />;
       
       case 'shifts':
         if (['admin', 'housekeeping', 'hr'].includes(user.role)) {
-          return <AdminPortal view="scheduling" shifts={shifts} setShifts={setShifts} properties={properties} users={users} initialSelectedShiftId={deepLinkShiftId} onShiftSelected={() => setDeepLinkShiftId(null)} setActiveTab={setActiveTab} />;
+          return (
+            <AdminPortal 
+              view="scheduling" 
+              shifts={shifts} 
+              setShifts={setShifts} 
+              properties={properties} 
+              users={users} 
+              initialSelectedShiftId={deepLinkShiftId}
+              onShiftSelected={() => setDeepLinkShiftId(null)}
+              setActiveTab={setActiveTab}
+            />
+          );
         }
         return <CleanerPortal shifts={shifts} setShifts={setShifts} properties={properties} users={users} initialSelectedShiftId={deepLinkShiftId} onConsumedDeepLink={() => setDeepLinkShiftId(null)} authorizedInspectorIds={authorizedInspectorIds} onClosePortal={() => setActiveTab('dashboard')} />;
       
       case 'laundry':
-        return <LaundryDashboard user={user} setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} setShifts={setShifts} users={users} properties={properties} onTogglePrepared={(id) => setShifts(prev => prev.map(s => s.id === id ? { ...s, isLaundryPrepared: !s.isLaundryPrepared } : s))} authorizedLaundryUserIds={authorizedLaundryUserIds} onToggleAuthority={(id) => setAuthorizedLaundryUserIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])} />;
+        return <LaundryDashboard user={user} setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} setShifts={setShifts} users={users} properties={properties} onTogglePrepared={(id) => setShifts(prev => prev.map(s => s.id === id ? { ...s, isLaundryPrepared: !s.isLaundryPrepared } : s))} authorizedLaundryUserIds={authorizedLaundryUserIds} onToggleAuthority={(id) => setAuthorizedLaundryUserIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])} timeEntries={timeEntries} setTimeEntries={setTimeEntries} />;
       case 'logistics':
         return <DriverPortal supplyRequests={supplyRequests} setSupplyRequests={setSupplyRequests} manualTasks={manualTasks} setManualTasks={setManualTasks} shifts={shifts} setShifts={setShifts} properties={properties} users={users} setActiveTab={setActiveTab} />;
       case 'supervisor_portal':

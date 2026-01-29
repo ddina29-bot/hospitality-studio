@@ -1,6 +1,6 @@
 
-import React, { useState, useMemo } from 'react';
-import { TabType, User, Shift, Property, SpecialReport } from '../../types';
+import React, { useState, useMemo, useEffect } from 'react';
+import { TabType, User, Shift, Property, SpecialReport, TimeEntry } from '../../types';
 import LaundryReports from './LaundryReports';
 
 interface LaundryDashboardProps {
@@ -14,14 +14,30 @@ interface LaundryDashboardProps {
   onTogglePrepared: (shiftId: string) => void;
   authorizedLaundryUserIds?: string[];
   onToggleAuthority?: (userId: string) => void;
+  timeEntries?: TimeEntry[];
+  setTimeEntries?: React.Dispatch<React.SetStateAction<TimeEntry[]>>;
 }
 
 const LaundryDashboard: React.FC<LaundryDashboardProps> = ({ 
-  user, setActiveTab, onLogout, shifts = [], setShifts, users = [], properties = [], onTogglePrepared, authorizedLaundryUserIds = [], onToggleAuthority
+  user, setActiveTab, onLogout, shifts = [], setShifts, users = [], properties = [], onTogglePrepared, authorizedLaundryUserIds = [], onToggleAuthority, timeEntries = [], setTimeEntries
 }) => {
   const [activeView, setActiveView] = useState<'queue' | 'reports'>('queue');
-  const [isClockedIn, setIsClockedIn] = useState(false);
-  const [startTime, setStartTime] = useState<string | null>(null);
+  
+  // Logic to derive current clock status from persistent history
+  const myLastEntry = useMemo(() => {
+    return timeEntries
+      .filter(e => e.userId === user.id)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+  }, [timeEntries, user.id]);
+
+  const isClockedIn = myLastEntry?.type === 'in';
+  
+  const startTimeDisplay = useMemo(() => {
+    if (isClockedIn && myLastEntry) {
+      return new Date(myLastEntry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    return null;
+  }, [isClockedIn, myLastEntry]);
 
   const isAdmin = user.role === 'admin';
   const isActualLaundry = user.role === 'laundry';
@@ -104,13 +120,17 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
   }, [users]);
 
   const handleToggleClock = () => {
-    if (!isClockedIn) {
-      setStartTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-      setIsClockedIn(true);
-    } else {
-      setIsClockedIn(false);
-      setStartTime(null);
-    }
+    if (!setTimeEntries) return;
+    
+    const newType = isClockedIn ? 'out' : 'in';
+    const newEntry: TimeEntry = {
+      id: `time-${Date.now()}`,
+      userId: user.id,
+      type: newType,
+      timestamp: new Date().toISOString()
+    };
+
+    setTimeEntries(prev => [...prev, newEntry]);
   };
 
   const handleResolveReport = (shiftId: string, reportId: string) => {
@@ -160,7 +180,7 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
               {isClockedIn && (
                 <div className="text-right">
                   <p className="text-[7px] font-black text-black/30 uppercase tracking-widest">START TIME</p>
-                  <p className="text-sm font-serif-brand font-bold text-[#C5A059]">{startTime}</p>
+                  <p className="text-sm font-serif-brand font-bold text-[#C5A059]">{startTimeDisplay}</p>
                 </div>
               )}
               <button

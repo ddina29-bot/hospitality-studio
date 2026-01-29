@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { TabType, Shift, User, SupplyRequest, AuditReport, LeaveRequest, ManualTask, SpecialReport } from '../../types';
+import { TabType, Shift, User, SupplyRequest, LeaveRequest, ManualTask, SpecialReport } from '../../types';
 
 interface AdminDashboardProps {
   user: User;
@@ -11,37 +11,28 @@ interface AdminDashboardProps {
   users?: User[];
   supplyRequests?: SupplyRequest[];
   leaveRequests?: LeaveRequest[];
-  setLeaveRequests?: React.Dispatch<React.SetStateAction<LeaveRequest[]>>; 
-  setAuditReports?: React.Dispatch<React.SetStateAction<AuditReport[]>>; 
-  onResolveLogistics: (shiftId: string, field: 'isDelivered' | 'isCollected' | 'keysAtOffice', reason?: string) => void; 
   onAuditDeepLink?: (shiftId: string) => void;
   onOpenManualTask?: () => void;
   manualTasks?: ManualTask[];
   setManualTasks?: React.Dispatch<React.SetStateAction<ManualTask[]>>;
-  onToggleLaundryPrepared: (shiftId: string) => void; 
+  onResolveLogistics?: (shiftId: string, field: 'isDelivered' | 'isCollected' | 'keysAtOffice', reason?: string) => void;
+  onToggleLaundryPrepared?: (shiftId: string) => void;
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
-  user, setActiveTab, onLogout, shifts = [], setShifts, users = [], supplyRequests = [], leaveRequests = [], onAuditDeepLink, onOpenManualTask
+  user, setActiveTab, shifts = [], setShifts, users = [], supplyRequests = [], leaveRequests = [], onAuditDeepLink, onOpenManualTask,
+  onResolveLogistics, onToggleLaundryPrepared
 }) => {
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
-  
-  // State for the main view modal (viewing all reports for a specific shift)
   const [viewingIncidentShift, setViewingIncidentShift] = useState<Shift | null>(null);
-
-  // State for the specific assignment action (which report within the shift are we assigning?)
   const [assigningReport, setAssigningReport] = useState<{ shiftId: string, report: SpecialReport, type: 'maintenance' | 'damage' | 'missing' } | null>(null);
   const [assignmentNote, setAssignmentNote] = useState('');
 
   const reviewQueue = useMemo(() => shifts.filter(s => s.status === 'completed' && s.approvalStatus === 'pending'), [shifts]);
   const rejectedQueue = useMemo(() => shifts.filter(s => s.approvalStatus === 'rejected' && s.correctionStatus !== 'fixing'), [shifts]);
-  
-  const pendingLeaves = useMemo(() => (leaveRequests || []).filter(l => l.status === 'pending'), [leaveRequests]);
   const pendingSupplies = useMemo(() => (supplyRequests || []).filter(r => r.status === 'pending'), [supplyRequests]);
-  
   const hasUnpublishedShifts = useMemo(() => shifts.some(s => !s.isPublished), [shifts]);
 
-  // Group active reports by Shift
   const shiftsWithIncidents = useMemo(() => {
     return shifts.filter(s => {
       const hasMaintenance = s.maintenanceReports?.some(r => r.status !== 'resolved');
@@ -56,12 +47,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (s.id === shiftId) {
         const field = type === 'maintenance' ? 'maintenanceReports' : type === 'damage' ? 'damageReports' : 'missingReports';
         const updatedReports = (s[field] || []).map(r => r.id === reportId ? { ...r, status: 'resolved' as const } : r);
-        
-        // Update local viewing state if open
         if (viewingIncidentShift?.id === shiftId) {
             setViewingIncidentShift({ ...s, [field]: updatedReports });
         }
-        
         return { ...s, [field]: updatedReports };
       }
       return s;
@@ -82,12 +70,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 assignedAt: Date.now(),
                 assignmentNotes: assignmentNote
             } : r);
-
-            // Update local viewing state if open
             if (viewingIncidentShift?.id === assigningReport.shiftId) {
                 setViewingIncidentShift({ ...s, [field]: updatedReports });
             }
-
             return { ...s, [field]: updatedReports };
         }
         return s;
@@ -99,14 +84,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const assignableStaff = useMemo(() => {
     return users.filter(u => ['maintenance', 'outsourced_maintenance', 'driver', 'housekeeping', 'supervisor', 'admin'].includes(u.role) && u.status === 'active')
         .sort((a, b) => {
-            // Sort outsourced to the bottom or differentiate them
             if (a.role === 'outsourced_maintenance' && b.role !== 'outsourced_maintenance') return 1;
             if (a.role !== 'outsourced_maintenance' && b.role === 'outsourced_maintenance') return -1;
             return 0;
         });
   }, [users]);
 
-  // Helper to categorize missing items within the modal
   const getMissingItemsBreakdown = (reports: SpecialReport[]) => {
       const laundry = reports.filter(r => r.category === 'laundry' || r.description.includes('[FOR LAUNDRY]'));
       const apartment = reports.filter(r => r.category !== 'laundry' && !r.description.includes('[FOR LAUNDRY]'));
@@ -115,7 +98,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-700 text-left pb-24">
-      {/* Alerts Section */}
       <div className="flex flex-col gap-4">
         {hasUnpublishedShifts && (
           <section className="bg-[#FDF8EE] border-2 border-red-500 p-6 rounded-[32px] shadow-2xl flex flex-col md:flex-row items-center justify-between gap-6 animate-in slide-in-from-top-4">

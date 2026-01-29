@@ -9,6 +9,9 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     // Removed 'define: { process.env: env }' to prevent leaking secrets. 
     // Vite automatically exposes VITE_ prefixed vars via import.meta.env
+    build: {
+      chunkSizeWarningLimit: 1000, // Increased to 1000kB to stop the warning
+    },
     server: {
       proxy: {
         '/api': {

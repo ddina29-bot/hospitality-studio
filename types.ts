@@ -44,8 +44,9 @@ export interface AttributedPhoto {
 
 export interface TimeEntry {
   id: string;
+  userId: string;
   type: 'in' | 'out';
-  timestamp: Date;
+  timestamp: string; // ISO string
 }
 
 export type PropertyType = 'Villa' | 'Townhouse' | 'Penthouse' | 'Studio' | 'Apartment';
@@ -150,7 +151,7 @@ export interface Invoice {
 }
 
 export type TabType = 
-  | 'dashboard' 
+  | 'dashboard'
   | 'laundry'
   | 'shifts' 
   | 'logistics'

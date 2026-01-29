@@ -15,12 +15,10 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Reset form data when organization prop changes (e.g. after a save or external update)
   useEffect(() => {
     setFormData(organization);
   }, [organization]);
 
-  // Derived dirty state to avoid synchronization issues
   const isDirty = useMemo(() => {
     return JSON.stringify(formData) !== JSON.stringify(organization);
   }, [formData, organization]);
@@ -31,11 +29,9 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
 
   const handleSave = () => {
     setIsSaving(true);
-    // Simulate API delay
     setTimeout(() => {
       setOrganization(formData);
       setIsSaving(false);
-      // isDirty will automatically become false because organization prop will update to match formData
       alert('Studio Registry Updated Successfully.');
     }, 800);
   };
@@ -43,7 +39,6 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
   const handleDeleteOrganization = async () => {
     setIsDeleting(true);
     try {
-      // Retrieve the persistent Org ID from local session storage
       const storedOrg = localStorage.getItem('studio_org_settings');
       let orgId = null;
 
@@ -58,17 +53,14 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
       
       if (!orgId) {
          console.warn("No Organization ID found in session. Clearing local state only.");
-         // Fallback: just wipe client side if we can't find ID
          localStorage.clear();
          sessionStorage.clear();
-         window.location.href = window.location.origin;
-         window.location.reload();
+         window.location.replace(window.location.origin);
          return;
       }
 
       console.log("Sending delete request for:", orgId);
 
-      // Call Backend to perform actual deletion
       const res = await fetch('/api/auth/delete-organization', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -76,23 +68,23 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
       });
 
       if (!res.ok) {
-        throw new Error('Server returned an error during deletion.');
+        if (res.status === 404) {
+           console.warn("Org not found on server, wiping local.");
+        } else {
+           throw new Error('Server returned an error during deletion.');
+        }
       }
 
-      const data = await res.json();
-      console.log("Deletion response:", data);
-
-      // Complete data wipe for the entire application to reset to factory state
+      // AGGRESSIVE WIPE
       localStorage.clear();
       sessionStorage.clear();
-
-      // Force reload to reset application state to initial demo/login
-      window.location.href = window.location.origin;
-      window.location.reload();
+      
+      // Force reload to login screen
+      window.location.replace(window.location.origin);
 
     } catch (error) {
       console.error("Deletion failed:", error);
-      alert("Failed to delete organization from server. Please try again or contact support.");
+      alert("Error contacting server. Please check your connection.");
       setIsDeleting(false);
     }
   };
@@ -203,14 +195,14 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
         {/* System Stats Section */}
         <section className="lg:col-span-2 bg-[#F6E6C2] text-black p-10 rounded-[40px] shadow-2xl relative overflow-hidden">
            <div className="absolute top-0 right-0 p-16 opacity-5 text-[#8B6B2E]">
-              <svg width="200" height="200" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              <svg width="200" height="200" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
            </div>
            
            <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-end gap-10">
               <div className="space-y-6">
                  <div>
                     <h3 className="text-xl font-serif-brand font-bold uppercase tracking-tight text-black">System Status: Operational</h3>
-                    <p className="text-[9px] font-black uppercase tracking-[0.4em] opacity-60 mt-1">v3.1.0 • Enterprise License Active</p>
+                    <p className="text-[9px] font-black uppercase tracking-[0.4em] opacity-60 mt-1">v3.2.0 • Enterprise License Active</p>
                  </div>
                  <div className="flex gap-8">
                     <div>
@@ -223,7 +215,7 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
                     </div>
                     <div>
                        <p className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">Storage</p>
-                       <p className="text-3xl font-serif-brand font-bold text-black">12%</p>
+                       <p className="text-3xl font-serif-brand font-bold text-black">--</p>
                     </div>
                  </div>
               </div>
@@ -234,7 +226,7 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
                       onClick={() => setShowDeleteConfirm(true)}
                       className="w-full bg-black text-[#F6E6C2] border border-black/10 px-8 py-4 rounded-2xl font-black uppercase text-[9px] tracking-widest transition-all hover:bg-zinc-800 shadow-xl"
                     >
-                      Cancel Organisation
+                      Delete Organisation
                     </button>
                     <p className="text-[7px] font-black text-black/30 uppercase tracking-widest">© 2024 Reset Hospitality Studio. All rights reserved.</p>
                  </div>
