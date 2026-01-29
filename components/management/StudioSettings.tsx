@@ -15,9 +15,15 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
   const [isSaving, setIsSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [systemStatus, setSystemStatus] = useState<{ persistenceActive: boolean, version: string } | null>(null);
 
   useEffect(() => {
     setFormData(organization);
+    // Check system status
+    fetch('/api/system/status')
+      .then(res => res.json())
+      .then(data => setSystemStatus(data))
+      .catch(err => console.warn('System status check failed', err));
   }, [organization]);
 
   const isDirty = useMemo(() => {
@@ -178,14 +184,21 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
         {/* System Stats Section */}
         <section className="lg:col-span-2 bg-[#F6E6C2] text-black p-10 rounded-[40px] shadow-2xl relative overflow-hidden">
            <div className="absolute top-0 right-0 p-16 opacity-5 text-[#8B6B2E]">
-              <svg width="200" height="200" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              <svg width="200" height="200" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
            </div>
            
            <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-end gap-10">
               <div className="space-y-6">
                  <div>
                     <h3 className="text-xl font-serif-brand font-bold uppercase tracking-tight text-black">System Status: Operational</h3>
-                    <p className="text-[9px] font-black uppercase tracking-[0.4em] opacity-60 mt-1">v3.2.0 • Enterprise License Active</p>
+                    <div className="flex gap-4 mt-2">
+                       <p className="text-[9px] font-black uppercase tracking-[0.4em] opacity-60">v{systemStatus?.version || '3.2.0'} • Enterprise License</p>
+                       {systemStatus && (
+                         <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${systemStatus.persistenceActive ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
+                           STORAGE: {systemStatus.persistenceActive ? 'PERSISTENT' : 'EPHEMERAL (WARNING)'}
+                         </span>
+                       )}
+                    </div>
                  </div>
                  <div className="flex gap-8">
                     <div>
@@ -198,7 +211,7 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
                     </div>
                     <div>
                        <p className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">Storage</p>
-                       <p className="text-3xl font-serif-brand font-bold text-black">--</p>
+                       <p className="text-3xl font-serif-brand font-bold text-black">{systemStatus?.persistenceActive ? 'SECURE' : 'TEMP'}</p>
                     </div>
                  </div>
               </div>

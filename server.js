@@ -25,13 +25,30 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'dist')));
 
 // --- SQLITE DATABASE SETUP ---
-// We use a persistent volume path if available (Railway), otherwise local 'data' folder
-const DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH || path.join(__dirname, 'data');
+// Robustly determine the data directory.
+// 1. Prefer explicit env var if set
+// 2. Prefer /app/data if it exists (Standard Railway Mount)
+// 3. Fallback to local 'data' folder
+let DATA_DIR;
+if (process.env.RAILWAY_VOLUME_MOUNT_PATH) {
+  DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH;
+} else if (fs.existsSync('/app/data')) {
+  DATA_DIR = '/app/data';
+} else {
+  DATA_DIR = path.join(__dirname, 'data');
+}
 
 // Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  console.log(`[DB] Created data directory at ${DATA_DIR}`);
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    console.log(`[DB] Created data directory at ${DATA_DIR}`);
+  } catch (e) {
+    console.error(`[DB] Failed to create data directory at ${DATA_DIR}`, e);
+    // Fallback to temp if permission denied (emergency only)
+    DATA_DIR = '/tmp/data';
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
 }
 
 const DB_PATH = path.join(DATA_DIR, 'studio.db');
@@ -110,6 +127,17 @@ const createTransporter = () => {
 };
 
 // --- ROUTES ---
+
+// 0. SYSTEM STATUS (For Admin Dashboard)
+app.get('/api/system/status', (req, res) => {
+  const isPersistent = DATA_DIR.startsWith('/app/data') || !!process.env.RAILWAY_VOLUME_MOUNT_PATH;
+  res.json({
+    storagePath: DATA_DIR,
+    persistenceActive: isPersistent,
+    uploadsPath: UPLOADS_DIR,
+    version: '3.2.0'
+  });
+});
 
 // 1. SIGNUP
 app.post('/api/auth/signup', async (req, res) => {

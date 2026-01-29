@@ -15,7 +15,7 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
   const [search, setSearch] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [inviteToken, setInviteToken] = useState<string | null>(null); // Changed to Token only
   const [invitedUserEmail, setInvitedUserEmail] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   
@@ -81,15 +81,13 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
 
       setUsers(prev => [...prev, data.user]);
       
-      if (data.emailSent) {
-        setInvitedUserEmail(newUser.email);
-        setShowSuccessModal(true);
-        setInviteLink(null); 
-      } else {
-        // Fallback to manual if no email server configured
-        setInviteLink(data.inviteLink);
-        setInvitedUserEmail(newUser.email);
-      }
+      // Store just the token to avoid double-url issues
+      const token = data.user.activationToken;
+      setInviteToken(token);
+      setInvitedUserEmail(newUser.email);
+      
+      // Always show success modal now so they can copy the link immediately if needed
+      setShowSuccessModal(true);
 
       setShowAddModal(false);
       setNewUser({ name: '', email: '', role: 'cleaner' });
@@ -102,7 +100,8 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
   };
 
   const getActivationUrl = (code?: string) => {
-    const finalCode = code || inviteLink;
+    const finalCode = code || inviteToken;
+    if (!finalCode) return '';
     // Ensure we use the current window origin to avoid protocol mismatches
     return `${window.location.origin}/?code=${finalCode}`;
   };
@@ -254,35 +253,35 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
       )}
 
       {/* SUCCESS / MANUAL LINK MODAL */}
-      {(showSuccessModal || inviteLink) && (
+      {(showSuccessModal || inviteToken) && (
         <div className="fixed inset-0 bg-black/90 z-[600] flex items-center justify-center p-4 backdrop-blur-xl animate-in zoom-in-95">
            <div className="bg-[#FDF8EE] border border-green-500/30 rounded-[48px] w-full max-w-lg p-10 space-y-8 shadow-2xl relative text-center">
               <div className="space-y-3">
                  <h2 className="text-2xl font-serif-brand font-bold uppercase text-black tracking-tight">
-                    {showSuccessModal ? 'Invitation Sent' : 'Manual Dispatch'}
+                    {showSuccessModal ? 'Invitation Ready' : 'Manual Dispatch'}
                  </h2>
                  <p className="text-[10px] text-black/60 font-medium leading-relaxed max-w-xs mx-auto">
-                    {showSuccessModal 
-                      ? `An email has been sent to ${invitedUserEmail}.`
-                      : "Email server not active. Please copy and share this link manually:"
+                    {isSending 
+                      ? `An email attempt was made for ${invitedUserEmail}.`
+                      : "Please copy and share this activation link manually:"
                     }
                  </p>
               </div>
 
-              {inviteLink && (
+              {inviteToken && (
                 <div className="bg-white p-4 rounded-xl border border-gray-200 break-all text-[10px] font-mono select-all text-left">
                     {getActivationUrl()}
                 </div>
               )}
 
               <div className="flex gap-4 pt-2">
-                 {inviteLink && (
+                 {inviteToken && (
                     <button onClick={() => handleCopyLink()} className="flex-1 flex items-center justify-center gap-2 bg-[#C5A059] text-black font-black py-4 rounded-2xl uppercase tracking-[0.2em] text-[8px] hover:bg-[#d4b476] transition-all shadow-lg active:scale-95">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                         Copy Link
                     </button>
                  )}
-                 <button onClick={() => { setShowSuccessModal(false); setInviteLink(null); }} className="flex-1 bg-white border border-gray-200 text-black font-black py-4 rounded-2xl uppercase tracking-[0.2em] text-[8px] hover:bg-gray-50 transition-all shadow-sm active:scale-95">
+                 <button onClick={() => { setShowSuccessModal(false); setInviteToken(null); }} className="flex-1 bg-white border border-gray-200 text-black font-black py-4 rounded-2xl uppercase tracking-[0.2em] text-[8px] hover:bg-gray-50 transition-all shadow-sm active:scale-95">
                     Close
                  </button>
               </div>

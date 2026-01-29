@@ -36,24 +36,43 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
   // Check for invitation code on mount
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const code = params.get('code');
+    let code = params.get('code');
     
     if (code) {
+      // SMART FIX: If code looks like a URL (double link bug), extract the real code
+      if (code.includes('?code=')) {
+         try {
+            const url = new URL(code);
+            const realCode = url.searchParams.get('code');
+            if (realCode) code = realCode;
+         } catch (e) {
+            // If parsing fails, try simple split
+            const parts = code.split('?code=');
+            if (parts.length > 1) code = parts[1];
+         }
+      }
+
       setIsVerifyingCode(true);
       setErrorMsg(null);
 
-      // Robust fetch that handles non-JSON responses (like 500/404 HTML pages) without crashing
       fetch(`/api/auth/verify-invite?code=${code}`)
         .then(async (res) => {
             const text = await res.text();
+            let data;
             try {
-                const data = JSON.parse(text);
-                if (!res.ok) throw new Error(data.error || 'Invalid code');
-                return data;
+                // Try to parse the response as JSON
+                data = JSON.parse(text);
             } catch (e) {
-                // If JSON parse fails, it's likely an HTML error page from the server
+                // If it fails, the server crashed and sent HTML (500/404 page)
                 throw new Error('Server connection error. Please try again.');
             }
+            
+            // If the server sent a valid JSON error (e.g., { error: "Invalid link" })
+            if (!res.ok) {
+                throw new Error(data.error || 'Invalid or expired link');
+            }
+            
+            return data;
         })
         .then(data => {
           if (data.email) {
@@ -66,9 +85,8 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
         })
         .catch((err) => {
           console.error("Verification Error:", err);
-          // Gracefully handle error in UI, do NOT alert()
           setErrorMsg(err.message || "Invitation link expired or invalid.");
-          // Clear the URL so a refresh doesn't trigger the loop again
+          // Clear URL to prevent refresh loops, but show the specific error
           window.history.replaceState({}, document.title, "/");
         })
         .finally(() => setIsVerifyingCode(false));
@@ -146,6 +164,14 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
     } catch (err: any) {
       setErrorMsg(err.message);
       setIsLoading(false);
+    }
+  };
+
+  const handleFactoryReset = () => {
+    if (confirm("Reset Application? This will clear all local data and refresh the page. Your account on the server will not be deleted.")) {
+      localStorage.clear();
+      sessionStorage.clear();
+      window.location.href = "/";
     }
   };
 
@@ -275,13 +301,20 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
             <div className="pt-2 space-y-6">
               <button type="submit" disabled={isLoading} className={buttonStyle}>{isLoading ? 'VERIFYING...' : 'ENTER STUDIO'}</button>
               
-              <div className="text-center border-t border-black/5 pt-6">
+              <div className="text-center border-t border-black/5 pt-6 space-y-4">
                 <button 
                   type="button" 
                   onClick={onSignupClick}
                   className="bg-black/5 hover:bg-black/10 text-black/60 font-black px-6 py-3 rounded-xl text-[9px] uppercase tracking-widest transition-all w-full"
                 >
                   Register New Studio
+                </button>
+                <button 
+                  type="button" 
+                  onClick={handleFactoryReset}
+                  className="text-black/20 hover:text-red-500 text-[8px] font-black uppercase tracking-widest transition-all underline"
+                >
+                  Factory Reset Application
                 </button>
               </div>
             </div>
