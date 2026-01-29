@@ -45,9 +45,20 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
     try {
       // Retrieve the persistent Org ID from local session storage
       const storedOrg = localStorage.getItem('studio_org_settings');
+      let orgId = null;
+
+      if (storedOrg) {
+        try {
+          const orgData = JSON.parse(storedOrg);
+          orgId = orgData.id;
+        } catch (e) {
+          console.error("Failed to parse org data from local storage", e);
+        }
+      }
       
-      if (!storedOrg) {
-         // Fallback if session is corrupted: just wipe client side
+      if (!orgId) {
+         console.warn("No Organization ID found in session. Clearing local state only.");
+         // Fallback: just wipe client side if we can't find ID
          localStorage.clear();
          sessionStorage.clear();
          window.location.href = window.location.origin;
@@ -55,8 +66,7 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
          return;
       }
 
-      const orgData = JSON.parse(storedOrg);
-      const orgId = orgData.id;
+      console.log("Sending delete request for:", orgId);
 
       // Call Backend to perform actual deletion
       const res = await fetch('/api/auth/delete-organization', {
@@ -66,8 +76,11 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
       });
 
       if (!res.ok) {
-        throw new Error('Server failed to delete organization.');
+        throw new Error('Server returned an error during deletion.');
       }
+
+      const data = await res.json();
+      console.log("Deletion response:", data);
 
       // Complete data wipe for the entire application to reset to factory state
       localStorage.clear();

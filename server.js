@@ -218,19 +218,34 @@ app.post('/api/auth/activate', (req, res) => {
   res.json({ success: true, user: updatedUser, organization: db.organizations[foundOrgIndex] });
 });
 
-// NEW ENDPOINT: Delete Organization
+// NEW ENDPOINT: Delete Organization with extensive logging
 app.post('/api/auth/delete-organization', (req, res) => {
   const { orgId } = req.body;
+  console.log(`[DELETE] Request received for OrgID: ${orgId}`);
+  
+  if (!orgId) {
+    return res.status(400).json({ error: 'Missing Org ID' });
+  }
+
   const db = getDb();
   
   const initialLength = db.organizations.length;
-  db.organizations = db.organizations.filter(o => o.id !== orgId);
+  console.log(`[DELETE] Current organizations count: ${initialLength}`);
 
-  if (db.organizations.length === initialLength) {
-    return res.status(404).json({ error: 'Organization not found' });
+  db.organizations = db.organizations.filter(o => o.id !== orgId);
+  const newLength = db.organizations.length;
+
+  console.log(`[DELETE] New organizations count: ${newLength}`);
+
+  if (newLength === initialLength) {
+    console.log(`[DELETE] FAILED - OrgID ${orgId} not found in database.`);
+    // We return success anyway to allow client to detach from a potentially phantom ID
+    // but we log it as a warning.
+    return res.json({ success: true, message: 'Organization not found, but client detached.' });
   }
 
   saveDb(db);
+  console.log(`[DELETE] SUCCESS - Organization ${orgId} permanently removed.`);
   res.json({ success: true });
 });
 
@@ -242,6 +257,8 @@ app.post('/api/sync', (req, res) => {
   if (orgIndex === -1) return res.status(404).json({ error: 'Organization not found' });
 
   const org = db.organizations[orgIndex];
+  
+  // Sync all data keys
   if(data.users) org.users = data.users;
   if(data.shifts) org.shifts = data.shifts;
   if(data.properties) org.properties = data.properties;
@@ -249,6 +266,7 @@ app.post('/api/sync', (req, res) => {
   if(data.inventoryItems) org.inventoryItems = data.inventoryItems;
   if(data.manualTasks) org.manualTasks = data.manualTasks;
   if(data.supplyRequests) org.supplyRequests = data.supplyRequests;
+  if(data.organization) org.settings = data.organization; // IMPORTANT: Sync settings changes
   
   db.organizations[orgIndex] = org;
   saveDb(db);
