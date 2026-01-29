@@ -1,7 +1,8 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { TabType, UserRole } from '../types';
 import { Icons } from '../constants';
+import DownloadAppModal from './DownloadAppModal';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -13,7 +14,17 @@ interface LayoutProps {
   currentUserId?: string;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role, onLogout, authorizedLaundryUserIds = [], currentUserId = '' }) => {
+const Layout = ({ 
+  children, 
+  activeTab, 
+  setActiveTab, 
+  role, 
+  onLogout, 
+  authorizedLaundryUserIds = [], 
+  currentUserId = '' 
+}: LayoutProps) => {
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
+  
   const isLaundryTabVisible = 
     role === 'admin' || 
     (['supervisor', 'driver'].includes(role) && (authorizedLaundryUserIds || []).includes(currentUserId));
@@ -142,6 +153,8 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role
 
   return (
     <div className="flex h-screen overflow-hidden bg-white text-[#1A1A1A]">
+      {showDownloadModal && <DownloadAppModal onClose={() => setShowDownloadModal(false)} />}
+      
       <aside className="hidden md:flex flex-col w-72 bg-[#A68342] border-r border-black/5 text-black shadow-2xl">
         <div className="p-10 pb-6">
           <h1 className="font-serif-brand flex flex-col tracking-tight uppercase leading-none">
@@ -170,7 +183,14 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role
           ))}
         </nav>
 
-        <div className="p-6 space-y-4">
+        <div className="p-6 space-y-3">
+          <button 
+            onClick={() => setShowDownloadModal(true)}
+            className="w-full py-4 bg-black/5 hover:bg-black/10 border border-black/5 text-black font-black rounded-xl text-[10px] uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            INSTALL APP
+          </button>
           <button 
             onClick={onLogout}
             className="w-full py-4 bg-black/10 hover:bg-black/20 border border-black/10 text-black font-black rounded-xl text-[10px] uppercase tracking-[0.2em] transition-all"
@@ -186,13 +206,22 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role
             <span className="text-black/30 text-[10px] font-black tracking-[0.4em]">RESET</span>
             <span className="text-black font-bold text-xl">HOSPITALITY</span>
           </h1>
-          <button 
-            onClick={onLogout}
-            className="p-2.5 bg-red-50 text-red-600 rounded-xl active:scale-95 transition-all border border-red-100"
-            aria-label="Logout"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setShowDownloadModal(true)}
+              className="p-2.5 bg-black/5 text-black/60 rounded-xl active:scale-95 transition-all border border-black/5"
+              aria-label="Download App"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </button>
+            <button 
+              onClick={onLogout}
+              className="p-2.5 bg-red-50 text-red-600 rounded-xl active:scale-95 transition-all border border-red-100"
+              aria-label="Logout"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            </button>
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto p-6 md:p-10 pb-28 custom-scrollbar">

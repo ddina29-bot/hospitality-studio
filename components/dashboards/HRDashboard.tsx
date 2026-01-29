@@ -54,6 +54,12 @@ const HRDashboard: React.FC<HRDashboardProps> = ({
         </div>
         <div className="flex gap-3 w-full md:w-auto">
           <button 
+            onClick={() => setActiveTab('users')}
+            className="flex-1 md:flex-none bg-white border border-gray-200 text-black font-black px-6 py-3 rounded-2xl text-[9px] uppercase tracking-widest shadow-sm active:scale-95 transition-all hover:bg-gray-50"
+          >
+            ADD USER
+          </button>
+          <button 
             onClick={() => setShowAnnouncementModal(true)}
             className="flex-1 md:flex-none bg-black text-[#C5A059] font-black px-6 py-3 rounded-2xl text-[9px] uppercase tracking-widest shadow-xl active:scale-95 transition-all"
           >

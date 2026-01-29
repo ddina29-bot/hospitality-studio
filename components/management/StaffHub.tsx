@@ -15,9 +15,8 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast }) => {
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   
   const currentUser = JSON.parse(localStorage.getItem('current_user_obj') || '{}');
-  const isAdmin = currentUser.role === 'admin';
-  const isHousekeeping = currentUser.role === 'housekeeping';
-  const canManage = isAdmin || isHousekeeping;
+  // UPDATED: Added 'hr' to permissions list
+  const canManage = ['admin', 'housekeeping', 'hr'].includes(currentUser.role);
 
   const [newUser, setNewUser] = useState<Partial<User>>({ name: '', email: '', role: 'cleaner' });
 
@@ -40,10 +39,6 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast }) => {
     if (!newUser.email || !newUser.name) return;
 
     try {
-      // Find org ID. In a real scenario this comes from props or context.
-      // For now, we fetch it from the potentially stored org settings if available, or rely on server context
-      // Note: The App component stores org settings in localStorage 'studio_org_settings' for persistence across refreshes if needed,
-      // but ideally we passed it down. Let's grab it from localStorage if available as a fallback.
       const savedOrg = JSON.parse(localStorage.getItem('studio_org_settings') || '{}');
       
       const response = await fetch('/api/auth/invite', {
@@ -82,7 +77,7 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast }) => {
         
         {canManage && (
             <button onClick={() => setShowAddModal(true)} className="bg-[#C5A059] text-black px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl whitespace-nowrap active:scale-95 transition-all hover:bg-[#d4b476]">
-              INVITE MEMBER
+              ADD USER
             </button>
         )}
       </header>
@@ -158,6 +153,8 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast }) => {
                           <option value="driver">DRIVER</option>
                           <option value="admin">ADMIN</option>
                           <option value="housekeeping">HOUSEKEEPING</option>
+                          <option value="hr">HR</option>
+                          <option value="maintenance">MAINTENANCE</option>
                        </select>
                     </div>
                  </div>
