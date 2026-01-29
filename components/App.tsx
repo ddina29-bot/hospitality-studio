@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
 import CleanerPortal from './components/CleanerPortal';
@@ -38,6 +38,11 @@ const INITIAL_SUPPLY_CATALOG: SupplyItem[] = [
 ];
 
 const App: React.FC = () => {
+  // Sync State
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSynced, setLastSynced] = useState<Date | null>(null);
+  const isFirstLoad = useRef(true);
+
   const [user, setUser] = useState<User | null>(() => {
     const saved = localStorage.getItem('current_user_obj');
     return saved ? JSON.parse(saved) : null;
@@ -118,22 +123,94 @@ const App: React.FC = () => {
   const [deepLinkShiftId, setDeepLinkShiftId] = useState<string | null>(null);
   const [savedTaskNames, setSavedTaskNames] = useState<string[]>(['Extra Towels', 'Deep Clean Fridge', 'Balcony Sweep']);
   const [activationUser, setActivationUser] = useState<User | null>(null);
-  
-  // New State for Auth Flow
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
 
-  // Persistence Effects
-  useEffect(() => { localStorage.setItem('studio_master_users_v2', JSON.stringify(users)); }, [users]);
-  useEffect(() => { localStorage.setItem('studio_shifts_v2', JSON.stringify(shifts)); }, [shifts]);
-  useEffect(() => { localStorage.setItem('studio_clients_v2', JSON.stringify(clients)); }, [clients]);
-  useEffect(() => { localStorage.setItem('studio_properties_v2', JSON.stringify(properties)); }, [properties]);
-  useEffect(() => { localStorage.setItem('studio_supply_requests_v2', JSON.stringify(supplyRequests)); }, [supplyRequests]);
-  useEffect(() => { localStorage.setItem('studio_inventory_v2', JSON.stringify(inventoryItems)); }, [inventoryItems]);
-  useEffect(() => { localStorage.setItem('studio_manual_tasks_v2', JSON.stringify(manualTasks)); }, [manualTasks]);
-  useEffect(() => { localStorage.setItem('studio_leave_requests_v2', JSON.stringify(leaveRequests)); }, [leaveRequests]);
-  useEffect(() => { localStorage.setItem('studio_invoices_v2', JSON.stringify(invoices)); }, [invoices]);
-  useEffect(() => { localStorage.setItem('studio_tutorials_v2', JSON.stringify(tutorials)); }, [tutorials]);
-  useEffect(() => { localStorage.setItem('studio_org_settings', JSON.stringify(organization)); }, [organization]);
+  // --- CLOUD SYNC LOGIC ---
+
+  // 1. Fetch Data on Mount
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setIsSyncing(true);
+        const res = await fetch('/api/sync');
+        if (res.ok) {
+          const cloudData = await res.json();
+          if (cloudData) {
+            // If cloud has data, hydrate state (Source of Truth)
+            if (cloudData.users) setUsers(cloudData.users);
+            if (cloudData.shifts) setShifts(cloudData.shifts);
+            if (cloudData.properties) setProperties(cloudData.properties);
+            if (cloudData.clients) setClients(cloudData.clients);
+            if (cloudData.supplyRequests) setSupplyRequests(cloudData.supplyRequests);
+            if (cloudData.inventoryItems) setInventoryItems(cloudData.inventoryItems);
+            if (cloudData.manualTasks) setManualTasks(cloudData.manualTasks);
+            if (cloudData.leaveRequests) setLeaveRequests(cloudData.leaveRequests);
+            if (cloudData.invoices) setInvoices(cloudData.invoices);
+            if (cloudData.tutorials) setTutorials(cloudData.tutorials);
+            if (cloudData.organization) setOrganization(cloudData.organization);
+            setLastSynced(new Date());
+          }
+        }
+      } catch (e) {
+        console.error("Sync fetch failed, using local storage", e);
+      } finally {
+        setIsSyncing(false);
+        isFirstLoad.current = false;
+      }
+    };
+    fetchData();
+  }, []);
+
+  // 2. Save Data on Change (Debounced)
+  useEffect(() => {
+    // Skip save on initial load to prevent overwriting cloud with empty/stale local state immediately
+    if (isFirstLoad.current) return;
+
+    // Persist to Local Storage immediately
+    localStorage.setItem('studio_master_users_v2', JSON.stringify(users));
+    localStorage.setItem('studio_shifts_v2', JSON.stringify(shifts));
+    localStorage.setItem('studio_clients_v2', JSON.stringify(clients));
+    localStorage.setItem('studio_properties_v2', JSON.stringify(properties));
+    localStorage.setItem('studio_supply_requests_v2', JSON.stringify(supplyRequests));
+    localStorage.setItem('studio_inventory_v2', JSON.stringify(inventoryItems));
+    localStorage.setItem('studio_manual_tasks_v2', JSON.stringify(manualTasks));
+    localStorage.setItem('studio_leave_requests_v2', JSON.stringify(leaveRequests));
+    localStorage.setItem('studio_invoices_v2', JSON.stringify(invoices));
+    localStorage.setItem('studio_tutorials_v2', JSON.stringify(tutorials));
+    localStorage.setItem('studio_org_settings', JSON.stringify(organization));
+
+    // Debounce Cloud Sync
+    const timeout = setTimeout(async () => {
+      try {
+        setIsSyncing(true);
+        await fetch('/api/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            users,
+            shifts,
+            properties,
+            clients,
+            supplyRequests,
+            inventoryItems,
+            manualTasks,
+            leaveRequests,
+            invoices,
+            tutorials,
+            organization
+          })
+        });
+        setLastSynced(new Date());
+      } catch (e) {
+        console.error("Cloud save failed", e);
+      } finally {
+        setIsSyncing(false);
+      }
+    }, 2000); // 2 second debounce
+
+    return () => clearTimeout(timeout);
+  }, [users, shifts, properties, clients, supplyRequests, inventoryItems, manualTasks, leaveRequests, invoices, tutorials, organization]);
+
 
   const handleLogin = (u: User) => {
     if (u.status === 'active') {
@@ -258,7 +335,7 @@ const App: React.FC = () => {
             />
           );
         }
-        return <CleanerPortal shifts={shifts} setShifts={setShifts} properties={properties} users={users} initialSelectedShiftId={deepLinkShiftId} onConsumedDeepLink={() => setDeepLinkShiftId(null)} authorizedInspectorIds={authorizedInspectorIds} />;
+        return <CleanerPortal shifts={shifts} setShifts={setShifts} properties={properties} users={users} initialSelectedShiftId={deepLinkShiftId} onConsumedDeepLink={() => setDeepLinkShiftId(null)} authorizedInspectorIds={authorizedInspectorIds} onClosePortal={() => setActiveTab('dashboard')} />;
       
       case 'laundry':
         return <LaundryDashboard user={user} setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} setShifts={setShifts} users={users} properties={properties} onTogglePrepared={(id) => setShifts(prev => prev.map(s => s.id === id ? { ...s, isLaundryPrepared: !s.isLaundryPrepared } : s))} authorizedLaundryUserIds={authorizedLaundryUserIds} onToggleAuthority={(id) => setAuthorizedLaundryUserIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])} />;
@@ -304,7 +381,25 @@ const App: React.FC = () => {
 
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab} role={user.role} onLogout={handleLogout} currentUserId={user.id} authorizedLaundryUserIds={authorizedLaundryUserIds}>
+      {/* Cloud Sync Status Indicator */}
+      {user && (
+        <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-full shadow-lg border border-gray-100 text-[9px] font-black uppercase tracking-widest text-black/40 pointer-events-none md:pointer-events-auto">
+          {isSyncing ? (
+            <>
+              <div className="w-1.5 h-1.5 rounded-full bg-[#C5A059] animate-pulse"></div>
+              <span>Syncing...</span>
+            </>
+          ) : (
+            <>
+              <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
+              <span>Cloud Active {lastSynced ? `• ${lastSynced.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}` : ''}</span>
+            </>
+          )}
+        </div>
+      )}
+      
       {renderContent()}
+      
       {showTaskModal && (
         <AddTaskModal 
           onClose={() => setShowTaskModal(false)} 

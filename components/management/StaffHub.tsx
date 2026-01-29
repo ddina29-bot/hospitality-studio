@@ -21,7 +21,6 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, onPreviewActivatio
   const isAdmin = currentUser.role === 'admin';
   const isHousekeeping = currentUser.role === 'housekeeping';
   
-  // Both Admin and Housekeeping can manage (invite) members
   const canManage = isAdmin || isHousekeeping;
 
   const [newUser, setNewUser] = useState<Partial<User>>({ 
@@ -37,7 +36,6 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, onPreviewActivatio
 
   const activeUser = useMemo(() => users.find(u => u.id === selectedId), [users, selectedId]);
 
-  // CATEGORY 1: ACTIVE PERSONNEL (Status: Active) - Grouped by function for operational clarity
   const activeStaffGroups = useMemo(() => {
     const filtered = users.filter(u => u.status === 'active' && u.name.toLowerCase().includes(search.toLowerCase()));
     
@@ -57,12 +55,10 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, onPreviewActivatio
     ];
   }, [users, search]);
 
-  // CATEGORY 2: PENDING TO JOIN (Status: Pending)
   const pendingUsers = useMemo(() => {
     return users.filter(u => u.status === 'pending' && u.name.toLowerCase().includes(search.toLowerCase()));
   }, [users, search]);
 
-  // CATEGORY 3: SUSPENDED ACCOUNTS (Status: Inactive)
   const suspendedUsers = useMemo(() => {
     return users.filter(u => u.status === 'inactive' && u.name.toLowerCase().includes(search.toLowerCase()));
   }, [users, search]);
@@ -83,7 +79,6 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, onPreviewActivatio
     e.preventDefault();
     if (!newUser.email || !newUser.name) return;
     
-    // Safety check for role based on the inviter
     const roleToAssign = isHousekeeping ? 'cleaner' : (newUser.role || 'cleaner');
 
     const createdUser: User = { 
@@ -99,7 +94,7 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, onPreviewActivatio
     setShowAddModal(false);
     setNewUser({ name: '', email: '', role: 'cleaner' });
     setShowInvitePreview(createdUser);
-    if (showToast) showToast('INVITATION DISPATCHED', 'success');
+    if (showToast) showToast('PERSONNEL ADDED', 'success');
   };
 
   const handleSaveEdit = () => {
@@ -139,7 +134,7 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, onPreviewActivatio
               onClick={() => setShowAddModal(true)} 
               className="bg-[#C5A059] text-black px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl whitespace-nowrap active:scale-95 transition-all hover:bg-[#d4b476]"
             >
-              INVITE MEMBER
+              ADD MEMBER
             </button>
           )}
         </div>
@@ -225,7 +220,7 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, onPreviewActivatio
           </section>
         )}
 
-        {/* 3. SUSPENDED USERS SECTION (Stored at the bottom) */}
+        {/* 3. SUSPENDED USERS SECTION */}
         {suspendedUsers.length > 0 && (
           <section className="space-y-4 pt-16 border-t border-black/5">
             <div className="flex items-center gap-4 mb-2">
@@ -274,8 +269,8 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, onPreviewActivatio
               <button type="button" onClick={() => setShowAddModal(false)} className="absolute top-10 right-10 text-black/20 hover:text-black transition-colors"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
               
               <div className="space-y-2 text-center md:text-left">
-                 <h2 className="text-2xl font-serif-brand font-bold uppercase text-black">Member Invite</h2>
-                 <p className="text-[8px] font-black text-[#A68342] uppercase tracking-[0.4em]">Step 1: Identity & Role</p>
+                 <h2 className="text-2xl font-serif-brand font-bold uppercase text-black">Member Registration</h2>
+                 <p className="text-[8px] font-black text-[#A68342] uppercase tracking-[0.4em]">Identity & Role</p>
               </div>
 
               <form onSubmit={handleAdd} className="space-y-6">
@@ -314,13 +309,13 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, onPreviewActivatio
                     </div>
                  </div>
 
-                 <button type="submit" className="w-full bg-black text-[#C5A059] font-black py-5 rounded-2xl uppercase tracking-[0.4em] text-[10px] shadow-2xl active:scale-95 transition-all">GENERATE SECURE LINK</button>
+                 <button type="submit" className="w-full bg-black text-[#C5A059] font-black py-5 rounded-2xl uppercase tracking-[0.4em] text-[10px] shadow-2xl active:scale-95 transition-all">REGISTER & GENERATE ACCESS</button>
               </form>
            </div>
         </div>
       )}
 
-      {/* INVITATION PREVIEW MODAL */}
+      {/* INVITATION CONFIRMATION MODAL */}
       {showInvitePreview && (
         <div className="fixed inset-0 bg-black/90 z-[600] flex items-center justify-center p-4 backdrop-blur-xl">
            <div className="bg-[#FDF8EE] border border-green-500/30 rounded-[48px] w-full max-w-lg p-10 space-y-10 shadow-2xl relative text-center">
@@ -328,29 +323,34 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, onPreviewActivatio
                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
               </div>
               <div className="space-y-2">
-                 <h2 className="text-2xl font-serif-brand font-bold uppercase text-black">Invitation Vector Ready</h2>
-                 <p className="text-[10px] text-black/40 font-black uppercase tracking-widest leading-relaxed">Unique access link generated for <br/><span className="text-black font-bold">{showInvitePreview.name}</span></p>
+                 <h2 className="text-2xl font-serif-brand font-bold uppercase text-black">Member Added to Directory</h2>
+                 <p className="text-[10px] text-black/40 font-black uppercase tracking-widest leading-relaxed">Profile initialized for <span className="text-black font-bold">{showInvitePreview.name}</span></p>
               </div>
 
-              <div className="bg-white border border-gray-200 p-6 rounded-3xl space-y-4">
-                 <p className="text-[8px] font-black text-black/20 uppercase tracking-[0.4em]">Internal Simulation Activation Link</p>
-                 <div className="bg-gray-50 p-4 rounded-xl font-mono text-[9px] text-black break-all text-left border border-black/5 select-all cursor-pointer">
-                    https://reset.studio/activate?id={showInvitePreview.id}
+              <div className="text-left bg-white border border-gray-200 p-6 rounded-3xl space-y-4">
+                 <p className="text-[8px] font-black text-black/20 uppercase tracking-[0.4em]">Onboarding Protocol</p>
+                 <div className="space-y-3">
+                    <div className="flex gap-3">
+                       <span className="w-5 h-5 rounded-full bg-black text-[#C5A059] flex items-center justify-center text-[9px] font-bold shrink-0">1</span>
+                       <p className="text-[10px] text-black/70 font-medium">Instruct the new staff member to visit the main Studio login page.</p>
+                    </div>
+                    <div className="flex gap-3">
+                       <span className="w-5 h-5 rounded-full bg-black text-[#C5A059] flex items-center justify-center text-[9px] font-bold shrink-0">2</span>
+                       <p className="text-[10px] text-black/70 font-medium">They must enter their <strong>Full Legal Name</strong> exactly as registered.</p>
+                    </div>
+                    <div className="flex gap-3">
+                       <span className="w-5 h-5 rounded-full bg-black text-[#C5A059] flex items-center justify-center text-[9px] font-bold shrink-0">3</span>
+                       <p className="text-[10px] text-black/70 font-medium">The system will verify their identity and guide them to set a secure password.</p>
+                    </div>
                  </div>
               </div>
 
               <div className="space-y-3 pt-4">
                  <button 
-                  onClick={() => onPreviewActivation?.(showInvitePreview)}
+                  onClick={() => setShowInvitePreview(null)}
                   className="w-full bg-black text-[#C5A059] font-black py-5 rounded-2xl uppercase tracking-[0.4em] text-[10px] shadow-xl active:scale-95 transition-all"
                  >
-                    SIMULATE STAFF ACTIVATION
-                 </button>
-                 <button 
-                  onClick={() => setShowInvitePreview(null)}
-                  className="w-full text-black/30 text-[9px] font-black uppercase tracking-widest hover:text-black transition-all"
-                 >
-                    Finish and Dismiss
+                    DONE
                  </button>
               </div>
            </div>
@@ -424,7 +424,7 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, onPreviewActivatio
                             <input className={inputStyle} value={editForm.niNumber || ''} onChange={e => setEditForm({...editForm, niNumber: e.target.value})} placeholder="7654321A" />
                           </div>
                           <div><label className={labelStyle}>Payment Protocol</label><select className={inputStyle} value={editForm.paymentType || 'Per Hour'} onChange={e => setEditForm({...editForm, paymentType: e.target.value as PaymentType})}><option value="Fixed Wage">Fixed Wage</option><option value="Per Hour">Per Hour</option><option value="Per Clean">Per Clean</option></select></div>
-                          <div><label className={labelStyle}>Base Rate (€)</label><input type="number" step="0.01" className={inputStyle} value={editForm.payRate || 0} onChange={e => setEditForm({...editForm, payRate: parseFloat(e.target.value)})} /></div>
+                          <div><label className={labelStyle}>Base Rate (€)</label><input type="number" step="0.01" className={inputStyle} value={editForm.payRate || 0} onChange={e => setEditForm({...editForm, payRate: parseFloat(e.target.value) || 0})} /></div>
                           <div className="pt-2">
                             <label className="flex items-center gap-3 cursor-pointer group">
                               <input type="checkbox" className="w-5 h-5 accent-[#C5A059] rounded border-gray-300" checked={editForm.isParent || false} onChange={e => setEditForm({...editForm, isParent: e.target.checked})} />

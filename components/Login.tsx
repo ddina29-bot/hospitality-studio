@@ -15,12 +15,8 @@ const Login: React.FC<LoginProps> = ({ onLogin, users, setUsers, initialActivati
   const [password, setPassword] = useState('');
   const [isPendingFlow, setIsPendingFlow] = useState(false);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
-  const [resetSent, setResetSent] = useState(false);
   const [pendingUser, setPendingUser] = useState<User | null>(null);
   
-  // Separate state for password recovery
-  const [recoveryEmail, setRecoveryEmail] = useState('');
-
   const [newPassword, setNewPassword] = useState('');
   const [newIdNumber, setNewIdNumber] = useState('');
   const [newPhone, setNewPhone] = useState('');
@@ -78,29 +74,23 @@ const Login: React.FC<LoginProps> = ({ onLogin, users, setUsers, initialActivati
         <div className="max-w-[420px] w-full z-10 space-y-8 animate-in slide-in-from-bottom-10 duration-700">
           <div className="text-center mb-6">
             <span className="font-serif-brand text-4xl text-[#A68342] leading-none mb-3 tracking-tighter">RECOVERY</span>
-            <h1 className="text-xl font-serif-brand text-black tracking-[0.1em] uppercase font-bold mt-2">RESET PASSWORD</h1>
+            <h1 className="text-xl font-serif-brand text-black tracking-[0.1em] uppercase font-bold mt-2">RESET ACCESS</h1>
           </div>
-          {!resetSent ? (
-            <form onSubmit={(e) => { e.preventDefault(); setResetSent(true); }} className={cardStyle}>
-              <div className="space-y-2">
-                <label className={labelStyle}>Registered Work Email</label>
-                <input type="email" placeholder="name@reset.studio" value={recoveryEmail} onChange={(e) => setRecoveryEmail(e.target.value)} required className={inputStyle} />
-              </div>
-              <div className="space-y-4 pt-2">
-                <button type="submit" className={buttonStyle}>Send Recovery Link</button>
-                <button type="button" onClick={() => setIsForgotPassword(false)} className="w-full text-black/30 text-[8px] font-black uppercase tracking-[0.5em] hover:text-black transition-all">Return to Studio Portal</button>
-              </div>
-            </form>
-          ) : (
-            <div className="w-full bg-[#FDF8EE] p-12 rounded-[48px] border border-green-500/20 shadow-2xl relative space-y-8 text-center animate-in zoom-in-95 duration-500">
-               <div className="w-16 h-16 bg-green-500/5 border border-green-500/20 rounded-full flex items-center justify-center mx-auto text-green-600"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg></div>
-               <div className="space-y-2">
-                  <h3 className="text-lg font-serif-brand font-bold uppercase">RECOVERY VECTOR ACTIVE</h3>
-                  <p className="text-[10px] text-black/50 leading-relaxed italic">A verification link has been dispatched to inbox.</p>
-               </div>
-               <button onClick={() => { setIsForgotPassword(false); setResetSent(false); }} className="w-full bg-white border border-gray-100 text-black font-black py-4 rounded-xl text-[9px] uppercase tracking-widest hover:bg-gray-50 transition-all">BACK TO LOGIN</button>
-            </div>
-          )}
+          
+          <div className={cardStyle + " text-center"}>
+             <div className="w-16 h-16 bg-[#A68342]/10 border border-[#A68342]/20 rounded-full flex items-center justify-center mx-auto text-[#A68342] mb-4">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+             </div>
+             <div className="space-y-4">
+                <h3 className="text-lg font-serif-brand font-bold uppercase">Security Protocol</h3>
+                <p className="text-[10px] text-black/50 leading-relaxed italic">
+                   For security purposes, password resets must be authorized by your Studio Administrator or Manager. 
+                   <br/><br/>
+                   Please contact Administration directly to restore your access credentials.
+                </p>
+             </div>
+             <button onClick={() => setIsForgotPassword(false)} className="w-full bg-black text-white font-black py-4 rounded-2xl text-[9px] uppercase tracking-widest hover:bg-zinc-900 transition-all mt-6 shadow-lg">RETURN TO LOGIN</button>
+          </div>
         </div>
       </div>
     );
