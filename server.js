@@ -26,9 +26,6 @@ app.use(express.static(path.join(__dirname, 'dist')));
 
 // --- SQLITE DATABASE SETUP ---
 // Robustly determine the data directory.
-// 1. Prefer explicit env var if set
-// 2. Prefer /app/data if it exists (Standard Railway Mount)
-// 3. Fallback to local 'data' folder
 let DATA_DIR;
 if (process.env.RAILWAY_VOLUME_MOUNT_PATH) {
   DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH;
@@ -45,7 +42,6 @@ if (!fs.existsSync(DATA_DIR)) {
     console.log(`[DB] Created data directory at ${DATA_DIR}`);
   } catch (e) {
     console.error(`[DB] Failed to create data directory at ${DATA_DIR}`, e);
-    // Fallback to temp if permission denied (emergency only)
     DATA_DIR = '/tmp/data';
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
@@ -55,7 +51,6 @@ const DB_PATH = path.join(DATA_DIR, 'studio.db');
 const db = new Database(DB_PATH);
 
 // Create the single table to store organizations
-// We store the entire organization object as a JSON string in the 'data' column
 db.exec(`
   CREATE TABLE IF NOT EXISTS organizations (
     id TEXT PRIMARY KEY,
@@ -67,19 +62,16 @@ console.log(`✅ Connected to SQLite Database at ${DB_PATH}`);
 
 // --- HELPER FUNCTIONS ---
 
-// Helper to save org data
 const saveOrgToDb = (org) => {
   const stmt = db.prepare('INSERT OR REPLACE INTO organizations (id, data) VALUES (?, ?)');
   stmt.run(org.id, JSON.stringify(org));
 };
 
-// Helper to get org by ID
 const getOrgById = (id) => {
   const row = db.prepare('SELECT data FROM organizations WHERE id = ?').get(id);
   return row ? JSON.parse(row.data) : null;
 };
 
-// Helper to find org by user email (Scan all orgs - okay for <1000 orgs)
 const findOrgByUserEmail = (email) => {
   try {
     const stmt = db.prepare('SELECT data FROM organizations');
@@ -96,8 +88,7 @@ const findOrgByUserEmail = (email) => {
 };
 
 // --- FILE STORAGE (Images) ---
-const UPLOADS_DIR = path.join(DATA_DIR, 'uploads'); // Store uploads in the persistent volume too
-
+const UPLOADS_DIR = path.join(DATA_DIR, 'uploads'); 
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 const diskStorage = multer.diskStorage({
@@ -128,31 +119,26 @@ const createTransporter = () => {
 
 // --- ROUTES ---
 
-// 0. SYSTEM STATUS (For Admin Dashboard)
 app.get('/api/system/status', (req, res) => {
   const isPersistent = DATA_DIR.startsWith('/app/data') || !!process.env.RAILWAY_VOLUME_MOUNT_PATH;
   res.json({
     storagePath: DATA_DIR,
     persistenceActive: isPersistent,
     uploadsPath: UPLOADS_DIR,
-    version: '3.2.0'
+    version: '3.2.2'
   });
 });
 
 // 1. SIGNUP
 app.post('/api/auth/signup', async (req, res) => {
   const { adminUser, organization } = req.body;
-
   try {
     const existingOrg = findOrgByUserEmail(adminUser.email);
     if (existingOrg) {
       return res.status(400).json({ error: 'This email is already registered to an organization.' });
     }
-
     const newOrgId = `org-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
     const newAdminId = `admin-${Date.now()}`;
-
-    // Create the full object structure
     const newOrg = {
       id: newOrgId,
       settings: { ...organization },
@@ -161,10 +147,7 @@ app.post('/api/auth/signup', async (req, res) => {
       inventoryItems: [], manualTasks: [], leaveRequests: [], invoices: [], tutorials: [],
       timeEntries: [] 
     };
-
     saveOrgToDb(newOrg);
-    console.log(`[DB] Created new organization: ${newOrg.id}`);
-
     res.json({ success: true, user: newOrg.users[0], organization: newOrg });
   } catch (error) {
     console.error("Signup Error:", error);
@@ -175,18 +158,14 @@ app.post('/api/auth/signup', async (req, res) => {
 // 2. LOGIN
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
-
   try {
     const org = findOrgByUserEmail(email);
-    
     if (!org) return res.status(401).json({ error: 'User not found.' });
-
     const user = org.users.find(u => u.email.toLowerCase() === email.toLowerCase());
     
-    if (user.password !== password && user.status !== 'pending') {
+    if (user.status !== 'pending' && user.password !== password) {
       return res.status(401).json({ error: 'Invalid credentials.' });
     }
-
     if (user.status === 'inactive') return res.status(403).json({ error: 'Account suspended.' });
 
     res.json({ success: true, user: user, organization: org });
@@ -199,11 +178,9 @@ app.post('/api/auth/login', async (req, res) => {
 // 3. INVITE USER
 app.post('/api/auth/invite', async (req, res) => {
   const { orgId, newUser } = req.body;
-
   try {
     const org = getOrgById(orgId);
     if (!org) return res.status(404).json({ error: 'Organization not found.' });
-
     const globalCheck = findOrgByUserEmail(newUser.email);
     if (globalCheck) return res.status(400).json({ error: 'User email already exists in the system.' });
 
@@ -213,13 +190,13 @@ app.post('/api/auth/invite', async (req, res) => {
       status: 'pending',
       activationToken: Math.random().toString(36).substring(7)
     };
-
     org.users.push(createdUser);
     saveOrgToDb(org);
 
     const inviteLink = createdUser.activationToken;
     const activationUrl = `${req.protocol}://${req.get('host')}/?code=${inviteLink}`;
-
+    
+    // Email logic...
     let emailSent = false;
     const transporter = createTransporter();
     if (transporter) {
@@ -247,78 +224,60 @@ app.post('/api/auth/resend-invite', async (req, res) => {
   try {
     const org = findOrgByUserEmail(email);
     if (!org) return res.status(404).json({ error: 'User not found.' });
-
     const user = org.users.find(u => u.email.toLowerCase() === email.toLowerCase());
     if (!user || user.status !== 'pending') return res.status(400).json({ error: 'User is active or not pending.' });
-
-    // Use existing token
     const inviteLink = user.activationToken;
-    if (!inviteLink) return res.status(400).json({ error: 'No activation token found.' });
-
     const activationUrl = `${req.protocol}://${req.get('host')}/?code=${inviteLink}`;
     let emailSent = false;
-    
     const transporter = createTransporter();
     if (transporter) {
       try {
         await transporter.sendMail({
           from: `"Reset Studio" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
           to: email,
-          subject: "Invitation Reminder: Reset Studio",
-          html: `<p>This is a reminder to join Reset Studio.</p><p><a href="${activationUrl}">Click here to activate your account</a></p>`
+          subject: "Invitation Reminder",
+          html: `<p>Reminder to join.</p><p><a href="${activationUrl}">Click here to activate</a></p>`
         });
         emailSent = true;
       } catch (e) { console.error("Email error:", e); }
     }
-
     res.json({ success: true, emailSent, inviteLink: activationUrl });
   } catch (error) {
-    console.error("Resend Invite Error:", error);
     res.status(500).json({ error: 'Failed to resend invite.' });
   }
 });
 
-// 3.5 VERIFY INVITE (Robust)
+// 3.5 VERIFY INVITE
 app.get('/api/auth/verify-invite', (req, res) => {
   try {
     const { code } = req.query;
     if (!code) return res.status(400).json({ error: 'Missing code' });
-
     const stmt = db.prepare('SELECT data FROM organizations');
     for (const row of stmt.iterate()) {
       try {
         const org = JSON.parse(row.data);
-        if (!org.users || !Array.isArray(org.users)) continue;
-
-        const user = org.users.find(u => u.activationToken === code && u.status === 'pending');
+        const user = org.users?.find(u => u.activationToken === code && u.status === 'pending');
         if (user) {
           return res.json({ email: user.email, name: user.name });
         }
-      } catch (parseErr) {
-        console.error("Error parsing DB row during verification:", parseErr);
-        continue;
-      }
+      } catch (parseErr) {}
     }
-    // Explicitly return 404 JSON so client doesn't crash on HTML
     res.status(404).json({ error: 'Invalid or expired activation link' });
   } catch (error) {
-    console.error("Verify Invite Error:", error);
-    res.status(500).json({ error: 'Internal server error during verification' });
+    res.status(500).json({ error: 'Verification error' });
   }
 });
 
 // 4. ACTIVATE USER
 app.post('/api/auth/activate', async (req, res) => {
   const { email, password, details } = req.body;
-
   try {
     const org = findOrgByUserEmail(email);
     if (!org) return res.status(404).json({ error: 'User not found.' });
-
     const userIndex = org.users.findIndex(u => u.email.toLowerCase() === email.toLowerCase());
     
-    if (org.users[userIndex].status !== 'pending') {
-      return res.status(400).json({ error: 'Account already active.' });
+    if (org.users[userIndex].status === 'active') {
+        return res.status(400).json({ error: 'Account already active. Please login.' });
     }
 
     org.users[userIndex] = {
@@ -327,11 +286,9 @@ app.post('/api/auth/activate', async (req, res) => {
       password: password,
       status: 'active',
       activationDate: new Date().toISOString(),
-      activationToken: null // Clear token
+      activationToken: null
     };
-
     saveOrgToDb(org);
-
     res.json({ success: true, user: org.users[userIndex], organization: org });
   } catch (error) {
     res.status(500).json({ error: 'Activation failed.' });
@@ -341,36 +298,17 @@ app.post('/api/auth/activate', async (req, res) => {
 // 5. DELETE ORGANIZATION
 app.post('/api/auth/delete-organization', async (req, res) => {
   const { orgId } = req.body;
-  console.log(`[DELETE] Attempting to delete Org: ${orgId}`);
-
   try {
     const stmt = db.prepare('DELETE FROM organizations WHERE id = ?');
     const info = stmt.run(orgId);
-    
-    if (info.changes === 0) {
-      return res.status(404).json({ error: 'Organization not found.' });
-    }
-    console.log(`[DELETE] Success.`);
+    if (info.changes === 0) return res.status(404).json({ error: 'Organization not found.' });
     res.json({ success: true });
   } catch (error) {
-    console.error("Delete Error:", error);
     res.status(500).json({ error: 'Failed to delete organization.' });
   }
 });
 
-// 9. NUKE SYSTEM (Emergency Reset)
-app.post('/api/auth/nuke-system', async (req, res) => {
-  try {
-    db.exec('DELETE FROM organizations');
-    console.log('[DB] System Nuked. All organizations deleted.');
-    res.json({ success: true, message: 'System reset complete.' });
-  } catch (error) {
-    console.error("Nuke Error:", error);
-    res.status(500).json({ error: 'Failed to reset system.' });
-  }
-});
-
-// 6. SYNC DATA (The main engine)
+// 6. SYNC DATA (The main engine with Smart Merge)
 app.post('/api/sync', async (req, res) => {
   const { orgId, data } = req.body;
   if (!orgId) return res.status(400).json({ error: "Missing OrgId" });
@@ -379,8 +317,37 @@ app.post('/api/sync', async (req, res) => {
     const org = getOrgById(orgId);
     if (!org) return res.status(404).json({ error: "Organization not found" });
 
-    // Merge incoming data with existing org data
-    if (data.users) org.users = data.users;
+    // --- SMART MERGE LOGIC FOR USERS ---
+    // This logic ensures that if the incoming data is missing users (accidental deletion),
+    // we preserve the users currently in the DB.
+    if (data.users && Array.isArray(data.users)) {
+        // 1. Create a map of existing DB users for easy lookup
+        const dbUsersMap = new Map((org.users || []).map(u => [u.id, u]));
+        
+        // 2. Iterate through incoming users to update or add
+        data.users.forEach(incomingUser => {
+            const existingUser = dbUsersMap.get(incomingUser.id);
+            
+            if (existingUser) {
+                // PROTECTION: Don't overwrite 'active' status with 'pending' (prevents stale client data from locking out active users)
+                if (existingUser.status === 'active' && incomingUser.status === 'pending') {
+                    return; 
+                }
+                
+                // Update the user record
+                dbUsersMap.set(incomingUser.id, incomingUser);
+            } else {
+                // New user found in payload (e.g. invited by admin on this device)
+                dbUsersMap.set(incomingUser.id, incomingUser);
+            }
+        });
+        
+        // 3. Convert map back to array.
+        // CRITICAL: This includes users that were in DB but NOT in payload, preventing accidental wipes.
+        org.users = Array.from(dbUsersMap.values());
+    }
+
+    // Direct merge for operational data (Last Write Wins usually okay here, but could be improved similarly)
     if (data.shifts) org.shifts = data.shifts;
     if (data.properties) org.properties = data.properties;
     if (data.clients) org.clients = data.clients;
@@ -392,7 +359,6 @@ app.post('/api/sync', async (req, res) => {
     if (data.timeEntries) org.timeEntries = data.timeEntries;
 
     saveOrgToDb(org);
-
     res.json({ success: true });
   } catch (error) {
     console.error("Sync Error:", error);
@@ -401,9 +367,7 @@ app.post('/api/sync', async (req, res) => {
 });
 
 // 7. FILE UPLOAD
-// Serve uploads from the persistent data directory
 app.use('/uploads', express.static(UPLOADS_DIR));
-
 app.post('/api/upload', (req, res) => {
   upload.single('file')(req, res, (err) => {
     if (err) return res.status(500).json({ error: err.message });
@@ -420,18 +384,13 @@ if (process.env.API_KEY) {
 app.post('/api/chat', async (req, res) => {
   if (!ai) return res.status(503).json({ text: "AI Offline" });
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: req.body.query,
-    });
+    const response = await ai.models.generateContent({ model: "gemini-3-flash-preview", contents: req.body.query });
     res.json({ text: response.text });
   } catch (error) {
-    console.error("AI Error:", error);
     res.status(500).json({ error: 'AI Error' });
   }
 });
 
-// Serve Frontend
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
