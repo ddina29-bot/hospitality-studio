@@ -11,6 +11,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
   const [emailInput, setEmailInput] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   
   // --- ACTIVATION STATE ---
   const [isActivationMode, setIsActivationMode] = useState(false);
@@ -36,18 +37,22 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
+    
     if (code) {
       setIsVerifyingCode(true);
+      setErrorMsg(null);
+
+      // Robust fetch that handles non-JSON responses (like 500/404 HTML pages) without crashing
       fetch(`/api/auth/verify-invite?code=${code}`)
         .then(async (res) => {
-            if (res.ok) return res.json();
             const text = await res.text();
             try {
-                const json = JSON.parse(text);
-                throw new Error(json.error || 'Verification failed');
+                const data = JSON.parse(text);
+                if (!res.ok) throw new Error(data.error || 'Invalid code');
+                return data;
             } catch (e) {
-                // If response isn't JSON, it's likely a server 500 HTML page or 404
-                throw new Error('Server returned invalid response. Please try again later.');
+                // If JSON parse fails, it's likely an HTML error page from the server
+                throw new Error('Server connection error. Please try again.');
             }
         })
         .then(data => {
@@ -56,16 +61,14 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
             setEmailInput(data.email);
             setActName(data.name || '');
           } else {
-            alert('Invalid or expired invitation link.');
-            window.history.replaceState({}, document.title, "/");
+            throw new Error('Invalid invitation data received.');
           }
         })
         .catch((err) => {
-          console.error("Invitation Verification Error:", err);
-          let msg = 'Error verifying invitation.';
-          if (err instanceof Error) msg = err.message;
-          else if (typeof err === 'string') msg = err;
-          alert(msg);
+          console.error("Verification Error:", err);
+          // Gracefully handle error in UI, do NOT alert()
+          setErrorMsg(err.message || "Invitation link expired or invalid.");
+          // Clear the URL so a refresh doesn't trigger the loop again
           window.history.replaceState({}, document.title, "/");
         })
         .finally(() => setIsVerifyingCode(false));
@@ -75,17 +78,18 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setErrorMsg(null);
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: emailInput, password })
       });
+      
       const data = await res.json();
       
       if (!res.ok) {
         if (data.user?.status === 'pending') {
-           // Redirect to activation manually if they try to login before activating
            setIsActivationMode(true);
            setActName(data.user.name); 
            setIsLoading(false);
@@ -99,15 +103,16 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
 
       onLogin(data.user, data.organization);
     } catch (err: any) {
-      alert(err.message);
+      setErrorMsg(err.message || 'Connection failed');
       setIsLoading(false);
     }
   };
 
   const handleActivationSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMsg(null);
     if (actPass !== actPassConfirm) {
-        alert("Passwords do not match.");
+        setErrorMsg("Passwords do not match.");
         return;
     }
     
@@ -136,12 +141,10 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
       localStorage.setItem('current_user_obj', JSON.stringify(data.user));
       localStorage.setItem('studio_org_settings', JSON.stringify(data.organization));
 
-      // Clean URL
       window.history.replaceState({}, document.title, "/");
-
       onLogin(data.user, data.organization);
     } catch (err: any) {
-      alert(err.message);
+      setErrorMsg(err.message);
       setIsLoading(false);
     }
   };
@@ -151,7 +154,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
         <div className="min-h-screen bg-white flex items-center justify-center p-10">
             <div className="flex flex-col items-center gap-4 animate-pulse">
                 <div className="w-12 h-12 border-4 border-[#C5A059] border-t-transparent rounded-full animate-spin"></div>
-                <p className="text-[10px] font-black uppercase tracking-[0.4em] text-[#C5A059]">Verifying Invite...</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.4em] text-[#C5A059]">Syncing Invite...</p>
             </div>
         </div>
       );
@@ -166,8 +169,12 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
             <h1 className="text-3xl font-serif-brand text-black tracking-tighter uppercase font-bold">COMPLETE PROFILE</h1>
           </div>
           <form onSubmit={handleActivationSubmit} className={cardStyle}>
+             {errorMsg && (
+               <div className="bg-red-50 text-red-600 p-4 rounded-xl text-[10px] font-bold uppercase tracking-widest text-center border border-red-100">
+                 {errorMsg}
+               </div>
+             )}
              <div className="space-y-6 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
-                
                 {/* 1. Identity */}
                 <div className="space-y-4">
                     <h3 className="text-[10px] font-black uppercase text-black/20 tracking-widest border-b border-gray-100 pb-2">1. Identity Verification</h3>
@@ -254,20 +261,27 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
           </div>
 
           <form onSubmit={handleLoginSubmit} className={cardStyle}>
+            {errorMsg && (
+               <div className="bg-red-50 text-red-600 p-3 rounded-xl text-[9px] font-black uppercase tracking-widest text-center border border-red-100 mb-4 animate-in fade-in">
+                 {errorMsg}
+               </div>
+            )}
+            
             <div className="space-y-4">
               <div><label className={labelStyle}>EMAIL ID</label><input type="email" value={emailInput} onChange={(e) => setEmailInput(e.target.value)} required className={inputStyle} /></div>
               <div><label className={labelStyle}>PASSWORD</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputStyle} /></div>
             </div>
-            <div className="pt-2 space-y-4">
+            
+            <div className="pt-2 space-y-6">
               <button type="submit" disabled={isLoading} className={buttonStyle}>{isLoading ? 'VERIFYING...' : 'ENTER STUDIO'}</button>
               
-              <div className="text-center pt-2">
+              <div className="text-center border-t border-black/5 pt-6">
                 <button 
                   type="button" 
                   onClick={onSignupClick}
-                  className="text-[8px] font-black text-black/20 uppercase tracking-[0.3em] hover:text-[#A68342] transition-colors"
+                  className="bg-black/5 hover:bg-black/10 text-black/60 font-black px-6 py-3 rounded-xl text-[9px] uppercase tracking-widest transition-all w-full"
                 >
-                  Create New Organization
+                  Register New Studio
                 </button>
               </div>
             </div>

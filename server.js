@@ -64,12 +64,16 @@ const getOrgById = (id) => {
 
 // Helper to find org by user email (Scan all orgs - okay for <1000 orgs)
 const findOrgByUserEmail = (email) => {
-  const stmt = db.prepare('SELECT data FROM organizations');
-  for (const row of stmt.iterate()) {
-    const org = JSON.parse(row.data);
-    if (org.users && org.users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
-      return org;
+  try {
+    const stmt = db.prepare('SELECT data FROM organizations');
+    for (const row of stmt.iterate()) {
+      const org = JSON.parse(row.data);
+      if (org.users && org.users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
+        return org;
+      }
     }
+  } catch (e) {
+    console.error("Error searching DB:", e);
   }
   return null;
 };
@@ -246,7 +250,7 @@ app.post('/api/auth/resend-invite', async (req, res) => {
   }
 });
 
-// 3.5 VERIFY INVITE (New)
+// 3.5 VERIFY INVITE (Robust)
 app.get('/api/auth/verify-invite', (req, res) => {
   try {
     const { code } = req.query;
@@ -267,6 +271,7 @@ app.get('/api/auth/verify-invite', (req, res) => {
         continue;
       }
     }
+    // Explicitly return 404 JSON so client doesn't crash on HTML
     res.status(404).json({ error: 'Invalid or expired activation link' });
   } catch (error) {
     console.error("Verify Invite Error:", error);
@@ -393,6 +398,7 @@ app.post('/api/chat', async (req, res) => {
     });
     res.json({ text: response.text });
   } catch (error) {
+    console.error("AI Error:", error);
     res.status(500).json({ error: 'AI Error' });
   }
 });
