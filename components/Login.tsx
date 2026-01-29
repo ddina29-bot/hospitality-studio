@@ -260,6 +260,16 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
             </div>
             <div className="pt-2 space-y-4">
               <button type="submit" disabled={isLoading} className={buttonStyle}>{isLoading ? 'VERIFYING...' : 'ENTER STUDIO'}</button>
+              
+              <div className="text-center pt-2">
+                <button 
+                  type="button" 
+                  onClick={onSignupClick}
+                  className="text-[8px] font-black text-black/20 uppercase tracking-[0.3em] hover:text-[#A68342] transition-colors"
+                >
+                  Create New Organization
+                </button>
+              </div>
             </div>
           </form>
         </div>
