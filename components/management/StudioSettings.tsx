@@ -20,7 +20,6 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
 
   useEffect(() => {
     setFormData(organization);
-    // Check system status
     fetch('/api/system/status')
       .then(res => res.json())
       .then(data => setSystemStatus(data))
@@ -52,8 +51,6 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
 
     setIsProcessing(true);
     try {
-      console.log("Sending delete request for:", currentOrgId);
-
       const res = await fetch('/api/auth/delete-organization', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -65,11 +62,8 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
         throw new Error(data.error || 'Server returned an error during deletion.');
       }
 
-      // AGGRESSIVE WIPE
       localStorage.clear();
       sessionStorage.clear();
-      
-      // Force reload to login screen
       window.location.href = "/";
 
     } catch (error: any) {
@@ -83,30 +77,37 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
     if (!currentOrgId) return;
     setIsProcessing(true);
     try {
+        // 1. Tell Server to wipe data
         const res = await fetch('/api/admin/reset-data', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ orgId: currentOrgId })
         });
         
-        if (!res.ok) throw new Error('Reset failed');
+        if (!res.ok) throw new Error('Reset failed on server');
         
-        // Clear local storage partially to force reload of fresh data
-        const savedOrg = JSON.parse(localStorage.getItem('studio_org_settings') || '{}');
-        // Manually clear local arrays
-        savedOrg.shifts = [];
-        savedOrg.manualTasks = [];
-        savedOrg.supplyRequests = [];
-        savedOrg.invoices = [];
-        savedOrg.timeEntries = [];
-        localStorage.setItem('studio_org_settings', JSON.stringify(savedOrg));
+        // 2. AGGRESSIVE LOCAL WIPE
+        // We get the current object, manually empty the arrays, and save it back IMMEDIATELY.
+        // This stops the App from reloading old data from cache.
+        const savedOrgStr = localStorage.getItem('studio_org_settings');
+        if (savedOrgStr) {
+            const savedOrg = JSON.parse(savedOrgStr);
+            savedOrg.shifts = [];
+            savedOrg.manualTasks = [];
+            savedOrg.supplyRequests = [];
+            savedOrg.invoices = [];
+            savedOrg.leaveRequests = [];
+            savedOrg.timeEntries = [];
+            // Force save empty state to local storage
+            localStorage.setItem('studio_org_settings', JSON.stringify(savedOrg));
+        }
         
-        alert("Operational Data Cleared. The system will now reload.");
+        alert("Operational Data Cleared Successfully. The system will now reload.");
         window.location.reload();
         
     } catch (e) {
         console.error(e);
-        alert("Failed to reset data.");
+        alert("Failed to reset data. Please check connection.");
         setIsProcessing(false);
     }
   };
@@ -140,7 +141,6 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Identity Section */}
         <section className="bg-[#FDF8EE] border border-[#D4B476]/30 p-8 rounded-[40px] shadow-xl space-y-8">
            <div className="flex items-center gap-4 border-b border-[#D4B476]/10 pb-4">
               <div className="w-12 h-12 bg-black text-[#C5A059] rounded-full flex items-center justify-center font-serif-brand text-xl font-bold shadow-lg">
@@ -184,7 +184,6 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
            </div>
         </section>
 
-        {/* Contact Section */}
         <section className="bg-white border border-gray-100 p-8 rounded-[40px] shadow-xl space-y-8">
            <div className="flex items-center gap-4 border-b border-gray-50 pb-4">
               <div className="w-12 h-12 bg-gray-50 text-black/40 rounded-full flex items-center justify-center">
@@ -214,7 +213,6 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
            </div>
         </section>
 
-        {/* System Stats Section */}
         <section className="lg:col-span-2 bg-[#F6E6C2] text-black p-10 rounded-[40px] shadow-2xl relative overflow-hidden">
            <div className="absolute top-0 right-0 p-16 opacity-5 text-[#8B6B2E]">
               <svg width="200" height="200" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -242,10 +240,6 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
                        <p className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">Personnel</p>
                        <p className="text-3xl font-serif-brand font-bold text-black">{userCount}</p>
                     </div>
-                    <div>
-                       <p className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">Storage</p>
-                       <p className="text-3xl font-serif-brand font-bold text-black">{systemStatus?.persistenceActive ? 'SECURE' : 'TEMP'}</p>
-                    </div>
                  </div>
               </div>
               
@@ -263,20 +257,15 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
                     >
                       Delete Organisation
                     </button>
-                    <p className="text-[7px] font-black text-black/30 uppercase tracking-widest">© 2024 Reset Hospitality Studio. All rights reserved.</p>
                  </div>
               </div>
            </div>
         </section>
       </div>
 
-      {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black/80 z-[500] flex items-center justify-center p-4 backdrop-blur-md animate-in fade-in">
            <div className="bg-white border-2 border-red-500 rounded-[40px] w-full max-w-md p-10 space-y-8 shadow-2xl relative text-center">
-              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto text-red-600 animate-pulse">
-                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-              </div>
               <div className="space-y-2">
                  <h2 className="text-2xl font-serif-brand font-bold uppercase text-red-600 tracking-tight">Confirm Deletion</h2>
                  <p className="text-[10px] font-black text-black/40 uppercase tracking-widest leading-relaxed">
@@ -285,55 +274,31 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
                  </p>
               </div>
               <div className="flex flex-col gap-3">
-                 <button 
-                   onClick={handleDeleteOrganization}
-                   disabled={isProcessing}
-                   className="w-full bg-red-600 text-white font-black py-4 rounded-xl uppercase text-[10px] tracking-[0.2em] shadow-xl hover:bg-red-700 active:scale-95 transition-all disabled:opacity-50"
-                 >
+                 <button onClick={handleDeleteOrganization} disabled={isProcessing} className="w-full bg-red-600 text-white font-black py-4 rounded-xl uppercase text-[10px] tracking-[0.2em] shadow-xl hover:bg-red-700 active:scale-95 transition-all">
                    {isProcessing ? 'DELETING...' : 'YES, DELETE EVERYTHING'}
                  </button>
-                 <button 
-                   onClick={() => setShowDeleteConfirm(false)}
-                   disabled={isProcessing}
-                   className="w-full bg-gray-100 text-black/60 font-black py-4 rounded-xl uppercase text-[10px] tracking-[0.2em] hover:bg-gray-200 transition-all"
-                 >
-                   ABORT ACTION
-                 </button>
+                 <button onClick={() => setShowDeleteConfirm(false)} className="w-full bg-gray-100 text-black/60 font-black py-4 rounded-xl uppercase text-[10px] tracking-[0.2em] hover:bg-gray-200 transition-all">ABORT ACTION</button>
               </div>
            </div>
         </div>
       )}
 
-      {/* Reset Confirmation Modal */}
       {showResetConfirm && (
         <div className="fixed inset-0 bg-black/80 z-[500] flex items-center justify-center p-4 backdrop-blur-md animate-in fade-in">
            <div className="bg-[#FDF8EE] border-2 border-[#D4B476] rounded-[40px] w-full max-w-md p-10 space-y-8 shadow-2xl relative text-center">
-              <div className="w-16 h-16 bg-[#D4B476]/20 rounded-full flex items-center justify-center mx-auto text-[#D4B476] animate-pulse">
-                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-              </div>
               <div className="space-y-2">
                  <h2 className="text-2xl font-serif-brand font-bold uppercase text-black tracking-tight">Factory Reset Data</h2>
                  <p className="text-[10px] font-black text-black/40 uppercase tracking-widest leading-relaxed">
                     This will clear all <strong>Schedules, Shifts, Tasks, Reports, and Invoices</strong>.<br/>
                     <br/>
-                    <span className="text-black font-bold">Safe Action:</span> Users, Clients, and Properties will remain intact. Use this to clear testing data before going live.
+                    <span className="text-black font-bold">Safe Action:</span> Users, Clients, and Properties will remain intact. Use this to clear testing data.
                  </p>
               </div>
               <div className="flex flex-col gap-3">
-                 <button 
-                   onClick={handleResetData}
-                   disabled={isProcessing}
-                   className="w-full bg-[#D4B476] text-black font-black py-4 rounded-xl uppercase text-[10px] tracking-[0.2em] shadow-xl hover:bg-[#C5A059] active:scale-95 transition-all disabled:opacity-50"
-                 >
+                 <button onClick={handleResetData} disabled={isProcessing} className="w-full bg-[#D4B476] text-black font-black py-4 rounded-xl uppercase text-[10px] tracking-[0.2em] shadow-xl hover:bg-[#C5A059] active:scale-95 transition-all">
                    {isProcessing ? 'RESETTING...' : 'CONFIRM RESET'}
                  </button>
-                 <button 
-                   onClick={() => setShowResetConfirm(false)}
-                   disabled={isProcessing}
-                   className="w-full bg-white border border-gray-200 text-black/40 font-black py-4 rounded-xl uppercase text-[10px] tracking-[0.2em] hover:text-black transition-all"
-                 >
-                   CANCEL
-                 </button>
+                 <button onClick={() => setShowResetConfirm(false)} className="w-full bg-white border border-gray-200 text-black/40 font-black py-4 rounded-xl uppercase text-[10px] tracking-[0.2em] hover:text-black transition-all">CANCEL</button>
               </div>
            </div>
         </div>

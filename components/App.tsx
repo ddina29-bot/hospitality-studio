@@ -17,7 +17,6 @@ import StudioSettings from './components/management/StudioSettings';
 import AppManual from './components/AppManual';
 import { TabType, Shift, SupplyRequest, User, Client, Property, SupplyItem, AuditReport, Tutorial, LeaveRequest, ManualTask, OrganizationSettings, Invoice, TimeEntry } from './types';
 
-// Role-specific Dashboards
 import AdminDashboard from './components/dashboards/AdminDashboard';
 import HRDashboard from './components/dashboards/HRDashboard';
 import FinanceDashboard from './components/dashboards/FinanceDashboard';
@@ -29,13 +28,11 @@ import HousekeeperDashboard from './components/dashboards/HousekeeperDashboard';
 import LaundryDashboard from './components/dashboards/LaundryDashboard';
 
 // Helper for Smart Merging Arrays by ID
-// Preserves local items if they are missing from server (e.g. just created)
 const mergeLists = <T extends { id: string }>(localList: T[], serverList: T[] | undefined): T[] => {
   if (!serverList) return localList;
   const serverMap = new Map(serverList.map(i => [i.id, i]));
   const merged = [...serverList];
   
-  // Find items in local that are NOT in server (potential unsynced new items)
   localList.forEach(localItem => {
     if (!serverMap.has(localItem.id)) {
       merged.push(localItem);
@@ -46,12 +43,10 @@ const mergeLists = <T extends { id: string }>(localList: T[], serverList: T[] | 
 };
 
 const App: React.FC = () => {
-  // --- AUTH STATE ---
   const [user, setUser] = useState<User | null>(null);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   
-  // --- APP DATA STATE (Starts Empty - Loaded from Server) ---
   const [users, setUsers] = useState<User[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
@@ -68,8 +63,6 @@ const App: React.FC = () => {
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
 
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
-  
-  // --- UI STATE ---
   const [authorizedLaundryUserIds, setAuthorizedLaundryUserIds] = useState<string[]>([]);
   const [authorizedInspectorIds, setAuthorizedInspectorIds] = useState<string[]>([]);
   const [showTaskModal, setShowTaskModal] = useState(false);
@@ -78,7 +71,6 @@ const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // --- 0. INITIAL LOAD (Restore Session & Hydrate) ---
   useEffect(() => {
     const savedUser = localStorage.getItem('current_user_obj');
     const savedOrgSettings = localStorage.getItem('studio_org_settings');
@@ -90,11 +82,9 @@ const App: React.FC = () => {
         
         setUser(u);
         setOrgId(o.id);
-        // Important: Handle both flat structure and nested 'settings' structure
         setOrganization(o.settings || o);
         
-        // IMMEDIATE LOCAL HYDRATION to prevent empty UI on refresh
-        // These are the "Local Truths" until server confirms or updates
+        // Immediate local hydration
         const localUsers = o.users || [];
         const localShifts = o.shifts || [];
         const localProperties = o.properties || [];
@@ -117,8 +107,6 @@ const App: React.FC = () => {
 
         setIsLoaded(true);
 
-        // BACKGROUND FETCH: Get latest data from server to catch updates from other users
-        // CRITICAL FIX: Merge server data with local data to prevent overwriting unsynced new items
         if (o.id) {
             fetch(`/api/organization/${o.id}`)
               .then(res => res.json())
@@ -128,12 +116,24 @@ const App: React.FC = () => {
                     return;
                  }
                  
-                 // Smart Merges for ALL Critical Data
-                 if (serverOrg.users) setUsers(prev => mergeLists(prev, serverOrg.users));
-                 if (serverOrg.shifts) setShifts(prev => mergeLists(prev, serverOrg.shifts));
-                 if (serverOrg.properties) setProperties(prev => mergeLists(prev, serverOrg.properties));
-                 if (serverOrg.clients) setClients(prev => mergeLists(prev, serverOrg.clients));
-                 if (serverOrg.inventoryItems) setInventoryItems(prev => mergeLists(prev, serverOrg.inventoryItems));
+                 // FIX: For Admin Lists (Users, Props, Clients), TRUST THE SERVER. 
+                 // Do not merge old local data. This fixes "New user not showing until re-login".
+                 if (serverOrg.users) setUsers(serverOrg.users);
+                 if (serverOrg.properties) setProperties(serverOrg.properties);
+                 if (serverOrg.clients) setClients(serverOrg.clients);
+                 
+                 // For Operational Data (Shifts, Tasks), merge carefully to preserve offline work
+                 // But if server list is empty (after reset), favor server.
+                 if (serverOrg.shifts) {
+                    if (serverOrg.shifts.length === 0 && localShifts.length > 5) {
+                       // Likely a reset happened on server, trust server empty state
+                       setShifts([]); 
+                    } else {
+                       setShifts(prev => mergeLists(prev, serverOrg.shifts));
+                    }
+                 }
+                 
+                 if (serverOrg.inventoryItems) setInventoryItems(serverOrg.inventoryItems); // Admin managed usually
                  if (serverOrg.manualTasks) setManualTasks(prev => mergeLists(prev, serverOrg.manualTasks));
                  if (serverOrg.supplyRequests) setSupplyRequests(prev => mergeLists(prev, serverOrg.supplyRequests));
                  if (serverOrg.invoices) setInvoices(prev => mergeLists(prev, serverOrg.invoices));
@@ -141,39 +141,33 @@ const App: React.FC = () => {
                  
                  if (serverOrg.settings) setOrganization(serverOrg.settings);
                  
-                 // Update local storage with fresh merged data immediately
-                 // This ensures the next refresh starts with the consolidated state
-                 const mergedState = {
+                 const finalState = {
                     ...serverOrg,
-                    users: mergeLists(localUsers, serverOrg.users),
-                    properties: mergeLists(localProperties, serverOrg.properties),
-                    clients: mergeLists(localClients, serverOrg.clients),
-                    shifts: mergeLists(localShifts, serverOrg.shifts),
+                    users: serverOrg.users, // Direct override
+                    properties: serverOrg.properties, // Direct override
+                    clients: serverOrg.clients, // Direct override
+                    shifts: serverOrg.shifts?.length === 0 && localShifts.length > 5 ? [] : mergeLists(localShifts, serverOrg.shifts),
                     manualTasks: mergeLists(localTasks, serverOrg.manualTasks),
                     supplyRequests: mergeLists(localSupplies, serverOrg.supplyRequests),
                     invoices: mergeLists(localInvoices, serverOrg.invoices),
                     timeEntries: mergeLists(localTime, serverOrg.timeEntries)
                  };
-                 localStorage.setItem('studio_org_settings', JSON.stringify(mergedState));
+                 localStorage.setItem('studio_org_settings', JSON.stringify(finalState));
               })
               .catch(err => console.error("Background sync failed:", err));
         }
         
       } catch (e) {
         console.error("Failed to restore session", e);
-        // Don't clear on error, just let it fail gracefully or user can re-login
       }
     } else {
-        setIsLoaded(true); // Loaded empty
+        setIsLoaded(true);
     }
   }, []);
 
-  // --- 1. LOGIN HANDLER ---
   const handleLogin = (u: User, orgData: any) => {
     setUser(u);
     setOrgId(orgData.id);
-    
-    // Hydrate State from the Organization Data (Database)
     setUsers(orgData.users || []);
     setShifts(orgData.shifts || []);
     setProperties(orgData.properties || []);
@@ -184,19 +178,16 @@ const App: React.FC = () => {
     setOrganization(orgData.settings || {});
     setInvoices(orgData.invoices || []);
     setTimeEntries(orgData.timeEntries || []);
-    
     setIsLoaded(true);
     setActiveTab('dashboard');
   };
 
-  // --- 2. SIGNUP HANDLER ---
   const handleSignupComplete = (u: User, orgData: any) => {
     handleLogin(u, orgData);
   };
 
-  // --- 3. SYNC TO CLOUD (Auto-Save) & PERSIST LOCAL ---
   useEffect(() => {
-    if (!user || !orgId || !isLoaded) return; // Wait for initial load to finish
+    if (!user || !orgId || !isLoaded) return; 
 
     const payload: any = {
         id: orgId,
@@ -208,14 +199,12 @@ const App: React.FC = () => {
         inventoryItems,
         manualTasks, 
         timeEntries,
-        settings: organization, // Save as 'settings' to match server structure
+        settings: organization, 
         invoices
     };
 
-    // 3a. Save to Local Storage Immediately (Persistence on Refresh)
     localStorage.setItem('studio_org_settings', JSON.stringify(payload));
 
-    // 3b. Sync to Server (Debounced) - REDUCED to 500ms
     const timeout = setTimeout(async () => {
       setIsSyncing(true);
       try {
@@ -232,12 +221,11 @@ const App: React.FC = () => {
       } finally {
         setIsSyncing(false);
       }
-    }, 500); // Faster debounce to catch quick refreshes
+    }, 500); 
 
     return () => clearTimeout(timeout);
   }, [users, shifts, properties, clients, supplyRequests, inventoryItems, manualTasks, organization, invoices, timeEntries, user, orgId, isLoaded]);
 
-  // Protect against closing while syncing
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (isSyncing) {
@@ -253,11 +241,10 @@ const App: React.FC = () => {
     setUser(null);
     setOrgId(null);
     setAuthMode('login');
-    // Clear local state
     setUsers([]);
     setShifts([]);
     setProperties([]);
-    setClients([]); // Clear clients too
+    setClients([]); 
     setTimeEntries([]);
     setIsLoaded(false);
     localStorage.removeItem('current_user_obj');
@@ -305,14 +292,10 @@ const App: React.FC = () => {
     setShowTaskModal(false);
   };
 
-  // Generic Time Clock Handler for App
   const handleToggleTimeClock = () => {
     if (!user) return;
-    
-    // Determine last state
     const myEntries = timeEntries.filter(e => e.userId === user.id).sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     const isClockedIn = myEntries.length > 0 && myEntries[0].type === 'in';
-    
     const newType = isClockedIn ? 'out' : 'in';
     const newEntry: TimeEntry = {
       id: `time-${Date.now()}`,
@@ -320,11 +303,8 @@ const App: React.FC = () => {
       type: newType,
       timestamp: new Date().toISOString()
     };
-
     setTimeEntries(prev => [...prev, newEntry]);
   };
-
-  // --- RENDER ---
 
   if (!user) {
     if (authMode === 'signup') {
