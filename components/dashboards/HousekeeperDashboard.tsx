@@ -1,5 +1,5 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { TabType, Shift, User, Property, SupplyRequest, LeaveRequest, ManualTask, SpecialReport } from '../../types';
 
 interface HousekeeperDashboardProps {
@@ -25,6 +25,10 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({ user, setAc
   
   // State for the main view modal (viewing all reports for a specific shift)
   const [viewingIncidentShift, setViewingIncidentShift] = useState<Shift | null>(null);
+
+  // State for Review/Audit Modal
+  const [reviewShift, setReviewShift] = useState<Shift | null>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
 
   // State for the specific assignment action
   const [assigningReport, setAssigningReport] = useState<{ shiftId: string, report: SpecialReport, type: 'maintenance' | 'damage' | 'missing' } | null>(null);
@@ -71,20 +75,6 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({ user, setAc
       return applicant?.role === 'cleaner' || applicant?.role === 'maintenance';
     });
   }, [leaveRequests, users]);
-
-  const logisticsAlerts = useMemo(() => {
-    if (currentHour < 15) return [];
-    const todayLogistics = shifts.filter(s => s.date === todayStr);
-    const alerts: { id: string, type: 'isDelivered' | 'isCollected' | 'keysAtOffice', message: string, prop: string, reason?: string }[] = [];
-    todayLogistics.forEach(s => {
-      if (!s.isDelivered) alerts.push({ id: s.id, type: 'isDelivered', prop: s.propertyName || 'Unknown', message: 'LINEN DELIVERY PENDING' });
-      if (!s.isCollected) alerts.push({ id: s.id, type: 'isCollected', prop: s.propertyName || 'Unknown', message: 'LAUNDRY COLLECTION PENDING' });
-      if (s.keysHandled && !s.keysAtOffice) {
-        alerts.push({ id: s.id, type: 'keysAtOffice', prop: s.propertyName || 'Unknown', message: 'KEYS MISSING FROM OFFICE', reason: s.keyLocationReason });
-      }
-    });
-    return alerts;
-  }, [shifts, todayStr, currentHour]);
 
   // Group active reports by Shift
   const shiftsWithIncidents = useMemo(() => {
@@ -152,7 +142,81 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({ user, setAc
       return { laundry, apartment };
   };
 
-  const hasPriorityItems = rejectedQueue.length > 0 || auditQueue.length > 0 || extraTimeRequests.length > 0 || pendingPersonnelLeaves.length > 0 || myExtraTasks.length > 0 || shiftsWithIncidents.length > 0 || pendingSupplies.length > 0;
+  const hasPriorityItems = rejectedQueue.length > 0 || extraTimeRequests.length > 0 || pendingPersonnelLeaves.length > 0 || myExtraTasks.length > 0 || shiftsWithIncidents.length > 0 || pendingSupplies.length > 0;
+
+  // --- REVIEW LOGIC ---
+  const handleReviewDecision = (status: 'approved' | 'rejected') => {
+    if (!reviewShift) return;
+    if (status === 'rejected' && !rejectionReason.trim()) { 
+      alert("A reason is mandatory for rejection."); 
+      return; 
+    }
+    
+    const decidedBy = user.name || 'Housekeeping';
+    const comment = status === 'approved' ? (rejectionReason || 'Approved by Housekeeping') : rejectionReason;
+
+    setShifts(prev => prev.map(s => s.id === reviewShift.id ? {
+      ...s,
+      approvalStatus: status,
+      wasRejected: status === 'rejected' ? true : s.wasRejected,
+      approvalComment: comment,
+      decidedBy: decidedBy
+    } : s));
+
+    setReviewShift(null);
+    setRejectionReason('');
+  };
+
+  const handleRejectAndFix = () => {
+    if (!reviewShift) return;
+    if (!rejectionReason.trim()) { 
+      alert("A reason is mandatory for rejection."); 
+      return; 
+    }
+    
+    const decidedBy = user.name || 'Housekeeping';
+    const comment = rejectionReason;
+    const targetId = reviewShift.id;
+
+    setShifts(prev => prev.map(s => s.id === reviewShift.id ? {
+      ...s,
+      approvalStatus: 'rejected',
+      wasRejected: true,
+      approvalComment: comment,
+      decidedBy: decidedBy
+    } : s));
+
+    setReviewShift(null);
+    setRejectionReason('');
+
+    // Trigger navigation to Schedule to create the fix
+    if (onAuditDeepLink) onAuditDeepLink(targetId);
+  };
+
+  const handleSendSupervisor = () => {
+    if (!reviewShift) return;
+    
+    const newShift: Shift = {
+        id: `audit-${Date.now()}`,
+        propertyId: reviewShift.propertyId,
+        propertyName: reviewShift.propertyName,
+        userIds: [], // Unassigned - goes to pool
+        date: todayStr, // Today
+        startTime: '10:00',
+        endTime: '11:00',
+        serviceType: 'TO CHECK APARTMENT',
+        status: 'pending',
+        approvalStatus: 'pending',
+        isPublished: true,
+        notes: `[SUPERVISOR DISPATCH] Manual audit requested by ${user.name} for ${reviewShift.propertyName}. Previous cleaner: ${reviewShift.userIds.map(id => users.find(u => u.id === id)?.name).join(', ')}`,
+        fixWorkPayment: 0
+    };
+
+    setShifts(prev => [...prev, newShift]);
+    setReviewShift(null);
+    setRejectionReason('');
+    alert("Supervisor dispatched! A new audit shift has been created for today.");
+  };
 
   return (
     <div className="space-y-10 animate-in fade-in duration-700 text-left pb-32">
@@ -215,6 +279,77 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({ user, setAc
           </button>
         </div>
       </div>
+
+      {/* --- LIVE MONITORING SECTION --- */}
+      <section className="space-y-6">
+         <div className="flex items-center gap-3 px-2">
+            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+            <h2 className="text-[10px] font-black text-green-700 uppercase tracking-[0.3em]">LIVE OPERATIONS MONITOR</h2>
+         </div>
+         {activeCleaners.length === 0 ? (
+            <div className="py-12 border-2 border-dashed border-green-500/20 bg-green-50/10 rounded-[32px] text-center text-green-700/30 font-black uppercase text-[10px] tracking-widest italic">
+               No staff currently clocked in.
+            </div>
+         ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+               {activeCleaners.map(shift => {
+                  const staffMembers = shift.userIds.map(uid => users.find(u => u.id === uid)).filter(Boolean) as User[];
+                  const durationMins = shift.actualStartTime ? Math.floor((Date.now() - shift.actualStartTime) / 60000) : 0;
+                  return (
+                     <div key={shift.id} className="bg-[#FDF8EE] border border-green-500/30 p-6 rounded-[32px] shadow-lg flex flex-col justify-between h-full relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-1 h-full bg-green-500"></div>
+                        <div className="space-y-4">
+                           <div className="flex justify-between items-start">
+                              <h4 className="text-sm font-bold text-black uppercase tracking-tight">{shift.propertyName}</h4>
+                              <span className="text-[9px] font-mono font-bold text-green-700 bg-green-100 px-2 py-1 rounded">{durationMins}m</span>
+                           </div>
+                           <div className="flex items-center gap-3">
+                              <div className="flex -space-x-2 overflow-hidden">
+                                {staffMembers.map((u, i) => (
+                                    <div key={i} className="inline-block h-8 w-8 rounded-full ring-2 ring-white bg-[#C5A059] flex items-center justify-center font-bold text-[10px] text-black">
+                                        {u.name.charAt(0)}
+                                    </div>
+                                ))}
+                              </div>
+                              <p className="text-[9px] font-black text-black/40 uppercase tracking-widest">
+                                {staffMembers.length > 0 ? staffMembers.map(u => u.name.split(' ')[0]).join(' & ') : 'Staff'}
+                              </p>
+                           </div>
+                           <p className="text-[8px] text-[#C5A059] font-black uppercase tracking-[0.2em]">{shift.serviceType}</p>
+                        </div>
+                     </div>
+                  );
+               })}
+            </div>
+         )}
+      </section>
+
+      {/* --- VERIFICATION QUEUE --- */}
+      <section className="space-y-6">
+         <div className="flex items-center gap-3 px-2">
+            <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+            <h2 className="text-[10px] font-black text-blue-700 uppercase tracking-[0.3em]">QUALITY VERIFICATION QUEUE ({auditQueue.length})</h2>
+         </div>
+         {auditQueue.length === 0 ? (
+            <div className="py-12 border-2 border-dashed border-blue-500/20 bg-blue-50/10 rounded-[32px] text-center text-blue-700/30 font-black uppercase text-[10px] tracking-widest italic">
+               All completed jobs verified.
+            </div>
+         ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+               {auditQueue.map(shift => (
+                  <div key={shift.id} className="bg-white border border-blue-100 p-6 rounded-[32px] shadow-md flex flex-col gap-4 group hover:border-blue-300 transition-all">
+                     <div className="space-y-1">
+                        <h4 className="text-xs font-bold text-black uppercase">{shift.propertyName}</h4>
+                        <p className="text-[8px] text-black/40 font-black uppercase tracking-widest">{shift.date} • {shift.serviceType}</p>
+                     </div>
+                     <button onClick={() => setReviewShift(shift)} className="w-full bg-blue-600 text-white font-black py-3 rounded-xl uppercase text-[9px] tracking-widest shadow-md active:scale-95 hover:bg-blue-700 transition-all">
+                        REVIEW & APPROVE
+                     </button>
+                  </div>
+               ))}
+            </div>
+         )}
+      </section>
 
       {hasPriorityItems && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in slide-in-from-top-4 duration-700">
@@ -511,6 +646,74 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({ user, setAc
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="text-black/10 group-hover:text-[#C5A059]"><polyline points="9 18 15 12 9 6"/></svg>
                    </button>
                  ))}
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* Review Modal (Audit) */}
+      {reviewShift && (
+        <div className="fixed inset-0 bg-black/70 z-[500] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in" onClick={() => setReviewShift(null)}>
+           <div className="bg-[#FDF8EE] border border-[#C5A059]/40 rounded-[40px] w-full max-w-4xl p-8 md:p-10 space-y-8 shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar" onClick={e => e.stopPropagation()}>
+              <button onClick={() => setReviewShift(null)} className="absolute top-8 right-8 text-black/20 hover:text-black"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+              
+              <div className="space-y-1">
+                 <h2 className="text-2xl font-serif-brand font-bold uppercase text-black">{reviewShift.propertyName}</h2>
+                 <p className="text-[9px] font-black text-[#C5A059] uppercase tracking-[0.4em]">Review & Verify</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                 <div className="space-y-6">
+                    {/* Checklist Summary */}
+                    <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm space-y-4">
+                       <p className="text-[8px] font-black text-black/30 uppercase tracking-[0.4em]">Completed Checklist</p>
+                       <div className="grid grid-cols-3 gap-2">
+                          {reviewShift.tasks?.flatMap(t => t.photos).map((p, i) => (
+                             <img key={i} src={p.url} onClick={() => setZoomedImage(p.url)} className="aspect-square rounded-xl object-cover border border-gray-100 cursor-zoom-in hover:opacity-80 transition-opacity" />
+                          ))}
+                          {reviewShift.checkoutPhotos?.keyInBox?.map((p, i) => (
+                             <img key={`k-${i}`} src={p.url} onClick={() => setZoomedImage(p.url)} className="aspect-square rounded-xl object-cover border border-gray-100 cursor-zoom-in hover:opacity-80 transition-opacity" />
+                          ))}
+                          {reviewShift.checkoutPhotos?.boxClosed?.map((p, i) => (
+                             <img key={`b-${i}`} src={p.url} onClick={() => setZoomedImage(p.url)} className="aspect-square rounded-xl object-cover border border-gray-100 cursor-zoom-in hover:opacity-80 transition-opacity" />
+                          ))}
+                          {(!reviewShift.tasks?.some(t => t.photos.length > 0) && !reviewShift.checkoutPhotos) && (
+                             <p className="col-span-3 text-[9px] italic text-center py-4 opacity-30">No photos provided.</p>
+                          )}
+                       </div>
+                    </div>
+                 </div>
+
+                 <div className="space-y-6">
+                    <div>
+                       <label className="text-[8px] font-black text-[#C5A059] uppercase tracking-[0.4em] mb-1.5 block px-1 opacity-80">Feedback / Reason</label>
+                       <textarea 
+                         value={rejectionReason} 
+                         onChange={(e) => setRejectionReason(e.target.value)}
+                         className="w-full bg-white border border-[#C5A059]/20 rounded-xl p-4 text-[10px] font-medium outline-none focus:border-[#C5A059] h-32 placeholder:text-black/20 italic"
+                         placeholder="Required for rejection. Optional for approval."
+                       />
+                    </div>
+                    <div className="flex flex-col gap-3">
+                       <div className="flex gap-3">
+                          <button onClick={() => handleReviewDecision('approved')} className="flex-1 bg-green-600 text-white font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-xl active:scale-95 transition-all">
+                             APPROVE CLEAN
+                          </button>
+                          <button onClick={() => handleReviewDecision('rejected')} className="flex-1 bg-red-600 text-white font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-xl active:scale-95 transition-all">
+                             REJECT CLEAN
+                          </button>
+                       </div>
+                       
+                       <div className="flex gap-3">
+                           <button onClick={handleRejectAndFix} className="flex-1 bg-black text-[#C5A059] font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-xl active:scale-95 transition-all border border-[#C5A059]/30 hover:bg-zinc-900">
+                              REJECT & SCHEDULE FIX
+                           </button>
+                           <button onClick={handleSendSupervisor} className="flex-1 bg-white border border-[#C5A059]/30 text-black font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-sm active:scale-95 transition-all hover:bg-gray-50">
+                              SEND SUPERVISOR
+                           </button>
+                       </div>
+                    </div>
+                 </div>
               </div>
            </div>
         </div>

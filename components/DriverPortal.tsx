@@ -54,8 +54,6 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
 
   // Logic: Check if only 1 driver is currently active in the system
   const activeDrivers = useMemo(() => (users || []).filter(u => u.role === 'driver' && u.status === 'active'), [users]);
-  const isOnlyDriver = activeDrivers.length === 1 && currentUser.role === 'driver';
-
   // Admins/Drivers can interact, Housekeeping is read-only unless an admin is viewing their route
   const canInteract = (currentUser.role === 'driver' || isAdmin) && isViewingToday;
 
@@ -96,41 +94,48 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
     // Basic filter first
     const relevantTasks = manualTasks.filter(t => 
       t.date.split('T')[0] === viewedDate &&
-      (t.userId === activeUserId || (isOnlyDriver && !overrideDriverId))
+      (t.userId === activeUserId || !t.userId) // Show if assigned to me OR unassigned/general
     );
 
     // Advanced Filter: Hide tasks if they are for a property that has a DRAFT shift today
-    // This prevents leakage of testing data
     return relevantTasks.filter(t => {
        const shiftForProp = shifts.find(s => s.propertyId === t.propertyId && s.date === viewedDateStr);
        // If there is a shift, and it is NOT published, hide this task
        if (shiftForProp && !shiftForProp.isPublished) return false;
        return true;
     });
-  }, [manualTasks, viewedDate, activeUserId, isOnlyDriver, overrideDriverId, shifts, viewedDateStr]);
+  }, [manualTasks, viewedDate, activeUserId, shifts, viewedDateStr]);
 
   const logisticsTasks = useMemo(() => {
     return (shifts || []).filter(s => {
-      // 1. MUST BE PUBLISHED (Hides Building Mode Drafts)
+      // 1. MUST BE PUBLISHED
       if (!s.isPublished) return false;
       
-      // 2. Exclude Laundry if set
+      // 2. Exclude Laundry if set (no driver needed)
       if (s.excludeLaundry) return false;
 
       // 3. Match Date
       if (s.date !== viewedDateStr) return false;
 
-      // 4. Determine Assignment
-      const isLogisticsType = s.serviceType === 'BEDS ONLY' || s.serviceType === 'LINEN DROP / COLLECTION';
-      const isAssigned = s.userIds.includes(activeUserId) || (isOnlyDriver && !overrideDriverId);
+      // 4. Assignment Logic
       
-      // Driver sees:
-      // A) Any shift explicitly assigned to them (e.g. for keys or transport)
-      // B) Any purely logistics shift (if they are the only driver or if assigned)
-      if (isLogisticsType && isAssigned) return true;
+      // Check if this shift is explicitly assigned to ANOTHER driver
+      const assignedToOtherDriver = s.userIds.some(id => {
+         const u = users.find(user => user.id === id);
+         return u?.role === 'driver' && id !== activeUserId;
+      });
+      if (assignedToOtherDriver) return false;
+
+      // If explicitly assigned to ME, show it
       if (s.userIds.includes(activeUserId)) return true;
 
-      return false;
+      // If Unassigned to any specific driver:
+      // Show if it involves Logistics or Cleaning (needs linen/keys).
+      // Cleaning shifts (CHECK OUT, REFRESH) need logistics support by default.
+      const isLogisticsOrCleaning = ['CHECK OUT / CHECK IN CLEANING', 'REFRESH', 'MID STAY CLEANING', 'BEDS ONLY', 'LINEN DROP / COLLECTION'].includes(s.serviceType);
+      
+      return isLogisticsOrCleaning;
+
     }).map(s => {
       const prop = properties.find(p => p.id === s.propertyId);
       const cleanerId = s.userIds.find(uid => {
@@ -147,15 +152,16 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
         extraTasks: relatedExtraTasks
       };
     });
-  }, [shifts, viewedDateStr, properties, users, currentManualTasks, activeUserId, isOnlyDriver, overrideDriverId]);
+  }, [shifts, viewedDateStr, properties, users, currentManualTasks, activeUserId]);
 
   const activeSupplyTasks = useMemo(() => {
     return supplyRequests.filter(r => 
       (r.status === 'approved' || r.status === 'pending') && 
       r.date.split('T')[0] === viewedDate &&
-      (r.userId === activeUserId || (isOnlyDriver && !overrideDriverId))
+      // Show if assigned to me OR if system is in auto-pool mode (basic assumption: drivers see all approved supplies for delivery)
+      (r.userId === activeUserId || true) 
     );
-  }, [supplyRequests, viewedDate, activeUserId, isOnlyDriver, overrideDriverId]);
+  }, [supplyRequests, viewedDate, activeUserId]);
 
   const standaloneManualTasks = useMemo(() => {
     const logisticsPropIds = new Set(logisticsTasks.map(t => t.propertyId));
@@ -187,10 +193,10 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
     tomorrow.setDate(tomorrow.getDate() + 1);
     const tomorrowISO = getLocalISO(tomorrow);
     return [
-      ...supplyRequests.filter(r => r.date.split('T')[0] === tomorrowISO && (r.userId === activeUserId || (isOnlyDriver && !overrideDriverId))).map(r => ({ name: r.itemName, type: 'Supply' })),
-      ...manualTasks.filter(t => t.date.split('T')[0] === tomorrowISO && (t.userId === activeUserId || (isOnlyDriver && !overrideDriverId))).map(t => ({ name: t.taskName, type: 'Extra Task' }))
+      ...supplyRequests.filter(r => r.date.split('T')[0] === tomorrowISO).map(r => ({ name: r.itemName, type: 'Supply' })),
+      ...manualTasks.filter(t => t.date.split('T')[0] === tomorrowISO).map(t => ({ name: t.taskName, type: 'Extra Task' }))
     ];
-  }, [supplyRequests, manualTasks, activeUserId, isOnlyDriver, overrideDriverId]);
+  }, [supplyRequests, manualTasks, activeUserId]);
 
   const handleStartDay = () => {
     localStorage.setItem(`route_start_time_${activeUserId}`, Date.now().toString());
@@ -223,7 +229,7 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
     }));
 
     setManualTasks?.(prev => prev.map(t => {
-        if (t.date.split('T')[0] === realTodayISO && t.userId === activeUserId) {
+        if (t.date.split('T')[0] === realTodayISO && (t.userId === activeUserId || !t.userId)) {
             return { ...t, status: 'completed' };
         }
         return t;

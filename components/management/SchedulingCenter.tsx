@@ -697,6 +697,11 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
     ].filter(g => g.members.length > 0);
   }, [users, search, shifts]);
 
+  const isUserActiveNow = (userId: string) => {
+    // Check if user has ANY active shift right now
+    return shifts.some(s => s.userIds.includes(userId) && s.status === 'active');
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-700 text-left pb-24 max-w-full overflow-hidden">
       <header className="space-y-4 px-1">
@@ -760,14 +765,23 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
                          <td key={i} className="border-r border-[#A68342]"></td>
                        ))}
                     </tr>
-                    {group.members.map(cleaner => (
-                      <tr key={cleaner.id} className="group hover:bg-gray-50/50">
-                        <td className="p-4 border-r border-gray-400 bg-white sticky left-0 z-10 shadow-[10px_0_20px_-10px_rgba(0,0,0,0.3)]">
+                    {group.members.map(cleaner => {
+                      const isActiveNow = isUserActiveNow(cleaner.id);
+                      return (
+                      <tr key={cleaner.id} className={`group hover:bg-gray-50/50 ${isActiveNow ? 'bg-green-50/30' : ''}`}>
+                        <td className={`p-4 border-r border-gray-400 bg-white sticky left-0 z-10 shadow-[10px_0_20px_-10px_rgba(0,0,0,0.3)] transition-colors ${isActiveNow ? 'bg-green-50/10' : ''}`}>
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-[#C5A059]/10 border border-[#C5A059]/30 flex items-center justify-center text-[#C5A059] font-serif-brand text-xs font-bold">{cleaner.name.charAt(0)}</div>
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-serif-brand text-xs font-bold relative ${isActiveNow ? 'bg-green-500 text-white shadow-[0_0_15px_rgba(34,197,94,0.5)]' : 'bg-[#C5A059]/10 border border-[#C5A059]/30 text-[#C5A059]'}`}>
+                                {cleaner.name.charAt(0)}
+                                {isActiveNow && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-400 rounded-full border-2 border-white animate-pulse"></span>}
+                            </div>
                             <div className="min-w-0">
-                              <p className="text-[10px] font-bold text-black uppercase leading-tight truncate">{cleaner.name}</p>
-                              <p className="text-[7px] font-black text-black/20 uppercase tracking-widest mt-0.5">{cleaner.role}</p>
+                              <p className={`text-[10px] font-bold uppercase leading-tight truncate ${isActiveNow ? 'text-green-700' : 'text-black'}`}>{cleaner.name}</p>
+                              {isActiveNow ? (
+                                <p className="text-[7px] font-black text-green-600 uppercase tracking-widest mt-0.5 animate-pulse">● CLOCKED IN</p>
+                              ) : (
+                                <p className="text-[7px] font-black text-black/20 uppercase tracking-widest mt-0.5">{cleaner.role}</p>
+                              )}
                             </div>
                           </div>
                         </td>
@@ -790,10 +804,11 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
                                     const isApproved = s.approvalStatus === 'approved';
                                     const isRejected = s.approvalStatus === 'rejected';
                                     return (
-                                      <div key={s.id} onClick={() => { if (isPendingAudit || isActive || isApproved || isRejected) setReviewShift(s); else { handleEditShift(s); } }} className={`border rounded-xl p-2 cursor-pointer transition-all relative shadow-sm ${hasConflict(s) ? 'border-red-500 bg-red-50' : isActive ? 'bg-[#C5A059] border-[#C5A059] text-black font-black' : isPendingAudit ? 'bg-[#3B82F6] border-[#3B82F6] text-white' : isApproved ? 'bg-green-100 border-green-500 text-green-700 font-bold' : isRejected ? 'bg-red-100 border-red-500 text-red-700 font-bold shadow-red-500/20 shadow-md' : 'bg-[#FDF8EE] border-[#C5A059]/40'}`}>
+                                      <div key={s.id} onClick={() => { if (isPendingAudit || isActive || isApproved || isRejected) setReviewShift(s); else { handleEditShift(s); } }} className={`border rounded-xl p-2 cursor-pointer transition-all relative shadow-sm ${hasConflict(s) ? 'border-red-500 bg-red-50' : isActive ? 'bg-[#C5A059] border-[#C5A059] text-black font-black ring-2 ring-[#C5A059]/30 shadow-[0_0_15px_rgba(197,160,89,0.4)]' : isPendingAudit ? 'bg-[#3B82F6] border-[#3B82F6] text-white' : isApproved ? 'bg-green-100 border-green-500 text-green-700 font-bold' : isRejected ? 'bg-red-100 border-red-500 text-red-700 font-bold shadow-red-500/20 shadow-md' : 'bg-[#FDF8EE] border-[#C5A059]/40'}`}>
                                         {!s.isPublished && <span className="absolute top-1 right-1 text-[5px] font-black text-black/30 tracking-widest bg-gray-100 px-1 rounded">DRAFT</span>}
+                                        {isActive && <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-black rounded-full animate-pulse"></span>}
                                         <p className={`text-[9px] font-black uppercase truncate pr-4 ${isActive ? 'text-black' : isPendingAudit ? 'text-white' : isApproved ? 'text-green-700' : isRejected ? 'text-red-700' : 'text-black'}`}>{s.propertyName}</p>
-                                        <p className={`text-[7px] font-bold uppercase mt-1 ${isActive ? 'text-black/50' : isPendingAudit ? 'text-white/60' : isApproved ? 'text-green-700/60' : isRejected ? 'text-red-700/60' : 'text-black/20'}`}>{s.startTime} — {s.endTime}</p>
+                                        <p className={`text-[7px] font-bold uppercase mt-1 ${isActive ? 'text-black/60' : isPendingAudit ? 'text-white/60' : isApproved ? 'text-green-700/60' : isRejected ? 'text-red-700/60' : 'text-black/20'}`}>{s.startTime} — {s.endTime}</p>
                                       </div>
                                     );
                                   })
@@ -810,7 +825,8 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
                           );
                         })}
                       </tr>
-                    ))}
+                      );
+                    })}
                   </React.Fragment>
                 ))}
               </tbody>
@@ -837,7 +853,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
                     const isRejected = s.approvalStatus === 'rejected';
                     const isScheduled = s.status === 'pending';
                     return (
-                      <div key={s.id} onClick={() => { if (isPendingAudit || isActive || isApproved || isRejected) setReviewShift(s); else { handleEditShift(s); } }} className={`bg-white p-6 rounded-[28px] border flex flex-col gap-5 shadow-sm transition-all active:scale-[0.98] ${isActive ? 'border-[#C5A059] bg-[#FDF8EE]' : isPendingAudit ? 'border-[#3B82F6]' : isApproved ? 'border-green-50 bg-green-50/50' : isRejected ? 'border-red-500 bg-red-50/50 shadow-lg shadow-red-500/10' : isScheduled ? 'border-[#C5A059]/40 bg-[#FDF8EE]' : 'border-gray-300'}`}>
+                      <div key={s.id} onClick={() => { if (isPendingAudit || isActive || isApproved || isRejected) setReviewShift(s); else { handleEditShift(s); } }} className={`bg-white p-6 rounded-[28px] border flex flex-col gap-5 shadow-sm transition-all active:scale-[0.98] ${isActive ? 'border-[#C5A059] bg-[#FDF8EE] ring-2 ring-[#C5A059]/20' : isPendingAudit ? 'border-[#3B82F6]' : isApproved ? 'border-green-50 bg-green-50/50' : isRejected ? 'border-red-500 bg-red-50/50 shadow-lg shadow-red-500/10' : isScheduled ? 'border-[#C5A059]/40 bg-[#FDF8EE]' : 'border-gray-300'}`}>
                         <div className="flex justify-between items-start gap-4">
                           <div className="text-left space-y-1.5">
                              <h4 className={`text-base font-bold uppercase tracking-tight ${isRejected ? 'text-red-700' : isApproved ? 'text-green-700' : 'text-[#1A1A1A]'}`}>{s.propertyName}</h4>
@@ -868,6 +884,9 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
         </div>
       )}
 
+      {/* ... Existing Modals (Shift Modal, Review Modal, Zoomed Image) ... */}
+      {/* (Rest of the component code for modals is unchanged, omitting for brevity as it was correct in previous version) */}
+      
       {showShiftModal && (
         <div className="fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4 backdrop-blur-sm animate-in zoom-in-95 duration-200">
           <div className="bg-white border border-gray-100 rounded-[32px] w-full max-w-xl p-8 space-y-6 shadow-2xl relative text-left overflow-y-auto max-h-[90vh] custom-scrollbar">
