@@ -22,7 +22,6 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [showRequisition, setShowRequisition] = useState(false);
   const [selectedItems, setSelectedItems] = useState<Record<string, number>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [clockTimer, setClockTimer] = useState(0);
   
   // Date Logic for Header & Filtering
   const todayDateObj = new Date();
@@ -34,35 +33,6 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   // START EMPTY - No demo feed
   const newsFeed: Announcement[] = [];
-
-  // --- CLOCK LOGIC ---
-  const myLastEntry = useMemo(() => {
-    return timeEntries
-      .filter(e => e.userId === user.id)
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
-  }, [timeEntries, user.id]);
-
-  const isClockedIn = myLastEntry?.type === 'in';
-
-  useEffect(() => {
-    let interval: any;
-    if (isClockedIn && myLastEntry) {
-      const startTime = new Date(myLastEntry.timestamp).getTime();
-      interval = setInterval(() => {
-        setClockTimer(Math.floor((Date.now() - startTime) / 1000));
-      }, 1000);
-    } else {
-      setClockTimer(0);
-    }
-    return () => clearInterval(interval);
-  }, [isClockedIn, myLastEntry]);
-
-  const formatClockTime = (seconds: number) => {
-    const h = Math.floor(seconds / 3600).toString().padStart(2, '0');
-    const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
-    const s = (seconds % 60).toString().padStart(2, '0');
-    return `${h}:${m}:${s}`;
-  };
 
   // --- SUPPLY REQUEST LOGIC (24H Cooldown) ---
   const lastRequest = useMemo(() => {
@@ -169,31 +139,6 @@ const Dashboard: React.FC<DashboardProps> = ({
           </div>
         )}
       </div>
-
-      {/* QUICK CLOCK SECTION - HIDDEN FOR CLEANERS (They clock in via Shift Portal after Location Check) */}
-      {onToggleClock && !isCleaner && (
-        <section className={`rounded-[32px] p-1 flex items-center justify-between shadow-xl transition-all border ${isClockedIn ? 'bg-green-50 border-green-200' : 'bg-[#1A1A1A] border-black'}`}>
-           <div className="flex items-center gap-4 px-6 py-4">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isClockedIn ? 'bg-green-500 text-white animate-pulse' : 'bg-white/10 text-white'}`}>
-                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="6" x2="12" y2="12"/><line x1="16" y1="14" x2="12" y2="12"/></svg>
-              </div>
-              <div>
-                 <p className={`text-[8px] font-black uppercase tracking-[0.2em] mb-0.5 ${isClockedIn ? 'text-green-700' : 'text-white/40'}`}>
-                    {isClockedIn ? 'CURRENT SESSION' : 'READY TO WORK?'}
-                 </p>
-                 <p className={`text-xl font-mono font-bold leading-none ${isClockedIn ? 'text-green-800' : 'text-white'}`}>
-                    {isClockedIn ? formatClockTime(clockTimer) : '00:00:00'}
-                 </p>
-              </div>
-           </div>
-           <button 
-             onClick={onToggleClock}
-             className={`h-16 px-8 rounded-[28px] text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 shadow-lg ${isClockedIn ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-[#C5A059] text-black hover:bg-[#E2C994]'}`}
-           >
-             {isClockedIn ? 'END SHIFT' : 'START SHIFT'}
-           </button>
-        </section>
-      )}
 
       {/* TOP SECTION: KNOWLEDGE BASE & SUPPLIES (Equal sizing) */}
       <div className="grid grid-cols-2 gap-4">

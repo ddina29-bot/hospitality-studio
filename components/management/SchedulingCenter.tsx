@@ -723,9 +723,6 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
   };
 
   return (
-    // ... existing JSX ...
-    // NOTE: The main change is inside handleSaveShift which validates leaves.
-    // The rest of the component remains largely identical, so ensuring we return the full block to not break structure.
     <div className="space-y-6 animate-in fade-in duration-700 text-left pb-24 max-w-full overflow-hidden">
       {/* ... header and view mode toggles ... */}
       <header className="space-y-4 px-1">
@@ -826,7 +823,6 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
                                   </div>
                                 ) : (
                                   dayShifts.map(s => {
-                                    // ... existing shift rendering logic ...
                                     const isPendingAudit = s.status === 'completed' && s.approvalStatus === 'pending';
                                     const isActive = s.status === 'active';
                                     const isApproved = s.approvalStatus === 'approved';
@@ -863,7 +859,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
         </div>
       ) : (
         <div className="space-y-6 pb-20 mt-2">
-          {/* List View Logic - Unchanged, just ensuring consistency */}
+          {/* List View Logic */}
           {weekDates.map((date, idx) => {
             const dayShifts = getShiftsForDay(date);
             if (dayShifts.length === 0) return null;
@@ -875,34 +871,34 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
                 </div>
                 <div className="space-y-4">
                   {dayShifts.map(s => {
-                    // ... existing list render ...
                     const assignedStaff = s.userIds.map(id => users.find(u => u.id === id)?.name || 'Unknown').join(' & ');
                     const isPendingAudit = s.status === 'completed' && s.approvalStatus === 'pending';
                     const isActive = s.status === 'active';
                     const isApproved = s.approvalStatus === 'approved';
                     const isRejected = s.approvalStatus === 'rejected';
                     const isScheduled = s.status === 'pending';
+                    
                     return (
-                      <div key={s.id} onClick={() => { if (isPendingAudit || isActive || isApproved || isRejected) setReviewShift(s); else { handleEditShift(s); } }} className={`bg-white p-6 rounded-[28px] border flex flex-col gap-5 shadow-sm transition-all active:scale-[0.98] ${isActive ? 'border-[#C5A059] bg-[#FDF8EE] ring-2 ring-[#C5A059]/20' : isPendingAudit ? 'border-[#3B82F6]' : isApproved ? 'border-green-50 bg-green-50/50' : isRejected ? 'border-red-500 bg-red-50/50 shadow-lg shadow-red-500/10' : isScheduled ? 'border-[#C5A059]/40 bg-[#FDF8EE]' : 'border-gray-300'}`}>
+                      <div key={s.id} onClick={() => { if (isPendingAudit || isActive || isApproved || isRejected) setReviewShift(s); else { handleEditShift(s); } }} className={`bg-white p-6 rounded-[28px] border flex flex-col gap-5 shadow-sm transition-all active:scale-[0.98] ${isActive ? 'border-[#C5A059] bg-[#FDF8EE] ring-2 ring-[#C5A059]/20' : isPendingAudit ? 'bg-[#3B82F6] border-[#3B82F6] text-white shadow-lg shadow-blue-500/20' : isApproved ? 'border-green-50 bg-green-50/50' : isRejected ? 'border-red-500 bg-red-50/50 shadow-lg shadow-red-500/10' : isScheduled ? 'border-[#C5A059]/40 bg-[#FDF8EE]' : 'border-gray-300'}`}>
                         <div className="flex justify-between items-start gap-4">
                           <div className="text-left space-y-1.5">
-                             <h4 className={`text-base font-bold uppercase tracking-tight ${isRejected ? 'text-red-700' : isApproved ? 'text-green-700' : 'text-[#1A1A1A]'}`}>{s.propertyName}</h4>
-                             <p className="text-[10px] font-black text-[#C5A059] uppercase tracking-widest">{s.startTime} — {s.endTime} • {s.serviceType}</p>
+                             <h4 className={`text-base font-bold uppercase tracking-tight ${isRejected ? 'text-red-700' : isApproved ? 'text-green-700' : isPendingAudit ? 'text-white' : 'text-[#1A1A1A]'}`}>{s.propertyName}</h4>
+                             <p className={`text-[10px] font-black uppercase tracking-widest ${isPendingAudit ? 'text-white/80' : 'text-[#C5A059]'}`}>{s.startTime} — {s.endTime} • {s.serviceType}</p>
                           </div>
                           <div className="flex flex-col items-end gap-2">
                              {isActive && <span className="bg-[#C5A059] text-black text-[8px] font-black px-3 py-1 rounded-lg uppercase shadow-lg flex items-center gap-1.5"><span className="w-1.5 h-1.5 bg-black rounded-full animate-pulse"></span>Monitoring Live</span>}
-                             {isPendingAudit && !isActive && <span className="bg-[#3B82F6] text-white text-[8px] font-black px-3 py-1 rounded-lg uppercase animate-pulse shadow-lg shadow-[#3B82F6]/20">Audit Required</span>}
+                             {isPendingAudit && !isActive && <span className="bg-white/20 text-white border border-white/40 text-[8px] font-black px-3 py-1 rounded-lg uppercase animate-pulse shadow-lg">Pending Review</span>}
                              {isApproved && <span className="bg-green-600 text-white text-[8px] font-black px-4 py-1.5 rounded-lg uppercase shadow-md">✓ VERIFIED</span>}
                              {isRejected && <span className="bg-red-600 text-white text-[8px] font-black px-4 py-1.5 rounded-lg uppercase shadow-md animate-pulse">! REJECTED</span>}
                              {isScheduled && !isPendingAudit && !isApproved && !isRejected && !isActive && <span className="bg-[#C5A059] text-white text-[8px] font-black px-3 py-1 rounded-lg uppercase shadow-lg shadow-[#C5A059]/20">Scheduled</span>}
                           </div>
                         </div>
-                        <div className="flex items-center justify-between pt-4 border-t border-gray-300">
+                        <div className={`flex items-center justify-between pt-4 border-t ${isPendingAudit ? 'border-white/20' : 'border-gray-300'}`}>
                            <div className="flex items-center gap-3">
-                              <div className="w-7 h-7 rounded-full bg-[#C5A059]/10 border border-[#C5A059]/30 flex items-center justify-center text-[9px] font-black text-[#C5A059]">S</div>
-                              <p className="text-[10px] font-bold text-black/60 uppercase truncate max-w-[200px]">{assignedStaff}</p>
+                              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-black ${isPendingAudit ? 'bg-white text-[#3B82F6]' : 'bg-[#C5A059]/10 border border-[#C5A059]/30 text-[#C5A059]'}`}>S</div>
+                              <p className={`text-[10px] font-bold uppercase truncate max-w-[200px] ${isPendingAudit ? 'text-white/90' : 'text-black/60'}`}>{assignedStaff}</p>
                            </div>
-                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="text-black/10"><polyline points="9 18 15 12 9 6"/></svg>
+                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className={isPendingAudit ? 'text-white/60' : 'text-black/10'}><polyline points="9 18 15 12 9 6"/></svg>
                         </div>
                       </div>
                     );
@@ -914,7 +910,11 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
         </div>
       )}
 
-      {/* Shift Modal logic (rest is same, but keeping modal structure intact) */}
+      {/* ... Shift Modal and Review Modal (Omitted for brevity as logic is unchanged) ... */}
+      {/* ... Modals included in full component render ... */}
+      {/* ... */}
+      
+      {/* Shift Modal logic */}
       {showShiftModal && (
         <div className="fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4 backdrop-blur-sm animate-in zoom-in-95 duration-200">
           <div className="bg-white border border-gray-100 rounded-[32px] w-full max-w-xl p-8 space-y-6 shadow-2xl relative text-left overflow-y-auto max-h-[90vh] custom-scrollbar">
@@ -1109,7 +1109,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
         </div>
       )}
 
-      {/* ... (Review Modal Remains Unchanged) ... */}
+      {/* Review Modal Remains Unchanged */}
       {reviewShift && (
         <div className="fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
           {/* ... existing review modal content ... */}

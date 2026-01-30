@@ -36,7 +36,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const reviewQueue = useMemo(() => shifts.filter(s => s.status === 'completed' && s.approvalStatus === 'pending'), [shifts]);
   const rejectedQueue = useMemo(() => shifts.filter(s => s.approvalStatus === 'rejected' && s.correctionStatus !== 'fixing'), [shifts]);
+  const activeCleaners = useMemo(() => shifts.filter(s => s.status === 'active'), [shifts]);
   const pendingSupplies = useMemo(() => (supplyRequests || []).filter(r => r.status === 'pending'), [supplyRequests]);
+  const pendingLeaves = useMemo(() => (leaveRequests || []).filter(r => r.status === 'pending'), [leaveRequests]);
   const hasUnpublishedShifts = useMemo(() => shifts.some(s => !s.isPublished), [shifts]);
 
   const shiftsWithIncidents = useMemo(() => {
@@ -69,7 +71,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const field = type === 'maintenance' ? 'maintenanceReports' : type === 'damage' ? 'damageReports' : 'missingReports';
         const updatedReports = (s[field] || []).map(r => r.id === report.id ? { 
             ...r, 
-            status: 'resolved' as const,
+            status: 'resolved' as const, 
             photos: [...(r.photos || []), ...resolutionPhotos]
         } : r);
         
@@ -148,6 +150,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </section>
         )}
 
+        {pendingLeaves.length > 0 && (
+          <section className="bg-blue-50 border-2 border-blue-200 p-6 rounded-[32px] shadow-2xl flex flex-col md:flex-row items-center justify-between gap-6 animate-in slide-in-from-top-4">
+            <div className="flex items-center gap-6">
+              <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white shrink-0 animate-pulse">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+              </div>
+              <div className="text-left">
+                <p className="text-[11px] font-black text-blue-600 uppercase tracking-[0.3em]">PENDING LEAVE REQUESTS</p>
+                <p className="text-[10px] text-blue-600/70 uppercase font-bold mt-1">{pendingLeaves.length} personnel requested time off.</p>
+              </div>
+            </div>
+            <button 
+              onClick={() => setActiveTab('users')}
+              className="w-full md:w-auto bg-blue-600 text-white font-black px-8 py-3 rounded-2xl text-[10px] uppercase tracking-widest shadow-xl active:scale-95 transition-all hover:bg-blue-700"
+            >
+              REVIEW REQUESTS
+            </button>
+          </section>
+        )}
+
         {pendingSupplies.length > 0 && (
           <section className="bg-purple-50 border-2 border-purple-200 p-6 rounded-[32px] shadow-2xl flex flex-col md:flex-row items-center justify-between gap-6 animate-in slide-in-from-top-4">
             <div className="flex items-center gap-6">
@@ -168,6 +190,121 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </section>
         )}
       </div>
+
+      {/* --- LIVE MONITORING SECTION --- */}
+      <section className="space-y-6">
+         <div className="flex items-center gap-3 px-2">
+            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+            <h2 className="text-[10px] font-black text-green-700 uppercase tracking-[0.3em]">LIVE OPERATIONS MONITOR</h2>
+         </div>
+         {activeCleaners.length === 0 ? (
+            <div className="py-12 border-2 border-dashed border-green-500/20 bg-green-50/10 rounded-[32px] text-center text-green-700/30 font-black uppercase text-[10px] tracking-widest italic">
+               No staff currently clocked in.
+            </div>
+         ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+               {activeCleaners.map(shift => {
+                  const staffMembers = shift.userIds.map(uid => users.find(u => u.id === uid)).filter(Boolean) as User[];
+                  const durationMins = shift.actualStartTime ? Math.floor((Date.now() - shift.actualStartTime) / 60000) : 0;
+                  
+                  // LIVE PHOTOS: Collect recent photos from tasks
+                  const allPhotos = shift.tasks?.flatMap(t => t.photos) || [];
+                  const recentPhotos = allPhotos.slice(-4).reverse();
+
+                  return (
+                     <div key={shift.id} className="bg-[#FDF8EE] border border-green-500/30 p-6 rounded-[32px] shadow-lg flex flex-col justify-between h-full relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-1 h-full bg-green-500"></div>
+                        <div className="space-y-4">
+                           <div className="flex justify-between items-start">
+                              <h4 className="text-sm font-bold text-black uppercase tracking-tight">{shift.propertyName}</h4>
+                              <span className="text-[9px] font-mono font-bold text-green-700 bg-green-100 px-2 py-1 rounded">{durationMins}m</span>
+                           </div>
+                           <div className="flex items-center gap-3">
+                              <div className="flex -space-x-2 overflow-hidden">
+                                {staffMembers.map((u, i) => (
+                                    <div key={i} className="inline-block h-8 w-8 rounded-full ring-2 ring-white bg-[#C5A059] flex items-center justify-center font-bold text-[10px] text-black">
+                                        {u.name.charAt(0)}
+                                    </div>
+                                ))}
+                              </div>
+                              <p className="text-[9px] font-black text-black/40 uppercase tracking-widest">
+                                {staffMembers.length > 0 ? staffMembers.map(u => u.name.split(' ')[0]).join(' & ') : 'Staff'}
+                              </p>
+                           </div>
+                           <p className="text-[8px] text-[#C5A059] font-black uppercase tracking-[0.2em]">{shift.serviceType}</p>
+                           
+                           {/* LIVE PHOTO FEED */}
+                           {recentPhotos.length > 0 && (
+                             <div className="pt-2 border-t border-green-500/10">
+                                <p className="text-[7px] font-black text-green-700/50 uppercase tracking-widest mb-2">Live Activity Feed</p>
+                                <div className="flex gap-2 overflow-hidden">
+                                   {recentPhotos.map((p, i) => (
+                                      <img 
+                                        key={i} 
+                                        src={p.url} 
+                                        onClick={() => setZoomedImage(p.url)}
+                                        className="w-12 h-12 rounded-xl object-cover border-2 border-white shadow-sm cursor-zoom-in hover:scale-105 transition-all" 
+                                        alt="Live Evidence"
+                                      />
+                                   ))}
+                                </div>
+                             </div>
+                           )}
+                        </div>
+                     </div>
+                  );
+               })}
+            </div>
+         )}
+      </section>
+
+      {/* FIELD INCIDENT CENTER (Maintenance, Damage, Missing) */}
+      <section className="bg-white border-2 border-[#C5A059] p-8 rounded-[40px] shadow-xl space-y-8">
+         <div className="flex justify-between items-center px-2">
+            <div className="flex items-center gap-3">
+               <div className="w-2 h-2 rounded-full bg-[#C5A059] animate-pulse"></div>
+               <h2 className="text-[10px] font-black text-black uppercase tracking-[0.3em]">FIELD INCIDENT CENTER</h2>
+            </div>
+            <span className="text-[8px] font-black text-[#C5A059] bg-[#C5A059]/10 px-3 py-1 rounded-full">{shiftsWithIncidents.length} UNITS REPORTING</span>
+         </div>
+         
+         {shiftsWithIncidents.length === 0 ? (
+            <div className="py-12 text-center text-black/20 italic text-[10px] font-black uppercase tracking-widest">No active incidents reported.</div>
+         ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+               {shiftsWithIncidents.map((shift) => {
+                  const maintenanceCount = shift.maintenanceReports?.filter(r => r.status !== 'resolved').length || 0;
+                  const damageCount = shift.damageReports?.filter(r => r.status !== 'resolved').length || 0;
+                  const missingCount = shift.missingReports?.filter(r => r.status !== 'resolved').length || 0;
+                  const staffNames = shift.userIds?.map(uid => users.find(u => u.id === uid)?.name.split(' ')[0]).join(', ');
+
+                  return (
+                     <div key={shift.id} className="p-6 rounded-3xl border border-gray-200 shadow-sm space-y-5 transition-all group hover:border-[#C5A059] bg-white flex flex-col justify-between">
+                        <div className="space-y-4">
+                           <div className="space-y-1">
+                              <h4 className="text-sm font-bold text-black uppercase tracking-tight leading-tight">{shift.propertyName}</h4>
+                              <p className="text-[8px] text-black/40 font-black uppercase tracking-widest">Reported By: {staffNames}</p>
+                           </div>
+                           
+                           <div className="flex flex-wrap gap-2">
+                              {maintenanceCount > 0 && <span className="text-[8px] font-black bg-blue-50 text-blue-600 px-2 py-1 rounded border border-blue-100">{maintenanceCount} MAINTENANCE</span>}
+                              {damageCount > 0 && <span className="text-[8px] font-black bg-orange-50 text-orange-600 px-2 py-1 rounded border border-orange-100">{damageCount} DAMAGE</span>}
+                              {missingCount > 0 && <span className="text-[8px] font-black bg-purple-50 text-purple-600 px-2 py-1 rounded border border-purple-100">{missingCount} MISSING</span>}
+                           </div>
+                        </div>
+
+                        <button 
+                          onClick={() => setViewingIncidentShift(shift)}
+                          className="w-full bg-[#C5A059] text-black font-black py-3 rounded-xl uppercase text-[9px] tracking-widest shadow-sm hover:bg-[#d4b476] transition-all active:scale-95 flex items-center justify-center gap-2"
+                        >
+                          MANAGE REPORTS <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                        </button>
+                     </div>
+                  );
+               })}
+            </div>
+         )}
+      </section>
 
       {/* Main Incident Management Modal */}
       {viewingIncidentShift && (
@@ -244,6 +381,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   {/* Missing Items Section */}
                   {viewingIncidentShift.missingReports && viewingIncidentShift.missingReports.length > 0 && (
                      <div className="space-y-6">
+                        {/* Missing from Apartment */}
                         {getMissingItemsBreakdown(viewingIncidentShift.missingReports).apartment.length > 0 && (
                            <div className="space-y-3">
                               <div className="flex items-center gap-3 border-b border-black/5 pb-2">
@@ -267,7 +405,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               ))}
                            </div>
                         )}
-                        
+
                         {/* Missing from Laundry */}
                         {getMissingItemsBreakdown(viewingIncidentShift.missingReports).laundry.length > 0 && (
                            <div className="space-y-3">
@@ -396,6 +534,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                  <div className="text-left">
                     <h4 className="text-xs font-bold text-black uppercase leading-tight">{shift.propertyName}</h4>
                     <p className="text-[8px] text-[#A68342] font-black uppercase mt-1">{shift.startTime} • Completed</p>
+                    {shift.approvalComment && shift.approvalComment.includes('ADMIN TERMINATION') && (
+                       <p className="text-[7px] font-black text-red-500 uppercase tracking-widest bg-red-50 px-2 py-1 rounded w-fit mt-1">
+                          ! FORCE STOPPED
+                       </p>
+                    )}
                  </div>
                  <button onClick={() => onAuditDeepLink?.(shift.id)} className="w-full bg-black text-[#C5A059] py-2 rounded-lg font-black uppercase text-[8px] tracking-widest">Verify Audit</button>
               </div>
