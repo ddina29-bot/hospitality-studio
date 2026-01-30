@@ -170,12 +170,12 @@ const Dashboard: React.FC<DashboardProps> = ({
         )}
       </div>
 
-      {/* QUICK CLOCK SECTION - Connecteam Style */}
-      {onToggleClock && (
+      {/* QUICK CLOCK SECTION - HIDDEN FOR CLEANERS (They clock in via Shift Portal after Location Check) */}
+      {onToggleClock && !isCleaner && (
         <section className={`rounded-[32px] p-1 flex items-center justify-between shadow-xl transition-all border ${isClockedIn ? 'bg-green-50 border-green-200' : 'bg-[#1A1A1A] border-black'}`}>
            <div className="flex items-center gap-4 px-6 py-4">
               <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isClockedIn ? 'bg-green-500 text-white animate-pulse' : 'bg-white/10 text-white'}`}>
-                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="6" x2="12" y2="12"/><line x1="16" y1="14" x2="12" y2="12"/></svg>
               </div>
               <div>
                  <p className={`text-[8px] font-black uppercase tracking-[0.2em] mb-0.5 ${isClockedIn ? 'text-green-700' : 'text-white/40'}`}>
