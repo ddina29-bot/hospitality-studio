@@ -132,7 +132,6 @@ const App: React.FC = () => {
     setOrgId(orgData.id);
     
     // Explicitly force the logged-in user to be updated in the users list
-    // This fixes the issue where 'smartMerge' might keep the old 'pending' status locally
     setUsers(prev => {
         const merged = smartMerge(prev, orgData.users || []);
         return merged.map(existing => existing.id === u.id ? u : existing);
@@ -147,6 +146,7 @@ const App: React.FC = () => {
     setOrganization(orgData.settings || orgData.organization || {});
     setInvoices(prev => smartMerge(prev, orgData.invoices || []));
     setTimeEntries(prev => smartMerge(prev, orgData.timeEntries || []));
+    setLeaveRequests(prev => smartMerge(prev, orgData.leaveRequests || []));
     
     setHasFetchedServer(true);
     setActiveTab('dashboard');
@@ -165,17 +165,6 @@ const App: React.FC = () => {
           .then(serverOrg => {
              if(serverOrg.error) return;
 
-             // SAFETY CHECK: Does local have data but server is empty?
-             // This happens if server restarts/wipes but client is valid.
-             const localHasProperties = properties.length > 0;
-             const serverMissingProperties = !serverOrg.properties || serverOrg.properties.length === 0;
-             
-             if (localHasProperties && serverMissingProperties) {
-                 console.warn("Server data appears empty. Initiating Client-to-Server Restore...");
-                 setHasFetchedServer(true); // Allow save to trigger immediately to push local data up
-                 return; 
-             }
-
              // Normal Sync: Merge server updates into local
              setUsers(prev => smartMerge(prev, serverOrg.users));
              setProperties(prev => smartMerge(prev, serverOrg.properties));
@@ -189,6 +178,7 @@ const App: React.FC = () => {
              setLeaveRequests(prev => smartMerge(prev, serverOrg.leaveRequests));
              setTutorials(prev => smartMerge(prev, serverOrg.tutorials));
              
+             // Settings are overwritten here initially to ensure latest data
              if (serverOrg.settings) setOrganization(serverOrg.settings);
           })
           .catch(err => {
@@ -200,7 +190,7 @@ const App: React.FC = () => {
     }
   }, [user, orgId]);
 
-  // --- 3. POLLING FOR REAL-TIME UPDATES (Fixes "Clocked In" lag) ---
+  // --- 3. POLLING FOR REAL-TIME UPDATES ---
   useEffect(() => {
     if (!user || !orgId || isSyncing) return; // Don't poll while saving to avoid conflicts
 
@@ -210,7 +200,8 @@ const App: React.FC = () => {
           .then(serverOrg => {
              if(serverOrg.error) return;
              
-             // Merge updates to reflect status changes from other devices (e.g. Cleaner finishing shift)
+             // Merge updates for dynamic data
+             // NOTE: We DO NOT poll settings here to prevent reverting local edits while typing.
              setShifts(prev => smartMerge(prev, serverOrg.shifts));
              setSupplyRequests(prev => smartMerge(prev, serverOrg.supplyRequests));
              setLeaveRequests(prev => smartMerge(prev, serverOrg.leaveRequests));
@@ -234,15 +225,14 @@ const App: React.FC = () => {
         timeEntries, leaveRequests, tutorials, settings: organization, invoices
     };
 
-    // 1. Instant Local Persistence (The "Safe" Copy) - Always do this
+    // 1. Instant Local Persistence (The "Safe" Copy)
     try {
       localStorage.setItem('studio_org_settings', JSON.stringify(payload));
     } catch (e) {
-      console.error("Local Storage Quota Exceeded or Error. Data might not persist locally if refreshed.", e);
-      // We continue to cloud sync so data isn't lost if online.
+      console.error("Local Storage Quota Exceeded.", e);
     }
 
-    // 2. Cloud Sync - ONLY if we have confirmed server state (Prevents overwriting with blank)
+    // 2. Cloud Sync
     if (hasFetchedServer) {
         const timeout = setTimeout(async () => {
           setIsSyncing(true);

@@ -493,17 +493,17 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
 
                             {/* FS3 Body */}
                             <div className="grid grid-cols-2 gap-6">
-                               <div className="border border-black p-3 space-y-2">
+                                <div className="border border-black p-3 space-y-2">
                                   <p className="text-[9px] font-bold uppercase bg-gray-100 px-1">A. Payer Information</p>
                                   <p className="text-xs font-bold uppercase">{organization?.legalEntity || organization?.name || 'RESET STUDIO'}</p>
                                   <p className="text-xs font-mono">PE Number: {organization?.peNumber || '000000'}</p>
-                               </div>
-                               <div className="border border-black p-3 space-y-2">
+                                </div>
+                                <div className="border border-black p-3 space-y-2">
                                   <p className="text-[9px] font-bold uppercase bg-gray-100 px-1">B. Payee Information</p>
                                   <p className="text-xs font-bold uppercase">{user.name}</p>
                                   <p className="text-xs font-mono">ID: {user.idPassportNumber || '---'}</p>
                                   <p className="text-xs font-mono">NI: {user.niNumber || '---'}</p>
-                               </div>
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-6">
@@ -527,7 +527,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                                   <div>SSC Employer<br/>€{fs3Data.employerShare.toFixed(2)}</div>
                                   <div>Maternity<br/>€{fs3Data.maternity.toFixed(2)}</div>
                                   <div className="bg-gray-100">Total SSC<br/>€{fs3Data.totalSSC.toFixed(2)}</div>
-                               </div>
+                                </div>
                             </div>
                          </div>
                        ) : (
@@ -541,12 +541,10 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                                  <h2 className="text-sm font-bold uppercase tracking-wider text-[#1A1A1A]">
                                     {viewingDoc === 'payslip' ? `PAYSLIP ${selectedDocMonth}` : `WORKSHEET`}
                                  </h2>
-                                 {viewingDoc === 'payslip' && (
-                                    <div className="text-right mt-1">
-                                        <p className="text-[8px] font-bold uppercase">{user.name}</p>
-                                        <p className="text-[8px] font-mono text-black/60">ID: {user.idPassportNumber} | NI: {user.niNumber}</p>
-                                    </div>
-                                 )}
+                                 <div className="text-right mt-1">
+                                     <p className="text-[8px] font-bold uppercase">{user.name}</p>
+                                     <p className="text-[8px] font-mono text-black/60">ID: {user.idPassportNumber} | NI: {user.niNumber}</p>
+                                 </div>
                                  {viewingDoc === 'worksheet' && (
                                     <div className="flex gap-2 items-center mt-1 no-print">
                                        <input type="date" className="text-[9px] border rounded px-1 py-0.5" value={worksheetStart} onChange={e => setWorksheetStart(e.target.value)} />
@@ -639,8 +637,14 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                                          </tbody>
                                          <tfoot className="bg-gray-50 font-black">
                                             <tr>
-                                              <td colSpan={3} className="p-3 text-right uppercase tracking-widest">Total Pay</td>
+                                              <td colSpan={2} className="p-3 text-right uppercase tracking-widest">Totals</td>
+                                              <td className="p-3 text-right">{worksheetData.totalHours.toFixed(1)}</td>
                                               <td className="p-3 text-right text-green-700">€{(worksheetData.totalBase + worksheetData.totalBonus).toFixed(2)}</td>
+                                            </tr>
+                                            <tr>
+                                              <td colSpan={2} className="p-3 text-right uppercase tracking-widest text-black/40">Total Hours</td>
+                                              <td className="p-3 text-right text-black">{worksheetData.totalHours.toFixed(1)}</td>
+                                              <td></td>
                                             </tr>
                                          </tfoot>
                                       </table>

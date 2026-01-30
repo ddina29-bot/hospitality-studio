@@ -214,6 +214,52 @@ const createTransporter = () => {
   return null;
 };
 
+// --- GENERIC ARRAY MERGER (Server Wins on ID, Preserves Missing) ---
+const mergeArrays = (dbList, incomingList) => {
+    if (!incomingList) return dbList || [];
+    if (!dbList) return incomingList;
+
+    const mergedMap = new Map();
+    
+    // 1. Start with DB items (Preserve items that might be missing from incoming if another user added them)
+    dbList.forEach(item => mergedMap.set(item.id, item));
+
+    // 2. Overlay Incoming items
+    incomingList.forEach(incomingItem => {
+        const existing = mergedMap.get(incomingItem.id);
+        
+        // --- CONFLICT RESOLUTION LOGIC ---
+        
+        // SHIFT STATUS PROTECTION:
+        // If DB has 'completed' status, and incoming has 'active' (stale), KEEP 'completed'.
+        if (existing && existing.status === 'completed' && incomingItem.status === 'active') {
+             // Keep the DB version's status, actualEndTime, and photos if present
+             const preserved = {
+                 ...incomingItem,
+                 status: 'completed',
+                 actualEndTime: existing.actualEndTime || incomingItem.actualEndTime,
+                 approvalStatus: existing.approvalStatus || incomingItem.approvalStatus,
+                 tasks: existing.tasks?.length > 0 ? existing.tasks : incomingItem.tasks,
+                 checkoutPhotos: existing.checkoutPhotos || incomingItem.checkoutPhotos
+             };
+             mergedMap.set(incomingItem.id, preserved);
+             return;
+        }
+
+        // USER STATUS PROTECTION:
+        // Don't overwrite 'active' user with 'pending'
+        if (existing && existing.status === 'active' && incomingItem.status === 'pending') {
+            mergedMap.set(incomingItem.id, { ...incomingItem, status: 'active', password: existing.password });
+            return;
+        }
+
+        // Default: Incoming Overwrites DB (Last Write Wins for non-protected fields)
+        mergedMap.set(incomingItem.id, incomingItem);
+    });
+
+    return Array.from(mergedMap.values());
+};
+
 // --- ROUTES ---
 
 app.get('/api/system/status', (req, res) => {
@@ -222,11 +268,11 @@ app.get('/api/system/status', (req, res) => {
     storagePath: DATA_DIR,
     persistenceActive: isPersistent,
     uploadsPath: UPLOADS_DIR,
-    version: '3.2.5'
+    version: '3.2.6'
   });
 });
 
-// GET ORGANIZATION DATA (New Endpoint for Refresh)
+// GET ORGANIZATION DATA
 app.get('/api/organization/:orgId', (req, res) => {
   const { orgId } = req.params;
   const org = getOrgById(orgId);
@@ -271,14 +317,12 @@ app.post('/api/auth/login', async (req, res) => {
     if (!org) return res.status(401).json({ error: 'User not found.' });
     const user = org.users.find(u => u.email.toLowerCase() === cleanEmail.toLowerCase());
     
-    // Check credentials (case sensitive password)
     if (user.status !== 'pending' && user.password !== cleanPassword) {
       return res.status(401).json({ error: 'Invalid credentials.' });
     }
     
     if (user.status === 'inactive') return res.status(403).json({ error: 'Account suspended.' });
 
-    // Success - user is either Active (checked pass) or Pending (no pass check, handled by frontend)
     res.json({ success: true, user: user, organization: org });
   } catch (error) {
     console.error("Login Error:", error);
@@ -310,7 +354,6 @@ app.post('/api/auth/invite', async (req, res) => {
     const inviteLink = createdUser.activationToken;
     const activationUrl = `${req.protocol}://${req.get('host')}/?code=${inviteLink}`;
     
-    // Email logic (Optional - we prioritize returning the link)
     let emailSent = false;
     const transporter = createTransporter();
     if (transporter) {
@@ -329,36 +372,6 @@ app.post('/api/auth/invite', async (req, res) => {
   } catch (error) {
     console.error("Invite Error:", error);
     res.status(500).json({ error: 'Failed to invite user.' });
-  }
-});
-
-// 3.1 RESEND INVITE
-app.post('/api/auth/resend-invite', async (req, res) => {
-  const { email } = req.body;
-  const cleanEmail = email ? email.trim() : '';
-  try {
-    const org = findOrgByUserEmail(cleanEmail);
-    if (!org) return res.status(404).json({ error: 'User not found.' });
-    const user = org.users.find(u => u.email.toLowerCase() === cleanEmail.toLowerCase());
-    if (!user || user.status !== 'pending') return res.status(400).json({ error: 'User is active or not pending.' });
-    const inviteLink = user.activationToken;
-    const activationUrl = `${req.protocol}://${req.get('host')}/?code=${inviteLink}`;
-    let emailSent = false;
-    const transporter = createTransporter();
-    if (transporter) {
-      try {
-        await transporter.sendMail({
-          from: `"Reset Studio" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
-          to: cleanEmail,
-          subject: "Invitation Reminder",
-          html: `<p>Reminder to join.</p><p><a href="${activationUrl}">Click here to activate</a></p>`
-        });
-        emailSent = true;
-      } catch (e) { console.error("Email error:", e); }
-    }
-    res.json({ success: true, emailSent, inviteLink: activationUrl });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to resend invite.' });
   }
 });
 
@@ -426,14 +439,13 @@ app.post('/api/auth/delete-organization', async (req, res) => {
   }
 });
 
-// 5.5 RESET OPERATIONAL DATA (Clear Testing Data)
+// 5.5 RESET OPERATIONAL DATA
 app.post('/api/admin/reset-data', async (req, res) => {
   const { orgId } = req.body;
   try {
     const org = getOrgById(orgId);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
 
-    // Clear operational arrays but keep Users, Properties, Clients and Settings
     org.shifts = [];
     org.manualTasks = [];
     org.supplyRequests = [];
@@ -442,15 +454,13 @@ app.post('/api/admin/reset-data', async (req, res) => {
     org.timeEntries = [];
     
     saveOrgToDb(org);
-    console.log(`[RESET] Cleared operational data for Org ${orgId}`);
     res.json({ success: true, organization: org });
   } catch (error) {
-    console.error("Reset Error:", error);
     res.status(500).json({ error: "Failed to reset data." });
   }
 });
 
-// 6. SYNC DATA (The main engine with Smart Merge)
+// 6. SYNC DATA (Main Engine with Smart Merge)
 app.post('/api/sync', async (req, res) => {
   const { orgId, data } = req.body;
   if (!orgId) return res.status(400).json({ error: "Missing OrgId" });
@@ -459,39 +469,26 @@ app.post('/api/sync', async (req, res) => {
     const org = getOrgById(orgId);
     if (!org) return res.status(404).json({ error: "Organization not found" });
 
-    // --- SMART MERGE LOGIC FOR USERS ---
-    if (data.users && Array.isArray(data.users)) {
-        const dbUsersMap = new Map((org.users || []).map(u => [u.id, u]));
-        data.users.forEach(incomingUser => {
-            const existingUser = dbUsersMap.get(incomingUser.id);
-            if (existingUser) {
-                // Don't overwrite active with pending
-                if (existingUser.status === 'active' && incomingUser.status === 'pending') return; 
-                // Preserve passwords
-                if (existingUser.password && !incomingUser.password) incomingUser.password = existingUser.password;
-                dbUsersMap.set(incomingUser.id, incomingUser);
-            } else {
-                dbUsersMap.set(incomingUser.id, incomingUser);
-            }
-        });
-        org.users = Array.from(dbUsersMap.values());
-    }
+    // --- APPLY SMART MERGES ---
+    // Instead of replacing arrays, we merge them to preserve data from other users
+    
+    if (data.users) org.users = mergeArrays(org.users, data.users);
+    if (data.shifts) org.shifts = mergeArrays(org.shifts, data.shifts);
+    if (data.properties) org.properties = mergeArrays(org.properties, data.properties);
+    if (data.clients) org.clients = mergeArrays(org.clients, data.clients);
+    if (data.inventoryItems) org.inventoryItems = mergeArrays(org.inventoryItems, data.inventoryItems);
+    if (data.manualTasks) org.manualTasks = mergeArrays(org.manualTasks, data.manualTasks);
+    if (data.supplyRequests) org.supplyRequests = mergeArrays(org.supplyRequests, data.supplyRequests);
+    if (data.invoices) org.invoices = mergeArrays(org.invoices, data.invoices);
+    if (data.timeEntries) org.timeEntries = mergeArrays(org.timeEntries, data.timeEntries);
+    if (data.leaveRequests) org.leaveRequests = mergeArrays(org.leaveRequests, data.leaveRequests);
+    if (data.tutorials) org.tutorials = mergeArrays(org.tutorials, data.tutorials);
 
-    // Direct merge for operational data (Last Write Wins from active Client)
-    if (data.shifts) org.shifts = data.shifts; 
-    if (data.properties) org.properties = data.properties;
-    if (data.clients) org.clients = data.clients;
-    if (data.inventoryItems) org.inventoryItems = data.inventoryItems;
-    if (data.manualTasks) org.manualTasks = data.manualTasks;
-    if (data.supplyRequests) org.supplyRequests = data.supplyRequests;
+    // Settings (Direct Overwrite permitted as it's a single object, usually admin-only edit)
     if (data.settings) org.settings = data.settings;
-    if (data.invoices) org.invoices = data.invoices;
-    if (data.timeEntries) org.timeEntries = data.timeEntries;
-    if (data.leaveRequests) org.leaveRequests = data.leaveRequests;
-    if (data.tutorials) org.tutorials = data.tutorials;
 
     saveOrgToDb(org);
-    console.log(`[SYNC] Updated Org ${orgId}. Props: ${org.properties?.length}, Clients: ${org.clients?.length}`);
+    console.log(`[SYNC] Updated Org ${orgId}. Preserved data integrity via Smart Merge.`);
     res.json({ success: true });
   } catch (error) {
     console.error("Sync Error:", error);

@@ -182,14 +182,6 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
     }
   };
 
-  const handleFactoryReset = () => {
-    if (confirm("Reset Application? This will clear all local data and refresh the page. Your account on the server will not be deleted.")) {
-      localStorage.clear();
-      sessionStorage.clear();
-      window.location.href = "/";
-    }
-  };
-
   if (isVerifyingCode) {
       return (
         <div className="min-h-screen bg-white flex items-center justify-center p-10">
@@ -293,24 +285,6 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
             
             <div className="pt-2 space-y-4">
               <button type="submit" disabled={isLoading} className={buttonStyle}>{isLoading ? 'VERIFYING...' : 'ENTER STUDIO'}</button>
-              
-              <button 
-                type="button" 
-                onClick={onSignupClick}
-                className="w-full bg-white border border-gray-200 text-black font-black py-4 rounded-3xl uppercase tracking-[0.4em] text-[10px] hover:bg-gray-50 transition-all shadow-sm"
-              >
-                CREATE NEW STUDIO
-              </button>
-
-              <div className="text-center border-t border-black/5 pt-6 flex flex-col items-center gap-4">
-                <button 
-                  type="button" 
-                  onClick={handleFactoryReset}
-                  className="text-black/20 hover:text-red-500 text-[8px] font-black uppercase tracking-widest transition-all underline"
-                >
-                  Factory Reset Application
-                </button>
-              </div>
             </div>
           </form>
         </div>
