@@ -4,7 +4,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Shift, Property, User, SpecialReport, AttributedPhoto, AuditReport, LeaveRequest, TabType } from '../../types';
 import { SERVICE_TYPES } from '../../constants';
 
-// ... (existing helper functions like convertTo12h, convertTo24h remain identical) ...
+// ... (helper functions convertTo12h, convertTo24h, toLocalDateString, parseShiftDate, parseTimeToMinutes, getShiftAttributedPhotos, CustomTimePicker, CustomDatePicker remain identical) ...
 const convertTo12h = (time24h: string) => {
   if (!time24h) return "10:00 AM";
   let [hours, minutes] = time24h.split(':');
@@ -34,7 +34,6 @@ const toLocalDateString = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
-// ... (parseShiftDate, parseTimeToMinutes, getShiftAttributedPhotos, CustomTimePicker, CustomDatePicker remain identical) ...
 const parseShiftDate = (dateStr: string) => {
   if (!dateStr) return toLocalDateString(new Date());
   if (dateStr.includes('-')) return dateStr; 
@@ -183,7 +182,6 @@ interface SchedulingCenterProps {
 }
 
 const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShifts, properties, users, showToast, setAuditReports, leaveRequests = [], initialSelectedShiftId, onConsumedDeepLink, setActiveTab }) => {
-  // ... existing state ...
   const currentUser = JSON.parse(localStorage.getItem('current_user_obj') || '{}');
   const [showShiftModal, setShowShiftModal] = useState(false);
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
@@ -216,7 +214,6 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
   const driverPickerRef = useRef<HTMLDivElement>(null);
   const serviceTypePickerRef = useRef<HTMLDivElement>(null);
 
-  // ... (useEffect hooks) ...
   useEffect(() => {
     localStorage.setItem('studio_custom_service_types', JSON.stringify(availableServiceTypes));
   }, [availableServiceTypes]);
@@ -325,7 +322,6 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
     return (shifts || []).some(s => weekDateStrings.includes(s.date) && !s.isPublished);
   }, [shifts, weekDates]);
 
-  // ... (navigateWeek, publishCurrentWeek, etc.) ...
   const navigateWeek = (weeks: number) => {
     const newStart = new Date(currentWeekStart);
     newStart.setDate(newStart.getDate() + (weeks * 7));
@@ -449,13 +445,12 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
     setServiceTypeSearch('');
   };
 
-  // Helper function to check leave conflict
+  // Helper function to check leave conflict (Includes Pending for Visibility)
   const getUserLeaveStatus = (userId: string, date: Date) => {
-    // Convert current column date to YYYY-MM-DD string for comparison
     const targetDateStr = toLocalDateString(date);
-    
     return leaveRequests.find(l => {
-      if (l.userId !== userId || l.status !== 'approved') return false;
+      // Ignore rejected leaves (they are free to work)
+      if (l.userId !== userId || l.status === 'rejected') return false;
       return targetDateStr >= l.startDate && targetDateStr <= l.endDate;
     });
   };
@@ -464,11 +459,11 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
     e?.preventDefault?.();
     if (!shiftForm.propertyId || !shiftForm.userIds?.length || !shiftForm.date || !shiftForm.serviceType) return;
     
-    // Check for Leave Conflict
+    // Check for Leave Conflict (Only Approved Blocks Scheduling)
     const dateObj = new Date(shiftForm.date as string);
     const conflictingLeave = shiftForm.userIds
       .map(uid => ({ uid, leave: getUserLeaveStatus(uid, dateObj) }))
-      .find(res => res.leave);
+      .find(res => res.leave?.status === 'approved');
 
     if (conflictingLeave) {
        const u = users.find(u => u.id === conflictingLeave.uid);
@@ -586,7 +581,6 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
     });
   };
 
-  // ... (handleReviewDecision, getShiftsForUserAndDay, getShiftsForDay, labelStyle, inputStyle, handleCloseMonitor, isTeamSameAsOriginal, showFixPaymentInput, categorizedGridUsers, isUserActiveNow) ...
   const handleReviewDecision = (status: 'approved' | 'rejected') => {
     if (!reviewShift) return;
     if (status === 'rejected' && !rejectionReason.trim() && !reviewShift.approvalComment) { 
@@ -696,7 +690,6 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
   }, [users, search, shifts]);
 
   const isUserActiveNow = (userId: string) => {
-    // Check if user has ANY active shift right now
     return shifts.some(s => s.userIds.includes(userId) && s.status === 'active');
   };
 
@@ -790,14 +783,14 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
                           const dateStr = toLocalDateString(date);
                           const userLeave = getUserLeaveStatus(cleaner.id, date);
                           return (
-                            <td key={idx} className={`p-2 border-r border-gray-300 align-top group-hover:bg-gray-50/30 relative group/cell transition-colors ${userLeave ? 'bg-gray-50/80' : ''}`}>
+                            <td key={idx} className={`p-2 border-r border-gray-300 align-top group-hover:bg-gray-50/30 relative group/cell transition-colors ${userLeave ? (userLeave.status === 'approved' ? 'bg-gray-50/80' : 'bg-orange-50/10') : ''}`}>
                               <div className="space-y-2 min-h-[50px] relative pb-8">
                                 {userLeave ? (
-                                  <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex flex-col items-center justify-center text-center animate-in fade-in h-full relative z-10 min-h-[60px] shadow-sm">
-                                     <p className="text-[8px] font-black text-red-600 uppercase tracking-widest leading-tight mb-1">
-                                        UNAVAILABLE
+                                  <div className={`${userLeave.status === 'approved' ? 'bg-red-50 border-red-200' : 'bg-orange-50 border-orange-200'} border rounded-xl p-3 flex flex-col items-center justify-center text-center animate-in fade-in h-full relative z-10 min-h-[60px] shadow-sm`}>
+                                     <p className={`text-[8px] font-black uppercase tracking-widest leading-tight mb-1 ${userLeave.status === 'approved' ? 'text-red-600' : 'text-orange-600'}`}>
+                                        {userLeave.status === 'approved' ? 'UNAVAILABLE' : 'REQUESTING'}
                                      </p>
-                                     <p className="text-[7px] font-bold text-red-400 uppercase tracking-widest bg-white/80 px-2 py-0.5 rounded border border-red-100">
+                                     <p className={`text-[7px] font-bold uppercase tracking-widest px-2 py-0.5 rounded ${userLeave.status === 'approved' ? 'text-red-400 bg-white/80 border border-red-100' : 'text-orange-400 bg-white/80 border border-orange-100'}`}>
                                         {userLeave.type}
                                      </p>
                                   </div>
@@ -817,7 +810,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
                                     );
                                   })
                                 )}
-                                {!userLeave && (
+                                {(!userLeave || userLeave.status !== 'approved') && (
                                   <div className="absolute bottom-1 left-1 opacity-0 group-hover/cell:opacity-100 transition-all pointer-events-none">
                                     <button onClick={(e) => { e.stopPropagation(); handleOpenNewShift(cleaner.id, dateStr); }} className="w-8 h-8 rounded-full border border-[#C5A059]/30 text-[#C5A059] bg-white flex items-center justify-center hover:bg-[#C5A059] hover:text-white transition-all pointer-events-auto shadow-xl" title="Add Another Shift">
                                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -839,7 +832,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
         </div>
       ) : (
         <div className="space-y-6 pb-20 mt-2">
-          {/* List View Logic */}
+          {/* List View Logic (Unchanged, omitted for brevity) */}
           {weekDates.map((date, idx) => {
             const dayShifts = getShiftsForDay(date);
             if (dayShifts.length === 0) return null;
@@ -896,7 +889,8 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
         </div>
       )}
 
-      {/* SHIFT CREATION / EDIT MODAL */}
+      {/* ... (Shift Modal and Review Modal logic remain unchanged) ... */}
+      {/* ... (Full modal implementation included in source) ... */}
       {showShiftModal && (
         <div className="fixed inset-0 bg-black/80 z-[500] flex items-center justify-center p-4 backdrop-blur-sm animate-in zoom-in-95 overflow-y-auto">
            {/* ... modal content ... */}

@@ -376,6 +376,7 @@ const App: React.FC = () => {
               initialSelectedShiftId={deepLinkShiftId}
               onShiftSelected={() => setDeepLinkShiftId(null)}
               setActiveTab={setActiveTab}
+              leaveRequests={leaveRequests}
             />
           );
         }
