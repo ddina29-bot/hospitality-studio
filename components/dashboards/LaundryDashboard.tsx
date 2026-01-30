@@ -86,8 +86,9 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
   }, [realTodayISO]);
 
   const collectionAlerts = useMemo(() => {
-    return shifts.filter(s => !s.isCollected && !s.isLaundryPrepared && !s.excludeLaundry);
-  }, [shifts]);
+    // Only show alerts for the VIEWED DATE to prevent historical backlog clutter
+    return shifts.filter(s => s.date === viewedDateStrShort && !s.isCollected && !s.excludeLaundry);
+  }, [shifts, viewedDateStrShort]);
 
   const missingLaundryItems = useMemo(() => {
     const list: { shiftId: string, propertyName: string, report: SpecialReport }[] = [];
@@ -285,7 +286,7 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
             <section className="bg-orange-50 border border-orange-200 p-6 rounded-[32px] shadow-sm space-y-4">
               <div className="flex items-center gap-3">
                 <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></div>
-                <h3 className="text-[10px] font-black text-orange-700 uppercase tracking-[0.4em]">Driver Collection Alerts</h3>
+                <h3 className="text-[10px] font-black text-orange-700 uppercase tracking-[0.4em]">Driver Collection Alerts (Today)</h3>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {collectionAlerts.slice(0, 6).map(alert => (

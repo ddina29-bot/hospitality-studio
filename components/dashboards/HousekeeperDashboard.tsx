@@ -295,6 +295,11 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({ user, setAc
                {activeCleaners.map(shift => {
                   const staffMembers = shift.userIds.map(uid => users.find(u => u.id === uid)).filter(Boolean) as User[];
                   const durationMins = shift.actualStartTime ? Math.floor((Date.now() - shift.actualStartTime) / 60000) : 0;
+                  
+                  // LIVE PHOTOS: Collect recent photos from tasks
+                  const allPhotos = shift.tasks?.flatMap(t => t.photos) || [];
+                  const recentPhotos = allPhotos.slice(-4).reverse();
+
                   return (
                      <div key={shift.id} className="bg-[#FDF8EE] border border-green-500/30 p-6 rounded-[32px] shadow-lg flex flex-col justify-between h-full relative overflow-hidden">
                         <div className="absolute top-0 left-0 w-1 h-full bg-green-500"></div>
@@ -316,6 +321,24 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({ user, setAc
                               </p>
                            </div>
                            <p className="text-[8px] text-[#C5A059] font-black uppercase tracking-[0.2em]">{shift.serviceType}</p>
+                           
+                           {/* LIVE PHOTO FEED */}
+                           {recentPhotos.length > 0 && (
+                             <div className="pt-2 border-t border-green-500/10">
+                                <p className="text-[7px] font-black text-green-700/50 uppercase tracking-widest mb-2">Live Activity Feed</p>
+                                <div className="flex gap-2 overflow-hidden">
+                                   {recentPhotos.map((p, i) => (
+                                      <img 
+                                        key={i} 
+                                        src={p.url} 
+                                        onClick={() => setZoomedImage(p.url)}
+                                        className="w-12 h-12 rounded-xl object-cover border-2 border-white shadow-sm cursor-zoom-in hover:scale-105 transition-all" 
+                                        alt="Live Evidence"
+                                      />
+                                   ))}
+                                </div>
+                             </div>
+                           )}
                         </div>
                      </div>
                   );
@@ -481,7 +504,7 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({ user, setAc
         </div>
       )}
 
-      {/* Main Incident Management Modal */}
+      {/* Incident Modal (already present, omitted for brevity as unchanged) */}
       {viewingIncidentShift && (
          <div className="fixed inset-0 bg-black/70 z-[400] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
             <div className="bg-[#FDF8EE] border border-[#C5A059]/40 rounded-[40px] w-full max-w-4xl p-8 md:p-10 space-y-8 shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar">
@@ -655,7 +678,7 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({ user, setAc
       {reviewShift && (
         <div className="fixed inset-0 bg-black/70 z-[500] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in" onClick={() => setReviewShift(null)}>
            <div className="bg-[#FDF8EE] border border-[#C5A059]/40 rounded-[40px] w-full max-w-4xl p-8 md:p-10 space-y-8 shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar" onClick={e => e.stopPropagation()}>
-              <button onClick={() => setReviewShift(null)} className="absolute top-8 right-8 text-black/20 hover:text-black"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+              <button onClick={() => setReviewShift(null)} className="absolute top-8 right-8 text-black/20 hover:text-black transition-colors"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
               
               <div className="space-y-1">
                  <h2 className="text-2xl font-serif-brand font-bold uppercase text-black">{reviewShift.propertyName}</h2>

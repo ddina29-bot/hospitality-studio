@@ -204,7 +204,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
       ...s, 
       status: 'completed', 
       actualEndTime: Date.now(), 
-      approvalStatus: 'rejected',
+      approvalStatus: 'rejected', 
       wasRejected: true,
       approvalComment: 'AUTOMATIC REJECTION: GEOFENCE BREACH DETECTED >50M FROM PROPERTY.',
       tasks: tasks 
@@ -382,10 +382,17 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
             else if (checkoutTarget === 'boxClosed') setBoxClosedPhotos(prev => [...prev, attributed]);
         }
         else if (target === 'task') {
-          setTasks(prevTasks => {
-            const tId = activeTaskId || prevTasks[0].id;
-            return prevTasks.map(t => t.id === tId ? { ...t, photos: [...t.photos, attributed] } : t);
-          });
+          // Calculate new tasks array locally
+          const tId = activeTaskId || tasks[0].id;
+          const newTasks = tasks.map(t => t.id === tId ? { ...t, photos: [...t.photos, attributed] } : t);
+          
+          // Update local state
+          setTasks(newTasks);
+
+          // CRITICAL: Update global shift state immediately for Live Monitoring visibility
+          if (selectedShiftId) {
+             setShifts(prev => prev.map(s => s.id === selectedShiftId ? { ...s, tasks: newTasks } : s));
+          }
         }
       }
     } catch (error) {
@@ -530,10 +537,12 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     setSelectedSupplyItems({});
   };
 
-  // ... (RENDER - same structure, using new activeQueue) ...
+  // ... (rest of render logic remains same as provided in previous full code blocks)
   if (currentStep === 'list') {
+    // ... list render logic ...
     return (
       <div className="space-y-8 animate-in fade-in duration-700 pb-32 max-w-2xl mx-auto px-2 text-left relative">
+        {/* ... notification and header ... */}
         {notification && (
           <div className={`fixed top-6 left-1/2 transform -translate-x-1/2 z-[1000] px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 min-w-[300px] max-w-[90vw] animate-in slide-in-from-top-4 duration-300 ${notification.type === 'error' ? 'bg-red-600 text-white' : 'bg-green-600 text-white'}`}>
             <p className="text-xs font-bold leading-tight">{notification.message}</p>
@@ -609,6 +618,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
 
   // OVERVIEW
   if (currentStep === 'overview' && activeShift && activeProperty) {
+      // ... same overview code ...
       const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activeProperty.address)}`;
       return (
         <div className="space-y-8 animate-in fade-in duration-700 pb-32 max-w-2xl mx-auto text-left px-2 relative">
@@ -702,6 +712,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   if (currentStep === 'active' && activeShift) {
       return (
         <div className="space-y-8 animate-in fade-in duration-700 pb-32 max-w-2xl mx-auto text-left px-2 relative">
+            {/* ... rest of the active view code ... */}
             {notification && (
                 <div className={`fixed top-6 left-1/2 transform -translate-x-1/2 z-[1000] px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 min-w-[300px] max-w-[90vw] animate-in slide-in-from-top-4 duration-300 ${notification.type === 'error' ? 'bg-red-600 text-white' : 'bg-green-600 text-white'}`}>
                     <p className="text-xs font-bold leading-tight">{notification.message}</p>

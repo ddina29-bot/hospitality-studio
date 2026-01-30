@@ -45,6 +45,7 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
       case 'supervisor': return 'bg-purple-100 text-purple-700 border-purple-200';
       case 'driver': return 'bg-orange-100 text-orange-700 border-orange-200';
       case 'cleaner': return 'bg-green-100 text-green-700 border-green-200';
+      case 'laundry': return 'bg-blue-100 text-blue-700 border-blue-200';
       default: return 'bg-gray-100 text-gray-600 border-gray-200';
     }
   };
@@ -263,6 +264,7 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
                           <option value="cleaner">CLEANER</option>
                           <option value="supervisor">SUPERVISOR</option>
                           <option value="driver">DRIVER</option>
+                          <option value="laundry">LAUNDRY STAFF</option>
                           <option value="admin">ADMIN</option>
                           <option value="housekeeping">HOUSEKEEPING (MANAGER)</option>
                           <option value="maintenance">MAINTENANCE</option>
@@ -303,6 +305,7 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
                               <option value="cleaner">CLEANER</option>
                               <option value="supervisor">SUPERVISOR</option>
                               <option value="driver">DRIVER</option>
+                              <option value="laundry">LAUNDRY STAFF</option>
                               <option value="admin">ADMIN</option>
                               <option value="housekeeping">HOUSEKEEPING</option>
                               <option value="maintenance">MAINTENANCE</option>
