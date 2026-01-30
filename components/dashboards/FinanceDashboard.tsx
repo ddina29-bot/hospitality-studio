@@ -673,10 +673,24 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
 
-              <header>
-                 <p className="text-[10px] font-black text-[#C5A059] uppercase tracking-[0.5em] mb-2">OFFICIAL STUDIO PAYSLIP</p>
-                 <h2 className="text-3xl font-serif-brand font-bold text-black uppercase tracking-tight">{activePayslip.user.name}</h2>
-                 <p className="text-[8px] text-black/40 uppercase mt-2">Cycle: Current MTD • Role: {activePayslip.user.role.toUpperCase()} • IBAN: {activePayslip.user.iban || 'PENDING'}</p>
+              <header className="space-y-4">
+                 <div>
+                    <p className="text-[10px] font-black text-[#C5A059] uppercase tracking-[0.5em] mb-1">OFFICIAL STUDIO PAYSLIP</p>
+                    <h2 className="text-3xl font-serif-brand font-bold text-black uppercase tracking-tight">Statement of Earnings</h2>
+                 </div>
+                 
+                 <div className="grid grid-cols-2 gap-8 border-t border-black/10 pt-4">
+                    <div className="space-y-1">
+                        <p className="text-[8px] font-black text-black/40 uppercase tracking-widest">EMPLOYER</p>
+                        <p className="text-[10px] font-bold text-black uppercase">{organization?.legalEntity || organization?.name || 'STUDIO'}</p>
+                        <p className="text-[9px] font-mono text-black/60">PE: {organization?.peNumber || 'N/A'}</p>
+                    </div>
+                    <div className="space-y-1">
+                        <p className="text-[8px] font-black text-black/40 uppercase tracking-widest">EMPLOYEE</p>
+                        <p className="text-[10px] font-bold text-black uppercase">{activePayslip.user.name}</p>
+                        <p className="text-[9px] font-mono text-black/60">ID: {activePayslip.user.idPassportNumber || 'N/A'} | NI: {activePayslip.user.niNumber || 'N/A'}</p>
+                    </div>
+                 </div>
               </header>
 
               <div className="space-y-6">
@@ -774,7 +788,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                                     {/* ADMIN / FROM SECTION */}
                                     <div className="space-y-1">
                                         <p className="text-[8px] font-black text-[#C5A059] uppercase tracking-[0.4em]">FROM</p>
-                                        <h3 className="text-lg font-serif-brand font-bold text-black uppercase">{organization?.name || 'My Studio'}</h3>
+                                        <h3 className="text-lg font-serif-brand font-bold text-black uppercase">{organization?.legalEntity || organization?.name || 'My Studio'}</h3>
                                         <div className="text-[9px] text-black/60 font-medium space-y-0.5">
                                             <p>{organization?.address || 'Studio HQ Address'}</p>
                                             <p>VAT: {organization?.taxId || 'N/A'}</p>

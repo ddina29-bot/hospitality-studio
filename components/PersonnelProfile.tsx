@@ -495,13 +495,14 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                             <div className="grid grid-cols-2 gap-6">
                                <div className="border border-black p-3 space-y-2">
                                   <p className="text-[9px] font-bold uppercase bg-gray-100 px-1">A. Payer Information</p>
-                                  <p className="text-xs font-bold uppercase">{organization?.name || 'RESET STUDIO'}</p>
-                                  <p className="text-xs font-mono">{organization?.peNumber || '000000'}</p>
+                                  <p className="text-xs font-bold uppercase">{organization?.legalEntity || organization?.name || 'RESET STUDIO'}</p>
+                                  <p className="text-xs font-mono">PE Number: {organization?.peNumber || '000000'}</p>
                                </div>
                                <div className="border border-black p-3 space-y-2">
                                   <p className="text-[9px] font-bold uppercase bg-gray-100 px-1">B. Payee Information</p>
-                                  <p className="text-xs font-bold font-mono">{user.idPassportNumber || '---'}</p>
                                   <p className="text-xs font-bold uppercase">{user.name}</p>
+                                  <p className="text-xs font-mono">ID: {user.idPassportNumber || '---'}</p>
+                                  <p className="text-xs font-mono">NI: {user.niNumber || '---'}</p>
                                </div>
                             </div>
 
@@ -533,13 +534,19 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                          <>
                            <div className="flex justify-between border-b border-black/5 pb-6 mb-6">
                               <div className="text-left space-y-1">
-                                 <h1 className="text-lg font-serif-brand font-bold uppercase tracking-tight">{organization?.name || 'RESET STUDIO'}</h1>
-                                 <p className="text-[8px] font-black uppercase tracking-widest text-[#8B6B2E]">Maltese Payroll Compliance</p>
+                                 <h1 className="text-lg font-serif-brand font-bold uppercase tracking-tight">{organization?.legalEntity || organization?.name || 'RESET STUDIO'}</h1>
+                                 <p className="text-[8px] font-black uppercase tracking-widest text-[#8B6B2E]">PE: {organization?.peNumber || 'N/A'}</p>
                               </div>
                               <div className="text-right flex flex-col items-end">
                                  <h2 className="text-sm font-bold uppercase tracking-wider text-[#1A1A1A]">
                                     {viewingDoc === 'payslip' ? `PAYSLIP ${selectedDocMonth}` : `WORKSHEET`}
                                  </h2>
+                                 {viewingDoc === 'payslip' && (
+                                    <div className="text-right mt-1">
+                                        <p className="text-[8px] font-bold uppercase">{user.name}</p>
+                                        <p className="text-[8px] font-mono text-black/60">ID: {user.idPassportNumber} | NI: {user.niNumber}</p>
+                                    </div>
+                                 )}
                                  {viewingDoc === 'worksheet' && (
                                     <div className="flex gap-2 items-center mt-1 no-print">
                                        <input type="date" className="text-[9px] border rounded px-1 py-0.5" value={worksheetStart} onChange={e => setWorksheetStart(e.target.value)} />

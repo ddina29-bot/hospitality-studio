@@ -330,7 +330,7 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
                  <div className="space-y-4">
                     <h4 className="text-[10px] font-black text-black/30 uppercase tracking-[0.5em] border-l-2 border-[#C5A059] pl-3">Employment & Payroll</h4>
                     
-                    {/* RESTORED MARITAL STATUS FIELD */}
+                    {/* MARITAL STATUS FIELD */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                            <label className={labelStyle}>Marital Status</label>
@@ -380,8 +380,9 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
                            <input type="number" step="0.50" className={inputStyle} value={editingUser.payRate || ''} onChange={e => setEditingUser({...editingUser, payRate: parseFloat(e.target.value)})} placeholder="5.50" />
                         </div>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div><label className={labelStyle}>ID / Passport No.</label><input className={inputStyle} value={editingUser.idPassportNumber || ''} onChange={e => setEditingUser({...editingUser, idPassportNumber: e.target.value})} placeholder="NO SPACES" /></div>
+                        <div><label className={labelStyle}>NI / Social Security No.</label><input className={inputStyle} value={editingUser.niNumber || ''} onChange={e => setEditingUser({...editingUser, niNumber: e.target.value})} placeholder="OPTIONAL" /></div>
                         <div><label className={labelStyle}>IBAN</label><input className={inputStyle} value={editingUser.iban || ''} onChange={e => setEditingUser({...editingUser, iban: e.target.value})} placeholder="MT..." /></div>
                     </div>
                  </div>

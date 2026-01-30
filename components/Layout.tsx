@@ -5,7 +5,7 @@ import { Icons } from '../constants';
 import DownloadAppModal from './DownloadAppModal';
 
 interface LayoutProps {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   activeTab: TabType;
   setActiveTab: (tab: TabType) => void;
   role: UserRole;
