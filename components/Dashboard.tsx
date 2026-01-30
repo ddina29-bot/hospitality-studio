@@ -64,6 +64,27 @@ const Dashboard: React.FC<DashboardProps> = ({
     return `${h}:${m}:${s}`;
   };
 
+  // --- SUPPLY REQUEST LOGIC (24H Cooldown) ---
+  const lastRequest = useMemo(() => {
+    return supplyRequests
+      .filter(r => r.userId === user.id)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+  }, [supplyRequests, user.id]);
+
+  const hoursSinceLastRequest = useMemo(() => {
+    if (!lastRequest) return 999;
+    const diffMs = Date.now() - new Date(lastRequest.date).getTime();
+    return diffMs / (1000 * 60 * 60);
+  }, [lastRequest]);
+
+  const isCooldownActive = hoursSinceLastRequest < 24;
+
+  const nextAvailableTime = useMemo(() => {
+    if (!lastRequest) return null;
+    const nextDate = new Date(new Date(lastRequest.date).getTime() + 24 * 60 * 60 * 1000);
+    return nextDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }, [lastRequest]);
+
   const handleUpdateQty = (id: string, delta: number) => {
     setSelectedItems(prev => {
       const current = prev[id] || 0;
@@ -184,13 +205,19 @@ const Dashboard: React.FC<DashboardProps> = ({
            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="text-[#C5A059] group-hover:translate-x-1 transition-transform shrink-0 ml-2"><polyline points="9 18 15 12 9 6"/></svg>
         </button>
 
-        <button onClick={() => setShowRequisition(true)} className="bg-[#FDF8EE] border border-[#D4B476]/30 text-black px-5 py-3 rounded-2xl group hover:border-[#C5A059] transition-all shadow-md flex items-center gap-3 h-[64px]">
+        <button onClick={() => setShowRequisition(true)} className={`bg-[#FDF8EE] border border-[#D4B476]/30 text-black px-5 py-3 rounded-2xl group hover:border-[#C5A059] transition-all shadow-md flex items-center gap-3 h-[64px] ${isCooldownActive ? 'opacity-70' : ''}`}>
           <div className="w-8 h-8 rounded-lg bg-[#C5A059]/10 flex items-center justify-center shrink-0 text-[#C5A059]">
-             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+             {isCooldownActive ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+             ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+             )}
           </div>
           <div className="text-left min-w-0">
             <h3 className="text-[10px] md:text-xs font-black uppercase tracking-widest leading-none">SUPPLIES</h3>
-            <p className="text-black/40 text-[6px] font-black uppercase tracking-[0.2em] mt-1 leading-none">REQUEST KIT</p>
+            <p className={`text-[6px] font-black uppercase tracking-[0.2em] mt-1 leading-none ${isCooldownActive ? 'text-red-500' : 'text-black/40'}`}>
+                {isCooldownActive ? 'COOLDOWN ACTIVE' : 'REQUEST KIT'}
+            </p>
           </div>
         </button>
       </div>
@@ -281,7 +308,24 @@ const Dashboard: React.FC<DashboardProps> = ({
               <p className="text-[#C5A059] font-black uppercase tracking-[0.4em] text-[8px] md:text-[10px] italic">Operational Replenishment Order</p>
             </div>
             
-            <div className="space-y-3 max-h-[50vh] overflow-y-auto px-1 custom-scrollbar">
+            {isCooldownActive && lastRequest && (
+               <div className="bg-red-50 border border-red-100 p-6 rounded-3xl flex items-start gap-4 shadow-sm">
+                  <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600 font-bold shrink-0">
+                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  </div>
+                  <div>
+                     <p className="text-[10px] font-black uppercase text-red-600 tracking-widest">REQUEST COOLDOWN ACTIVE</p>
+                     <p className="text-[10px] text-black/60 leading-relaxed mt-2 font-medium">
+                        You last requested supplies on <span className="text-black font-bold">{new Date(lastRequest.date).toLocaleDateString()}</span> at <span className="text-black font-bold">{new Date(lastRequest.date).toLocaleTimeString()}</span>.
+                     </p>
+                     <p className="text-[9px] text-black/40 mt-1 uppercase tracking-wider font-bold">
+                        Next available slot: {nextAvailableTime}
+                     </p>
+                  </div>
+               </div>
+            )}
+
+            <div className={`space-y-3 max-h-[50vh] overflow-y-auto px-1 custom-scrollbar ${isCooldownActive ? 'opacity-30 pointer-events-none grayscale' : ''}`}>
               {inventoryItems.map(item => (
                 <div key={item.id} className="p-5 rounded-3xl bg-gray-50 border border-gray-100 hover:border-[#C5A059]/20 transition-all">
                   <div className="flex items-center justify-between gap-4 mb-4">
@@ -308,10 +352,10 @@ const Dashboard: React.FC<DashboardProps> = ({
 
             <button 
               onClick={handleSubmitRequisition}
-              disabled={isSubmitting || Object.values(selectedItems).every(v => v === 0)}
-              className="w-full bg-black text-[#C5A059] font-black py-6 rounded-3xl uppercase tracking-[0.4em] text-[11px] md:text-sm shadow-xl active:scale-95 transition-all disabled:opacity-10"
+              disabled={isSubmitting || isCooldownActive || Object.values(selectedItems).every(v => v === 0)}
+              className="w-full bg-black text-[#C5A059] font-black py-6 rounded-3xl uppercase tracking-[0.4em] text-[11px] md:text-sm shadow-xl active:scale-95 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              {isSubmitting ? 'TRANSMITTING...' : 'SEND REQUEST'}
+              {isCooldownActive ? 'REQ. LIMIT REACHED' : isSubmitting ? 'TRANSMITTING...' : 'SEND REQUEST'}
             </button>
           </div>
         </div>

@@ -62,11 +62,11 @@ const HumanCapitalStudio: React.FC<HumanCapitalStudioProps> = ({
           <h2 className="text-2xl md:text-3xl font-serif-brand text-black uppercase font-bold tracking-tight leading-tight">STUDIO <span className="text-[#C5A059] italic">PEOPLE</span></h2>
         </div>
         
-        <div className="flex gap-2 w-full md:w-auto">
+        <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto items-stretch">
            <div className="p-1 bg-gray-50 border border-gray-200 rounded-2xl flex items-center shadow-inner flex-1 md:flex-none">
              <button 
                onClick={() => setActiveTab('registry')}
-               className={`px-6 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${
+               className={`px-6 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${
                  activeTab === 'registry' ? 'bg-[#C5A059] text-black shadow-lg' : 'text-black/30 hover:text-black/60'
                }`}
              >
@@ -74,13 +74,20 @@ const HumanCapitalStudio: React.FC<HumanCapitalStudioProps> = ({
              </button>
              <button 
                onClick={() => setActiveTab('intelligence')}
-               className={`px-6 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${
+               className={`px-6 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${
                  activeTab === 'intelligence' ? 'bg-[#C5A059] text-black shadow-lg' : 'text-black/30 hover:text-black/60'
                }`}
              >
                Intelligence
              </button>
            </div>
+           
+           <button 
+             onClick={handleAddUserClick}
+             className="bg-black text-[#C5A059] font-black px-8 py-3 rounded-2xl text-[9px] uppercase tracking-widest shadow-xl active:scale-95 transition-all hover:bg-zinc-900 border border-[#C5A059]/20"
+           >
+             ADD PERSONNEL
+           </button>
         </div>
       </header>
 

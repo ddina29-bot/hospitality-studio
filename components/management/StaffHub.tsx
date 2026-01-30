@@ -153,6 +153,13 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
           <h2 className="text-2xl font-serif-brand text-black uppercase font-bold tracking-tight text-left">Personnel Intelligence</h2>
           <p className="text-[8px] font-bold text-[#A68342] uppercase tracking-[0.4em] mt-1 opacity-80 text-left">TEAM REGISTRY</p>
         </div>
+        <button 
+          onClick={() => setShowAddModal(true)} 
+          className="bg-black text-[#C5A059] font-black px-6 py-3 rounded-2xl text-[9px] uppercase tracking-widest shadow-xl active:scale-95 transition-all flex items-center gap-2 border border-[#C5A059]/20"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          ADD USER
+        </button>
       </header>
 
       <div className="space-y-10">
@@ -322,6 +329,34 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
 
                  <div className="space-y-4">
                     <h4 className="text-[10px] font-black text-black/30 uppercase tracking-[0.5em] border-l-2 border-[#C5A059] pl-3">Employment & Payroll</h4>
+                    
+                    {/* RESTORED MARITAL STATUS FIELD */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                           <label className={labelStyle}>Marital Status</label>
+                           <select 
+                             className={inputStyle} 
+                             value={editingUser.maritalStatus || 'Single'} 
+                             onChange={e => setEditingUser({...editingUser, maritalStatus: e.target.value})}
+                           >
+                              <option value="Single">Single</option>
+                              <option value="Married">Married</option>
+                              <option value="Divorced">Divorced</option>
+                              <option value="Separated">Separated</option>
+                              <option value="Widowed">Widowed</option>
+                           </select>
+                        </div>
+                        <div className="flex items-center gap-2 mt-6 bg-white/50 p-2 rounded-xl border border-gray-100">
+                            <input 
+                              type="checkbox" 
+                              className="w-4 h-4 accent-[#C5A059]" 
+                              checked={editingUser.isParent || false} 
+                              onChange={e => setEditingUser({...editingUser, isParent: e.target.checked})} 
+                            />
+                            <label className="text-[9px] font-bold uppercase text-black">Parent Status (Tax Rate)</label>
+                        </div>
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                            <label className={labelStyle}>Employment Type</label>
@@ -348,16 +383,6 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div><label className={labelStyle}>ID / Passport No.</label><input className={inputStyle} value={editingUser.idPassportNumber || ''} onChange={e => setEditingUser({...editingUser, idPassportNumber: e.target.value})} placeholder="NO SPACES" /></div>
                         <div><label className={labelStyle}>IBAN</label><input className={inputStyle} value={editingUser.iban || ''} onChange={e => setEditingUser({...editingUser, iban: e.target.value})} placeholder="MT..." /></div>
-                    </div>
-                    
-                    <div className="flex items-center gap-2 mt-2 bg-white/50 p-2 rounded-xl border border-gray-100">
-                        <input 
-                          type="checkbox" 
-                          className="w-4 h-4 accent-[#C5A059]" 
-                          checked={editingUser.isParent || false} 
-                          onChange={e => setEditingUser({...editingUser, isParent: e.target.checked})} 
-                        />
-                        <label className="text-[9px] font-bold uppercase text-black">Parent Status (Tax Rate)</label>
                     </div>
                  </div>
 

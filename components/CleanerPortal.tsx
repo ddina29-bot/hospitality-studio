@@ -1,10 +1,8 @@
 
-// ... existing imports ...
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Property, CleaningTask, Shift, User, AttributedPhoto, SpecialReport } from '../types';
+import { Property, CleaningTask, Shift, User, AttributedPhoto, SpecialReport, SupplyItem } from '../types';
 import { uploadFile } from '../services/storageService';
 
-// ... existing interfaces ...
 interface CleanerPortalProps {
   shifts: Shift[];
   setShifts: React.Dispatch<React.SetStateAction<Shift[]>>;
@@ -14,9 +12,10 @@ interface CleanerPortalProps {
   onConsumedDeepLink?: () => void;
   authorizedInspectorIds?: string[];
   onClosePortal?: () => void;
+  inventoryItems?: SupplyItem[];
+  onAddSupplyRequest?: (items: Record<string, number>) => void;
 }
 
-// ... helper functions ...
 const parseTimeValue = (timeStr: string) => {
   if (!timeStr) return 0;
   const [time, modifier] = timeStr.split(' ');
@@ -40,9 +39,9 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
 };
 
 const CleanerPortal: React.FC<CleanerPortalProps> = ({ 
-  shifts, setShifts, properties, users, initialSelectedShiftId, onConsumedDeepLink, authorizedInspectorIds = [], onClosePortal 
+  shifts, setShifts, properties, users, initialSelectedShiftId, onConsumedDeepLink, authorizedInspectorIds = [], onClosePortal,
+  inventoryItems = [], onAddSupplyRequest
 }) => {
-  // ... state ...
   const currentUser = JSON.parse(localStorage.getItem('current_user_obj') || '{}');
   const isAdmin = currentUser.role === 'admin';
   const isHousekeeping = currentUser.role === 'housekeeping';
@@ -74,6 +73,10 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   const [reportDescription, setReportDescription] = useState('');
   const [reportPhotos, setReportPhotos] = useState<string[]>([]);
   const [missingCategory, setMissingCategory] = useState<'laundry' | 'apartment'>('apartment');
+
+  // Supply Request State
+  const [showSupplyModal, setShowSupplyModal] = useState(false);
+  const [selectedSupplyItems, setSelectedSupplyItems] = useState<Record<string, number>>({});
 
   // Special Request Checkboxes state
   const [completedSpecialRequests, setCompletedSpecialRequests] = useState<Record<string, boolean>>({});
@@ -126,7 +129,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   const activeShift = useMemo(() => (shifts || []).find(s => s && s.id === selectedShiftId), [shifts, selectedShiftId]);
   const activeProperty = useMemo(() => activeShift ? properties.find(p => p.id === activeShift.propertyId) : null, [activeShift, properties]);
 
-  // Management doesn't have "Active Shift" constraints
   const currentlyActiveShift = useMemo(() => {
     if (isManagement) return null; 
     return (shifts || []).find(s => s.status === 'active' && s.userIds.includes(currentUser.id));
@@ -143,9 +145,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   const activeQueue = useMemo(() => {
     return (shifts || [])
       .filter(s => {
-        // Enforce published status to hide drafts
         if (!s.isPublished) return false;
-        
         if (s.date !== viewedDateStr) return false;
         if (s.userIds.includes(currentUser.id)) return true;
         if (isManagement && s.status === 'completed' && s.approvalStatus === 'pending') return true;
@@ -178,7 +178,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     return null;
   }, [activeShift, shifts]);
 
-  // ... rest of the component (all methods and rendering logic preserved)
   const generateDynamicTasks = (property: Property): CleaningTask[] => {
     const dynamicTasks: CleaningTask[] = [];
     dynamicTasks.push({ id: 'kitchen-task', label: 'KITCHEN: Surfaces & Appliances sanitized', isMandatory: true, minPhotos: 1, photos: [] });
@@ -220,7 +219,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     showNotification("⚠️ SECURITY ALERT: You left the property perimeter. Shift terminated.", 'error');
   }, [selectedShiftId, setShifts, tasks, isManagement]);
 
-  // --- REAL GEOFENCING LOGIC ---
   useEffect(() => {
     let watchId: number | null = null;
     if (currentStep === 'active' && activeProperty?.lat && activeProperty?.lng && !isManagement) {
@@ -263,7 +261,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     }
   }, [initialSelectedShiftId, shifts, onConsumedDeepLink, canPerformAudit]);
 
-  // ... (rest of useEffects and handlers same as before) ...
   useEffect(() => {
     if (selectedShiftId && currentStep === 'active' && activeProperty) {
       const storageKey = `shared_protocol_v8_${selectedShiftId}`;
@@ -515,6 +512,24 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     showNotification(`${reportModalType?.toUpperCase()} REPORT LOGGED`, 'success');
   };
 
+  const handleUpdateSupplyQty = (id: string, delta: number) => {
+    setSelectedSupplyItems(prev => {
+      const current = prev[id] || 0;
+      const next = Math.max(0, current + delta);
+      return { ...prev, [id]: next };
+    });
+  };
+
+  const handleSubmitSupplyRequest = () => {
+    if (Object.values(selectedSupplyItems).every(v => v === 0)) return;
+    if (onAddSupplyRequest) {
+        onAddSupplyRequest(selectedSupplyItems);
+        showNotification('Request sent to logistics', 'success');
+    }
+    setShowSupplyModal(false);
+    setSelectedSupplyItems({});
+  };
+
   // ... (RENDER - same structure, using new activeQueue) ...
   if (currentStep === 'list') {
     return (
@@ -592,16 +607,11 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     );
   }
 
-  // ... (OVERVIEW, ACTIVE, REVIEW, INSPECTION return blocks - keeping same structure as they were) ...
-  // Assuming these sections remain identical to the previous file content provided in context
-  
+  // OVERVIEW
   if (currentStep === 'overview' && activeShift && activeProperty) {
-      // ... content same as before ...
       const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activeProperty.address)}`;
       return (
         <div className="space-y-8 animate-in fade-in duration-700 pb-32 max-w-2xl mx-auto text-left px-2 relative">
-            {/* ... */}
-            {/* Same Overview Logic */}
             <button onClick={() => setCurrentStep('list')} className="text-[10px] font-black text-black/30 hover:text-black uppercase tracking-widest flex items-center gap-2 mb-4 transition-colors">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="15 18 9 12 15 6"/></svg> Back to List
             </button>
@@ -688,11 +698,8 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
       );
   }
 
-  // Active, Review, Inspection blocks follow similarly, using full content from previous version...
-  // Just ensuring the main List View filter is corrected as above.
-  
+  // ACTIVE STEP
   if (currentStep === 'active' && activeShift) {
-      // ... content same as active ...
       return (
         <div className="space-y-8 animate-in fade-in duration-700 pb-32 max-w-2xl mx-auto text-left px-2 relative">
             {notification && (
@@ -720,7 +727,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                 </div>
             </header>
             
-            {/* Same logic for tasks/To Fix/Mess report modals as previous version */}
             {activeShift.notes && (
                 <section className="bg-white border border-[#D4B476]/30 p-6 rounded-[32px] shadow-sm">
                     <p className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-[0.4em] mb-2 px-1">Scheduling Intelligence & Notes</p>
@@ -777,7 +783,32 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                     <input type="file" ref={cameraInputRef} className="hidden" accept="image/*" capture="environment" onChange={(e) => handleCapture(e, 'task')} />
                 </div>
             )}
+
+            {/* Field Reports & Requests Grid */}
+            <div className="space-y-4 pt-4">
+               <p className="text-[8px] font-black text-black/30 uppercase tracking-[0.4em] px-1">Operational Actions</p>
+               <div className="grid grid-cols-2 gap-3">
+                  <button onClick={() => setReportModalType('maintenance')} className="bg-blue-50 border border-blue-100 text-blue-600 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 active:scale-95 transition-all shadow-sm hover:bg-blue-100">
+                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                     <span className="text-[9px] font-black uppercase tracking-widest">Maintenance</span>
+                  </button>
+                  <button onClick={() => setReportModalType('damage')} className="bg-orange-50 border border-orange-100 text-orange-600 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 active:scale-95 transition-all shadow-sm hover:bg-orange-100">
+                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                     <span className="text-[9px] font-black uppercase tracking-widest">Damage</span>
+                  </button>
+                  <button onClick={() => setReportModalType('missing')} className="bg-purple-50 border border-purple-100 text-purple-600 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 active:scale-95 transition-all shadow-sm hover:bg-purple-100">
+                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                     <span className="text-[9px] font-black uppercase tracking-widest">Missing Item</span>
+                  </button>
+                  <button onClick={() => setShowSupplyModal(true)} className="bg-green-50 border border-green-100 text-green-600 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 active:scale-95 transition-all shadow-sm hover:bg-green-100">
+                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                     <span className="text-[9px] font-black uppercase tracking-widest">Request Supplies</span>
+                  </button>
+               </div>
+            </div>
+
             <button onClick={handleProceedToClockOut} className="w-full bg-black text-[#C5A059] font-black py-6 rounded-3xl uppercase tracking-[0.4em] text-sm shadow-xl active:scale-95 transition-all mt-10">Proceed to Clock Out</button>
+            
             {/* Report Mess Modal */}
             {showMessReport && (
                 <div className="fixed inset-0 bg-black/60 z-[500] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
@@ -797,6 +828,68 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                     </div>
                 </div>
             )}
+
+            {/* General Report Modal (Maintenance / Damage / Missing) */}
+            {reportModalType && (
+                <div className="fixed inset-0 bg-black/60 z-[500] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
+                    <div className="bg-white border border-[#D4B476]/30 rounded-[48px] w-full max-w-lg p-8 md:p-12 space-y-8 shadow-2xl relative text-left my-auto animate-in zoom-in-95">
+                        <button onClick={() => { setReportModalType(null); setReportPhotos([]); setReportDescription(''); }} className="absolute top-8 right-8 text-black/20 hover:text-black"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+                        <header className="space-y-1">
+                           <h2 className="text-2xl font-serif-brand font-bold text-black uppercase tracking-tight">Report {reportModalType}</h2>
+                           <p className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-[0.4em]">Field Incident Logging</p>
+                        </header>
+                        <div className="space-y-6">
+                            {reportModalType === 'missing' && (
+                                <div className="flex gap-4 p-1 bg-gray-50 rounded-xl">
+                                   <button onClick={() => setMissingCategory('apartment')} className={`flex-1 py-3 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${missingCategory === 'apartment' ? 'bg-[#C5A059] text-black shadow-md' : 'text-black/40 hover:bg-gray-100'}`}>From Apartment</button>
+                                   <button onClick={() => setMissingCategory('laundry')} className={`flex-1 py-3 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${missingCategory === 'laundry' ? 'bg-[#C5A059] text-black shadow-md' : 'text-black/40 hover:bg-gray-100'}`}>For Laundry</button>
+                                </div>
+                            )}
+                            <div className="space-y-2"><label className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-[0.4em] mb-1.5 block px-1">Description</label><textarea className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 text-[11px] h-32 outline-none focus:border-[#C5A059] italic" placeholder="Provide details..." value={reportDescription} onChange={e => setReportDescription(e.target.value)} /></div>
+                            <div className="space-y-4">
+                                <p className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-[0.4em] mb-1.5 block px-1">Evidence Photo {(reportModalType === 'damage' || reportModalType === 'maintenance') && '(Mandatory)'}</p>
+                                <button onClick={() => reportCameraRef.current?.click()} disabled={isProcessingPhoto} className={`w-full h-24 rounded-3xl border-2 border-dashed border-[#D4B476]/30 bg-[#FDF8EE] flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-[#C5A059] transition-all overflow-hidden ${isProcessingPhoto ? 'opacity-50' : ''}`}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#C5A059" strokeWidth="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg><span className="text-[8px] font-black text-[#C5A059] uppercase tracking-widest">{isProcessingPhoto ? '...' : 'ADD PHOTO'}</span></button>
+                                <input type="file" ref={reportCameraRef} className="hidden" accept="image/*" capture="environment" onChange={(e) => handleCapture(e, 'report')} />
+                                {reportPhotos.length > 0 && (<div className="flex gap-2 overflow-x-auto pb-2">{reportPhotos.map((url, i) => (<img key={i} src={url} onClick={() => setZoomedImage(url)} className="w-16 h-16 rounded-xl object-cover border border-gray-200 shadow-sm cursor-zoom-in" alt="Evidence" />))}</div>)}
+                            </div>
+                            <button onClick={handleReportSubmit} className="w-full bg-black text-[#C5A059] font-black py-4 rounded-2xl uppercase tracking-[0.3em] text-[10px] shadow-xl active:scale-95 transition-all">SUBMIT REPORT</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Supply Request Modal */}
+            {showSupplyModal && (
+                <div className="fixed inset-0 bg-black/60 z-[500] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
+                    <div className="bg-white border border-[#D4B476]/30 rounded-[48px] w-full max-w-lg p-8 md:p-12 space-y-8 shadow-2xl relative text-left my-auto animate-in zoom-in-95">
+                        <button onClick={() => setShowSupplyModal(false)} className="absolute top-8 right-8 text-black/20 hover:text-black"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+                        <header className="space-y-1">
+                           <h2 className="text-2xl font-serif-brand font-bold text-black uppercase tracking-tight">Request Supplies</h2>
+                           <p className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-[0.4em]">Select items needed for next shift</p>
+                        </header>
+                        <div className="space-y-4 max-h-[50vh] overflow-y-auto custom-scrollbar pr-2">
+                           {inventoryItems.map(item => (
+                              <div key={item.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
+                                 <div className="flex items-center gap-3">
+                                    <img src={item.photo} className="w-10 h-10 rounded-lg object-cover" alt={item.name} />
+                                    <div>
+                                       <p className="text-[10px] font-bold text-black uppercase">{item.name}</p>
+                                       <p className="text-[7px] font-black text-black/40 uppercase tracking-widest">{item.unit}</p>
+                                    </div>
+                                 </div>
+                                 <div className="flex items-center gap-3">
+                                    <button onClick={() => handleUpdateSupplyQty(item.id, -1)} className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center font-bold text-black">-</button>
+                                    <span className="w-4 text-center text-xs font-bold">{selectedSupplyItems[item.id] || 0}</span>
+                                    <button onClick={() => handleUpdateSupplyQty(item.id, 1)} className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center font-bold text-black">+</button>
+                                 </div>
+                              </div>
+                           ))}
+                        </div>
+                        <button onClick={handleSubmitSupplyRequest} className="w-full bg-black text-[#C5A059] font-black py-4 rounded-2xl uppercase tracking-[0.3em] text-[10px] shadow-xl active:scale-95 transition-all">SEND REQUEST</button>
+                    </div>
+                </div>
+            )}
+
             {zoomedImage && <div className="fixed inset-0 bg-black/95 z-[500] flex items-center justify-center p-4 cursor-pointer" onClick={() => setZoomedImage(null)}><img src={zoomedImage} className="max-w-full max-h-full object-contain rounded-3xl" alt="Preview" /></div>}
         </div>
       );

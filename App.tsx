@@ -1,4 +1,5 @@
 
+// ... existing imports ...
 import React, { useState, useEffect, useRef } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
@@ -350,7 +351,7 @@ const App: React.FC = () => {
             />
           );
         }
-        return <CleanerPortal shifts={shifts} setShifts={setShifts} properties={properties} users={users} initialSelectedShiftId={deepLinkShiftId} onConsumedDeepLink={() => setDeepLinkShiftId(null)} authorizedInspectorIds={authorizedInspectorIds} onClosePortal={() => setActiveTab('dashboard')} />;
+        return <CleanerPortal shifts={shifts} setShifts={setShifts} properties={properties} users={users} initialSelectedShiftId={deepLinkShiftId} onConsumedDeepLink={() => setDeepLinkShiftId(null)} authorizedInspectorIds={authorizedInspectorIds} onClosePortal={() => setActiveTab('dashboard')} inventoryItems={inventoryItems} onAddSupplyRequest={handleAddSupplyRequest} />;
       
       case 'laundry':
         return <LaundryDashboard user={user} setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} setShifts={setShifts} users={users} properties={properties} onTogglePrepared={(id) => setShifts(prev => prev.map(s => s.id === id ? { ...s, isLaundryPrepared: !s.isLaundryPrepared } : s))} authorizedLaundryUserIds={authorizedLaundryUserIds} onToggleAuthority={(id) => setAuthorizedLaundryUserIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])} timeEntries={timeEntries} setTimeEntries={setTimeEntries} />;

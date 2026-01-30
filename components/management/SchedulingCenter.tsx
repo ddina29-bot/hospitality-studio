@@ -1,8 +1,10 @@
 
+// ... existing imports ...
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Shift, Property, User, SpecialReport, AttributedPhoto, AuditReport, LeaveRequest, TabType } from '../../types';
 import { SERVICE_TYPES } from '../../constants';
 
+// ... existing interfaces and helper functions ...
 interface SchedulingCenterProps {
   shifts?: Shift[];
   setShifts: React.Dispatch<React.SetStateAction<Shift[]>>;
@@ -199,6 +201,7 @@ const CustomDatePicker: React.FC<{ value: string; onChange: (v: string) => void;
 };
 
 const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShifts, properties, users, showToast, setAuditReports, leaveRequests = [], initialSelectedShiftId, onConsumedDeepLink, setActiveTab }) => {
+  // ... existing state ...
   const currentUser = JSON.parse(localStorage.getItem('current_user_obj') || '{}');
   const [showShiftModal, setShowShiftModal] = useState(false);
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
@@ -287,6 +290,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
 
   const [shiftForm, setShiftForm] = useState<Partial<Shift>>(getEmptyShift());
 
+  // ... (useEffect for clicking outside pickers) ...
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (propertyPickerRef.current && !propertyPickerRef.current.contains(e.target as Node)) {
@@ -339,6 +343,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
     return (shifts || []).some(s => weekDateStrings.includes(s.date) && !s.isPublished);
   }, [shifts, weekDates]);
 
+  // ... (navigateWeek, publishCurrentWeek, handleOpenNewShift, handleEditShift, handleDeleteShift, handleRescheduleFix, handleSendSupervisor) ...
   const navigateWeek = (weeks: number) => {
     const newStart = new Date(currentWeekStart);
     newStart.setDate(newStart.getDate() + (weeks * 7));
@@ -462,16 +467,43 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
     setServiceTypeSearch('');
   };
 
+  // Helper function to check leave conflict
+  const getUserLeaveStatus = (userId: string, date: Date) => {
+    return leaveRequests.find(l => {
+      if (l.userId !== userId || l.status !== 'approved') return false;
+      const start = new Date(l.startDate);
+      const end = new Date(l.endDate);
+      const d = new Date(date);
+      // Reset hours to compare dates only
+      d.setHours(0, 0, 0, 0);
+      start.setHours(0, 0, 0, 0);
+      end.setHours(0, 0, 0, 0);
+      return d >= start && d <= end;
+    });
+  };
+
   const handleSaveShift = (e: React.FormEvent | null, publishScope: 'draft' | 'day' | 'week' | boolean = 'draft') => {
     e?.preventDefault?.();
     if (!shiftForm.propertyId || !shiftForm.userIds?.length || !shiftForm.date || !shiftForm.serviceType) return;
     
+    // Check for Leave Conflict
+    const dateObj = new Date(shiftForm.date as string);
+    const conflictingLeave = shiftForm.userIds
+      .map(uid => ({ uid, leave: getUserLeaveStatus(uid, dateObj) }))
+      .find(res => res.leave);
+
+    if (conflictingLeave) {
+       const u = users.find(u => u.id === conflictingLeave.uid);
+       const leaveReason = conflictingLeave.leave?.type.toUpperCase();
+       alert(`SCHEDULING BLOCKED:\n\n${u?.name || 'User'} is on approved ${leaveReason} for this date.\n\nPlease assign a different staff member.`);
+       return;
+    }
+
     if (!availableServiceTypes.includes(shiftForm.serviceType)) {
       setAvailableServiceTypes(prev => [...prev, shiftForm.serviceType!]);
     }
 
     const prop = properties.find(p => p.id === shiftForm.propertyId);
-    const dateObj = new Date(shiftForm.date as string);
     const dateFormatted = dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase();
     const startTime12h = convertTo12h(shiftForm.startTime || '10:00');
     const endTime12h = convertTo12h(shiftForm.endTime || '14:00');
@@ -645,19 +677,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
     return (shifts || []).filter(s => (s.date === shortStr || s.date === isoStr) && (!query || s.propertyName?.toLowerCase().includes(query) || s.userIds?.some(id => users.find(u => u.id === id)?.name.toLowerCase().includes(query))));
   };
 
-  const isUserOnLeave = (userId: string, date: Date) => {
-    return leaveRequests.some(l => {
-      if (l.userId !== userId || l.status !== 'approved') return false;
-      const start = new Date(l.startDate);
-      const end = new Date(l.endDate);
-      const d = new Date(date);
-      d.setHours(0, 0, 0, 0);
-      start.setHours(0, 0, 0, 0);
-      end.setHours(0, 0, 0, 0);
-      return d >= start && d <= end;
-    });
-  };
-
+  // ... (labelStyle, inputStyle, handleCloseMonitor, isTeamSameAsOriginal, showFixPaymentInput, categorizedGridUsers, isUserActiveNow) ...
   const labelStyle = "text-[7px] font-black text-[#C5A059] uppercase tracking-[0.4em] opacity-80 mb-0.5 block px-1";
   const inputStyle = "w-full bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-[#1A1A1A] text-[9px] font-bold uppercase tracking-widest outline-none focus:border-[#C5A059] h-10 transition-all";
 
@@ -703,7 +723,11 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
   };
 
   return (
+    // ... existing JSX ...
+    // NOTE: The main change is inside handleSaveShift which validates leaves.
+    // The rest of the component remains largely identical, so ensuring we return the full block to not break structure.
     <div className="space-y-6 animate-in fade-in duration-700 text-left pb-24 max-w-full overflow-hidden">
+      {/* ... header and view mode toggles ... */}
       <header className="space-y-4 px-1">
         <h2 className="text-2xl font-serif-brand text-[#1A1A1A] uppercase font-bold tracking-tight">SCHEDULE</h2>
         <div className="flex flex-col lg:flex-row lg:items-center gap-4">
@@ -737,6 +761,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
         </div>
       </header>
 
+      {/* Grid View Logic with Leave Visuals */}
       {viewMode === 'grid' ? (
         <div className="bg-white rounded-[32px] border border-gray-300 overflow-hidden shadow-2xl mt-2 relative">
           <div className="overflow-x-auto custom-scrollbar">
@@ -788,17 +813,20 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
                         {weekDates.map((date, idx) => {
                           const dayShifts = getShiftsForUserAndDay(cleaner.id, date);
                           const dateStr = toLocalDateString(date);
-                          const onLeave = isUserOnLeave(cleaner.id, date);
+                          const userLeave = getUserLeaveStatus(cleaner.id, date);
                           return (
-                            <td key={idx} className={`p-2 border-r border-gray-300 align-top group-hover:bg-gray-50/30 relative group/cell transition-colors ${onLeave ? 'bg-gray-50/80' : ''}`}>
+                            <td key={idx} className={`p-2 border-r border-gray-300 align-top group-hover:bg-gray-50/30 relative group/cell transition-colors ${userLeave ? 'bg-gray-50/80' : ''}`}>
                               <div className="space-y-2 min-h-[50px] relative pb-8">
-                                {onLeave ? (
-                                  <div className="bg-gray-200/50 border border-gray-300 rounded-xl p-3 flex flex-col items-center justify-center text-center animate-in fade-in">
+                                {userLeave ? (
+                                  <div className="bg-gray-200/50 border border-gray-300 rounded-xl p-3 flex flex-col items-center justify-center text-center animate-in fade-in h-full">
                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="text-gray-400 mb-1"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                                     <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest leading-tight">ON APPROVED LEAVE</p>
+                                     <p className="text-[7px] font-black text-gray-500 uppercase tracking-widest leading-tight">
+                                        ON {userLeave.type.toUpperCase()}
+                                     </p>
                                   </div>
                                 ) : (
                                   dayShifts.map(s => {
+                                    // ... existing shift rendering logic ...
                                     const isPendingAudit = s.status === 'completed' && s.approvalStatus === 'pending';
                                     const isActive = s.status === 'active';
                                     const isApproved = s.approvalStatus === 'approved';
@@ -813,7 +841,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
                                     );
                                   })
                                 )}
-                                {!onLeave && (
+                                {!userLeave && (
                                   <div className="absolute bottom-1 left-1 opacity-0 group-hover/cell:opacity-100 transition-all pointer-events-none">
                                     <button onClick={(e) => { e.stopPropagation(); handleOpenNewShift(cleaner.id, dateStr); }} className="w-8 h-8 rounded-full border border-[#C5A059]/30 text-[#C5A059] bg-white flex items-center justify-center hover:bg-[#C5A059] hover:text-white transition-all pointer-events-auto shadow-xl" title="Add Another Shift">
                                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -835,6 +863,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
         </div>
       ) : (
         <div className="space-y-6 pb-20 mt-2">
+          {/* List View Logic - Unchanged, just ensuring consistency */}
           {weekDates.map((date, idx) => {
             const dayShifts = getShiftsForDay(date);
             if (dayShifts.length === 0) return null;
@@ -846,6 +875,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
                 </div>
                 <div className="space-y-4">
                   {dayShifts.map(s => {
+                    // ... existing list render ...
                     const assignedStaff = s.userIds.map(id => users.find(u => u.id === id)?.name || 'Unknown').join(' & ');
                     const isPendingAudit = s.status === 'completed' && s.approvalStatus === 'pending';
                     const isActive = s.status === 'active';
@@ -884,9 +914,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
         </div>
       )}
 
-      {/* ... Existing Modals (Shift Modal, Review Modal, Zoomed Image) ... */}
-      {/* (Rest of the component code for modals is unchanged, omitting for brevity as it was correct in previous version) */}
-      
+      {/* Shift Modal logic (rest is same, but keeping modal structure intact) */}
       {showShiftModal && (
         <div className="fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4 backdrop-blur-sm animate-in zoom-in-95 duration-200">
           <div className="bg-white border border-gray-100 rounded-[32px] w-full max-w-xl p-8 space-y-6 shadow-2xl relative text-left overflow-y-auto max-h-[90vh] custom-scrollbar">
@@ -896,6 +924,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
               <p className="text-[8px] font-black text-[#C5A059] uppercase tracking-[0.4em]">Operations Management System</p>
             </div>
             <form onSubmit={(e) => handleSaveShift(e)} className="space-y-5">
+              {/* ... form fields (Property, Personnel, Driver, Date, Time, Service Type, Notes) ... */}
               <div className="space-y-1 relative" ref={propertyPickerRef}>
                 <label className={labelStyle}>Assign Apartment</label>
                 <div onClick={() => !isFieldLocked && !isReactivating && setShowPropertyPicker(!showPropertyPicker)} className={`${inputStyle} flex items-center justify-between cursor-pointer ${ (isFieldLocked || isReactivating) ? 'opacity-50 cursor-not-allowed bg-gray-50' : ''}`}>
@@ -1080,6 +1109,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
         </div>
       )}
 
+      {/* ... (Review Modal Remains Unchanged) ... */}
       {reviewShift && (
         <div className="fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
           {/* ... existing review modal content ... */}
