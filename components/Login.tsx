@@ -1,10 +1,9 @@
-
 import React, { useState, useEffect } from 'react';
 import { User } from '../types';
 
 interface LoginProps {
   onLogin: (user: User, orgData: any) => void;
-  onSignupClick?: () => void;
+  onSignupClick: () => void;
 }
 
 const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
@@ -39,14 +38,12 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
     let code = params.get('code');
     
     if (code) {
-      // SMART FIX: If code looks like a URL (double link bug), extract the real code
       if (code.includes('?code=')) {
          try {
             const url = new URL(code);
             const realCode = url.searchParams.get('code');
             if (realCode) code = realCode;
          } catch (e) {
-            // If parsing fails, try simple split
             const parts = code.split('?code=');
             if (parts.length > 1) code = parts[1];
          }
@@ -60,18 +57,13 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
             const text = await res.text();
             let data;
             try {
-                // Try to parse the response as JSON
                 data = JSON.parse(text);
             } catch (e) {
-                // If it fails, the server crashed and sent HTML (500/404 page)
                 throw new Error('Server connection error. Please try again.');
             }
-            
-            // If the server sent a valid JSON error (e.g., { error: "Invalid link" })
             if (!res.ok) {
                 throw new Error(data.error || 'Invalid or expired link');
             }
-            
             return data;
         })
         .then(data => {
@@ -86,7 +78,6 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
         .catch((err) => {
           console.error("Verification Error:", err);
           setErrorMsg(err.message || "Invitation link expired or invalid.");
-          // Clear URL to prevent refresh loops, but show the specific error
           window.history.replaceState({}, document.title, "/");
         })
         .finally(() => setIsVerifyingCode(false));
@@ -116,6 +107,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
         throw new Error(data.error || 'Login failed');
       }
 
+      // Explicitly saving to localStorage here ensures the next App mount finds it immediately
       localStorage.setItem('current_user_obj', JSON.stringify(data.user));
       localStorage.setItem('studio_org_settings', JSON.stringify(data.organization));
 
@@ -298,10 +290,18 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
               <div><label className={labelStyle}>PASSWORD</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputStyle} /></div>
             </div>
             
-            <div className="pt-2 space-y-6">
+            <div className="pt-2 space-y-4">
               <button type="submit" disabled={isLoading} className={buttonStyle}>{isLoading ? 'VERIFYING...' : 'ENTER STUDIO'}</button>
               
-              <div className="text-center border-t border-black/5 pt-6">
+              <button 
+                type="button" 
+                onClick={onSignupClick}
+                className="w-full bg-white border border-gray-200 text-black font-black py-4 rounded-3xl uppercase tracking-[0.4em] text-[10px] hover:bg-gray-50 transition-all shadow-sm"
+              >
+                CREATE NEW STUDIO
+              </button>
+
+              <div className="text-center border-t border-black/5 pt-6 flex flex-col items-center gap-4">
                 <button 
                   type="button" 
                   onClick={handleFactoryReset}

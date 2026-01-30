@@ -6,7 +6,6 @@ import CleanerPortal from './components/CleanerPortal';
 import AdminPortal from './components/AdminPortal';
 import AISync from './components/AISync';
 import Login from './components/Login';
-import Signup from './components/Signup';
 import DriverPortal from './components/DriverPortal';
 import MaintenancePortal from './components/MaintenancePortal';
 import ReportsPortal from './components/ReportsPortal';
@@ -17,6 +16,7 @@ import StudioSettings from './components/management/StudioSettings';
 import AppManual from './components/AppManual';
 import { TabType, Shift, SupplyRequest, User, Client, Property, SupplyItem, AuditReport, Tutorial, LeaveRequest, ManualTask, OrganizationSettings, Invoice, TimeEntry } from './types';
 
+// Role-specific Dashboards
 import AdminDashboard from './components/dashboards/AdminDashboard';
 import HRDashboard from './components/dashboards/HRDashboard';
 import FinanceDashboard from './components/dashboards/FinanceDashboard';
@@ -27,21 +27,14 @@ import ClientDashboard from './components/dashboards/ClientDashboard';
 import HousekeeperDashboard from './components/dashboards/HousekeeperDashboard';
 import LaundryDashboard from './components/dashboards/LaundryDashboard';
 
-// CRITICAL FIX: "Local-First" Merge Strategy
-// This ensures that if you have a piece of data locally (e.g., a new Property or Shift),
-// it is NOT overwritten by the server's older version on refresh.
-// We only accept items from the server that we completely lack.
+// Helper: Smart Merge (Prefers Local ID if conflict, adds missing from server)
 const smartMerge = <T extends { id: string }>(localList: T[], serverList: T[] | undefined): T[] => {
-  if (!serverList || serverList.length === 0) return localList;
+  if (!serverList || !Array.isArray(serverList) || serverList.length === 0) return localList;
   if (!localList || localList.length === 0) return serverList;
 
-  // Create a map of local items for fast lookup
   const localMap = new Map(localList.map(i => [i.id, i]));
-  
-  // Start with our local truth
   const merged = [...localList];
   
-  // Only add server items if we don't have them
   serverList.forEach(serverItem => {
     if (!localMap.has(serverItem.id)) {
       merged.push(serverItem);
@@ -51,223 +44,200 @@ const smartMerge = <T extends { id: string }>(localList: T[], serverList: T[] | 
   return merged;
 };
 
-const App: React.FC = () => {
-  const [user, setUser] = useState<User | null>(null);
-  const [orgId, setOrgId] = useState<string | null>(null);
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
-  
-  const [users, setUsers] = useState<User[]>([]);
-  const [shifts, setShifts] = useState<Shift[]>([]);
-  const [properties, setProperties] = useState<Property[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
-  const [supplyRequests, setSupplyRequests] = useState<SupplyRequest[]>([]);
-  const [inventoryItems, setInventoryItems] = useState<SupplyItem[]>([]);
-  const [manualTasks, setManualTasks] = useState<ManualTask[]>([]);
-  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [tutorials, setTutorials] = useState<Tutorial[]>([]);
-  const [organization, setOrganization] = useState<OrganizationSettings>({
-    name: '', legalEntity: '', taxId: '', address: '', email: '', phone: '', website: ''
-  });
-  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
+// Helper: Lazy State Loader with Safety Check
+const loadState = <T,>(key: string, fallback: T): T => {
+  try {
+    const saved = localStorage.getItem('studio_org_settings');
+    if (saved) {
+       const parsed = JSON.parse(saved);
+       const val = parsed[key];
+       // Only return if it's a valid value (array for lists)
+       if (Array.isArray(fallback) && Array.isArray(val)) return val as unknown as T;
+       if (val !== undefined) return val;
+    }
+  } catch(e) { 
+    console.warn(`[State Load] Failed to load ${key}`, e); 
+  }
+  return fallback;
+};
 
-  const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+const App: React.FC = () => {
+  // --- AUTH STATE (Lazy Load for Immediate Access) ---
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const savedUser = localStorage.getItem('current_user_obj');
+      return savedUser ? JSON.parse(savedUser) : null;
+    } catch { return null; }
+  });
+
+  const [orgId, setOrgId] = useState<string | null>(() => {
+    try {
+      const savedSettings = localStorage.getItem('studio_org_settings');
+      return savedSettings ? JSON.parse(savedSettings).id : null;
+    } catch { return null; }
+  });
+
+  // --- APP DATA STATE (Initialize from LocalStorage to prevent flicker/empty state) ---
+  const [users, setUsers] = useState<User[]>(() => loadState('users', []));
+  const [shifts, setShifts] = useState<Shift[]>(() => loadState('shifts', []));
+  const [properties, setProperties] = useState<Property[]>(() => loadState('properties', []));
+  const [clients, setClients] = useState<Client[]>(() => loadState('clients', []));
+  const [supplyRequests, setSupplyRequests] = useState<SupplyRequest[]>(() => loadState('supplyRequests', []));
+  const [inventoryItems, setInventoryItems] = useState<SupplyItem[]>(() => loadState('inventoryItems', []));
+  const [manualTasks, setManualTasks] = useState<ManualTask[]>(() => loadState('manualTasks', []));
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(() => loadState('leaveRequests', []));
+  const [invoices, setInvoices] = useState<Invoice[]>(() => loadState('invoices', []));
+  const [tutorials, setTutorials] = useState<Tutorial[]>(() => loadState('tutorials', []));
+  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>(() => loadState('timeEntries', []));
+  
+  const [organization, setOrganization] = useState<OrganizationSettings>(() => {
+      try {
+        const saved = localStorage.getItem('studio_org_settings');
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            return parsed.settings || parsed.organization || parsed; 
+        }
+      } catch {}
+      return { name: '', legalEntity: '', taxId: '', address: '', email: '', phone: '', website: '' };
+  });
+
+  // --- NAVIGATION STATE (Persistent) ---
+  const [activeTab, setActiveTab] = useState<TabType>(() => {
+      const savedTab = localStorage.getItem('studio_active_tab');
+      return (savedTab as TabType) || 'dashboard';
+  });
+
+  // Persist Active Tab changes immediately
+  useEffect(() => {
+    if (user) {
+        localStorage.setItem('studio_active_tab', activeTab);
+    }
+  }, [activeTab, user]);
+
+  // --- UI STATE ---
   const [authorizedLaundryUserIds, setAuthorizedLaundryUserIds] = useState<string[]>([]);
   const [authorizedInspectorIds, setAuthorizedInspectorIds] = useState<string[]>([]);
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [deepLinkShiftId, setDeepLinkShiftId] = useState<string | null>(null);
   const [savedTaskNames, setSavedTaskNames] = useState<string[]>(['Extra Towels', 'Deep Clean Fridge', 'Balcony Sweep']);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [isLoaded, setIsLoaded] = useState(false);
+  
+  // FAIL-SAFE: Prevent auto-save until we confirm we have data from server
+  // This prevents wiping the server with an empty state on a bad reload
+  const [hasFetchedServer, setHasFetchedServer] = useState(false);
 
-  useEffect(() => {
-    const savedUser = localStorage.getItem('current_user_obj');
-    const savedOrgSettings = localStorage.getItem('studio_org_settings');
-    
-    if (savedUser && savedOrgSettings) {
-      try {
-        const u = JSON.parse(savedUser);
-        const o = JSON.parse(savedOrgSettings);
-        
-        setUser(u);
-        setOrgId(o.id);
-        setOrganization(o.settings || o);
-        
-        // 1. Immediate Hydration from Local Storage (Fast Load)
-        const localUsers = o.users || [];
-        const localShifts = o.shifts || [];
-        const localProperties = o.properties || [];
-        const localClients = o.clients || [];
-        const localInventory = o.inventoryItems || [];
-        const localTasks = o.manualTasks || [];
-        const localSupplies = o.supplyRequests || [];
-        const localInvoices = o.invoices || [];
-        const localTime = o.timeEntries || [];
-        const localLeaves = o.leaveRequests || [];
-        const localTutorials = o.tutorials || [];
-
-        setUsers(localUsers);
-        setShifts(localShifts);
-        setProperties(localProperties);
-        setClients(localClients);
-        setInventoryItems(localInventory);
-        setManualTasks(localTasks);
-        setSupplyRequests(localSupplies);
-        setInvoices(localInvoices);
-        setTimeEntries(localTime);
-        setLeaveRequests(localLeaves);
-        setTutorials(localTutorials);
-
-        setIsLoaded(true);
-
-        // 2. Background Sync with Server (Safe Merge)
-        if (o.id) {
-            fetch(`/api/organization/${o.id}`)
-              .then(res => res.json())
-              .then(serverOrg => {
-                 if(serverOrg.error) {
-                    console.error("Server fetch error:", serverOrg.error);
-                    return;
-                 }
-                 
-                 // Handle Factory Reset Case: If server has explicitly cleared data (empty arrays),
-                 // but local still has data, we trust the server ONLY if the local data seems stale.
-                 // However, for safety, we rely on the smartMerge to keep local data unless user hit "Reset".
-                 
-                 // Apply Smart Merge to ALL data types
-                 setUsers(prev => smartMerge(prev, serverOrg.users));
-                 setProperties(prev => smartMerge(prev, serverOrg.properties));
-                 setClients(prev => smartMerge(prev, serverOrg.clients));
-                 setShifts(prev => smartMerge(prev, serverOrg.shifts));
-                 setInventoryItems(prev => smartMerge(prev, serverOrg.inventoryItems));
-                 setManualTasks(prev => smartMerge(prev, serverOrg.manualTasks));
-                 setSupplyRequests(prev => smartMerge(prev, serverOrg.supplyRequests));
-                 setInvoices(prev => smartMerge(prev, serverOrg.invoices));
-                 setTimeEntries(prev => smartMerge(prev, serverOrg.timeEntries));
-                 setLeaveRequests(prev => smartMerge(prev, serverOrg.leaveRequests));
-                 setTutorials(prev => smartMerge(prev, serverOrg.tutorials));
-                 
-                 if (serverOrg.settings) setOrganization(serverOrg.settings);
-                 
-                 // 3. Persist the Merged State Immediately to prevent data loss on next reload
-                 const finalState = {
-                    ...serverOrg,
-                    users: smartMerge(localUsers, serverOrg.users),
-                    properties: smartMerge(localProperties, serverOrg.properties),
-                    clients: smartMerge(localClients, serverOrg.clients),
-                    shifts: smartMerge(localShifts, serverOrg.shifts),
-                    manualTasks: smartMerge(localTasks, serverOrg.manualTasks),
-                    supplyRequests: smartMerge(localSupplies, serverOrg.supplyRequests),
-                    invoices: smartMerge(localInvoices, serverOrg.invoices),
-                    timeEntries: smartMerge(localTime, serverOrg.timeEntries),
-                    leaveRequests: smartMerge(localLeaves, serverOrg.leaveRequests),
-                    tutorials: smartMerge(localTutorials, serverOrg.tutorials)
-                 };
-                 localStorage.setItem('studio_org_settings', JSON.stringify(finalState));
-              })
-              .catch(err => console.error("Background sync failed:", err));
-        }
-        
-      } catch (e) {
-        console.error("Failed to restore session", e);
-      }
-    } else {
-        setIsLoaded(true);
-    }
-  }, []);
-
+  // --- 1. LOGIN HANDLER ---
   const handleLogin = (u: User, orgData: any) => {
     setUser(u);
     setOrgId(orgData.id);
-    setUsers(orgData.users || []);
-    setShifts(orgData.shifts || []);
-    setProperties(orgData.properties || []);
-    setClients(orgData.clients || []);
-    setInventoryItems(orgData.inventoryItems || []);
-    setManualTasks(orgData.manualTasks || []);
-    setSupplyRequests(orgData.supplyRequests || []);
-    setLeaveRequests(orgData.leaveRequests || []);
-    setTutorials(orgData.tutorials || []);
-    setOrganization(orgData.settings || {});
-    setInvoices(orgData.invoices || []);
-    setTimeEntries(orgData.timeEntries || []);
-    setIsLoaded(true);
+    
+    // On explicit login, we trust the server data
+    setUsers(prev => smartMerge(prev, orgData.users || []));
+    setShifts(prev => smartMerge(prev, orgData.shifts || []));
+    setProperties(prev => smartMerge(prev, orgData.properties || []));
+    setClients(prev => smartMerge(prev, orgData.clients || []));
+    setInventoryItems(prev => smartMerge(prev, orgData.inventoryItems || []));
+    setManualTasks(prev => smartMerge(prev, orgData.manualTasks || []));
+    setSupplyRequests(prev => smartMerge(prev, orgData.supplyRequests || []));
+    setOrganization(orgData.settings || orgData.organization || {});
+    setInvoices(prev => smartMerge(prev, orgData.invoices || []));
+    setTimeEntries(prev => smartMerge(prev, orgData.timeEntries || []));
+    
+    // Mark as fetched so we can start saving updates
+    setHasFetchedServer(true);
+    
+    // Only reset tab on explicit login action
     setActiveTab('dashboard');
   };
 
-  const handleSignupComplete = (u: User, orgData: any) => {
-    handleLogin(u, orgData);
-  };
-
-  // --- AUTO SYNC ---
+  // --- 2. BACKGROUND SYNC & RESTORE LOGIC ---
   useEffect(() => {
-    if (!user || !orgId || !isLoaded) return; 
+    if (user && orgId) {
+        // Fetch server state
+        fetch(`/api/organization/${orgId}`)
+          .then(res => res.json())
+          .then(serverOrg => {
+             if(serverOrg.error) return;
+
+             // Smart Merge server updates into local
+             setUsers(prev => smartMerge(prev, serverOrg.users));
+             setProperties(prev => smartMerge(prev, serverOrg.properties));
+             setClients(prev => smartMerge(prev, serverOrg.clients));
+             setShifts(prev => smartMerge(prev, serverOrg.shifts));
+             setInventoryItems(prev => smartMerge(prev, serverOrg.inventoryItems));
+             setManualTasks(prev => smartMerge(prev, serverOrg.manualTasks));
+             setSupplyRequests(prev => smartMerge(prev, serverOrg.supplyRequests));
+             setInvoices(prev => smartMerge(prev, serverOrg.invoices));
+             setTimeEntries(prev => smartMerge(prev, serverOrg.timeEntries));
+             setLeaveRequests(prev => smartMerge(prev, serverOrg.leaveRequests));
+             setTutorials(prev => smartMerge(prev, serverOrg.tutorials));
+             
+             if (serverOrg.settings) setOrganization(serverOrg.settings);
+          })
+          .catch(err => {
+              console.error("Background sync failed - Running in Offline Mode", err);
+          })
+          .finally(() => {
+              // Once we have tried to fetch (success or fail), we allow saving.
+              // If we fail (offline), we rely on local storage (which loadState loaded).
+              setHasFetchedServer(true);
+          });
+    }
+  }, [user, orgId]);
+
+  // --- 3. AUTO SAVE LOOP (The "Master" Sync) ---
+  useEffect(() => {
+    if (!user || !orgId) return;
 
     const payload: any = {
         id: orgId,
-        users, 
-        shifts, 
-        properties,
-        clients,
-        supplyRequests, 
-        inventoryItems,
-        manualTasks, 
-        timeEntries,
-        leaveRequests,
-        tutorials,
-        settings: organization, 
-        invoices
+        users, shifts, properties, clients, supplyRequests, inventoryItems, manualTasks, 
+        timeEntries, leaveRequests, tutorials, settings: organization, invoices
     };
 
-    // Save to LocalStorage immediately
+    // 1. Instant Local Persistence (The "Safe" Copy) - Always do this
     localStorage.setItem('studio_org_settings', JSON.stringify(payload));
 
-    const timeout = setTimeout(async () => {
-      setIsSyncing(true);
-      try {
-        await fetch('/api/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            orgId,
-            data: payload
-          })
-        });
-      } catch (e) {
-        console.error("Sync Failed", e);
-      } finally {
-        setIsSyncing(false);
-      }
-    }, 1500); 
+    // 2. Cloud Sync - ONLY if we have confirmed server state (Prevents overwriting with blank)
+    if (hasFetchedServer) {
+        const timeout = setTimeout(async () => {
+          setIsSyncing(true);
+          try {
+            await fetch('/api/sync', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                orgId,
+                data: payload
+              })
+            });
+          } catch (e) {
+            console.error("Cloud Sync Failed", e);
+          } finally {
+            setIsSyncing(false);
+          }
+        }, 2000); // 2s Debounce for network
 
-    return () => clearTimeout(timeout);
-  }, [users, shifts, properties, clients, supplyRequests, inventoryItems, manualTasks, organization, invoices, timeEntries, leaveRequests, tutorials, user, orgId, isLoaded]);
-
-  useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (isSyncing) {
-        e.preventDefault();
-        e.returnValue = '';
-      }
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [isSyncing]);
+        return () => clearTimeout(timeout);
+    }
+  }, [users, shifts, properties, clients, supplyRequests, inventoryItems, manualTasks, organization, invoices, timeEntries, leaveRequests, tutorials, user, orgId, hasFetchedServer]);
 
   const handleLogout = () => {
     setUser(null);
     setOrgId(null);
-    setAuthMode('login');
+    // Clear local state variables
     setUsers([]);
     setShifts([]);
     setProperties([]);
-    setClients([]); 
     setTimeEntries([]);
-    setIsLoaded(false);
+    // Clear persistence
     localStorage.removeItem('current_user_obj');
     localStorage.removeItem('studio_org_settings');
+    localStorage.removeItem('studio_active_tab');
+    setHasFetchedServer(false);
   };
 
+  // ... (Rest of handlers remain unchanged) ...
   const handleUpdateLeaveStatus = (id: string, status: 'approved' | 'rejected') => {
     setLeaveRequests(prev => prev.map(l => l.id === id ? { ...l, status } : l));
   };
@@ -323,17 +293,16 @@ const App: React.FC = () => {
     setTimeEntries(prev => [...prev, newEntry]);
   };
 
+  // --- RENDER ---
+
   if (!user) {
-    if (authMode === 'signup') {
-      return <Signup onSignupComplete={handleSignupComplete} onBackToLogin={() => setAuthMode('login')} />;
-    }
-    return <Login onLogin={handleLogin} onSignupClick={() => setAuthMode('signup')} />;
+    return <Login onLogin={handleLogin} onSignupClick={() => {}} />;
   }
 
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
-        if (user.role === 'admin') return <AdminDashboard user={user} setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} setShifts={setShifts} users={users} supplyRequests={supplyRequests} leaveRequests={leaveRequests} onAuditDeepLink={handleAuditDeepLink} onOpenManualTask={() => setShowTaskModal(true)} manualTasks={manualTasks} setManualTasks={setManualTasks} />;
+        if (user.role === 'admin') return <AdminDashboard user={user} setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} setShifts={setShifts} users={users} supplyRequests={supplyRequests} leaveRequests={leaveRequests} onResolveLogistics={handleResolveLogistics} onAuditDeepLink={handleAuditDeepLink} onOpenManualTask={() => setShowTaskModal(true)} manualTasks={manualTasks} setManualTasks={setManualTasks} />;
         if (user.role === 'housekeeping') return <HousekeeperDashboard user={user} setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} setShifts={setShifts} users={users} properties={properties} supplyRequests={supplyRequests} leaveRequests={leaveRequests} onResolveLogistics={handleResolveLogistics} onAuditDeepLink={handleAuditDeepLink} onOpenManualTask={() => setShowTaskModal(true)} manualTasks={manualTasks} setManualTasks={setManualTasks} />;
         if (user.role === 'hr') return <AdminPortal view="users" users={users} setUsers={setUsers} setActiveTab={setActiveTab} leaveRequests={leaveRequests} onUpdateLeaveStatus={handleUpdateLeaveStatus} />;
         if (user.role === 'finance') return <FinanceDashboard setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} setShifts={setShifts} users={users} properties={properties} invoices={invoices} setInvoices={setInvoices} clients={clients} organization={organization} manualTasks={manualTasks} />;
