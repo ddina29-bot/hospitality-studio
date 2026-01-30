@@ -289,6 +289,7 @@ export interface User {
   role: UserRole;
   email: string;
   phone?: string;
+  photoUrl?: string; // Added photoUrl
   whatsappNumber?: string;
   address?: string;
   dateOfBirth?: string;

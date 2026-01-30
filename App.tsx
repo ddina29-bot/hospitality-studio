@@ -215,7 +215,12 @@ const App: React.FC = () => {
     };
 
     // 1. Instant Local Persistence (The "Safe" Copy) - Always do this
-    localStorage.setItem('studio_org_settings', JSON.stringify(payload));
+    try {
+      localStorage.setItem('studio_org_settings', JSON.stringify(payload));
+    } catch (e) {
+      console.error("Local Storage Quota Exceeded or Error. Data might not persist locally if refreshed.", e);
+      // We continue to cloud sync so data isn't lost if online.
+    }
 
     // 2. Cloud Sync - ONLY if we have confirmed server state (Prevents overwriting with blank)
     if (hasFetchedServer) {

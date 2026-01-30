@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Property, Client, PropertyType, SofaBedType } from '../../types';
 import { SERVICE_TYPES } from '../../constants';
+import { uploadFile } from '../../services/storageService';
 
 interface PropertyPortfolioProps {
   properties: Property[];
@@ -211,23 +212,28 @@ const PropertyPortfolio: React.FC<PropertyPortfolioProps> = ({
     }));
   };
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>, target: string) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>, target: string) => {
     if (isHousekeeping) return;
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result as string;
+
+    try {
+      const url = await uploadFile(file);
+      
       if (target === 'entrance') {
-        setForm({ ...form, entrancePhoto: dataUrl });
+        setForm(prev => ({ ...prev, entrancePhoto: url }));
       } else if (target === 'keybox') {
-        setForm({ ...form, keyboxPhoto: dataUrl });
+        setForm(prev => ({ ...prev, keyboxPhoto: url }));
       } else {
-        const currentRooms = { ...form.roomReferencePhotos } || {};
-        setForm({ ...form, roomReferencePhotos: { ...currentRooms, [target]: [dataUrl] } });
+        setForm(prev => {
+            const currentRooms = { ...prev.roomReferencePhotos } || {};
+            return { ...prev, roomReferencePhotos: { ...currentRooms, [target]: [url] } };
+        });
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (error) {
+      console.error("Failed to upload photo", error);
+      alert("Error uploading photo. Please try again or check storage usage.");
+    }
   };
 
   const labelStyle = "text-[7px] font-black text-[#8B6B2E] uppercase tracking-[0.4em] opacity-80 mb-1.5 block px-1";

@@ -1,6 +1,7 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { TabType, Shift, User, SupplyRequest, LeaveRequest, ManualTask, SpecialReport } from '../../types';
+import { uploadFile } from '../../services/storageService';
 
 interface AdminDashboardProps {
   user: User;
@@ -27,6 +28,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [viewingIncidentShift, setViewingIncidentShift] = useState<Shift | null>(null);
   const [assigningReport, setAssigningReport] = useState<{ shiftId: string, report: SpecialReport, type: 'maintenance' | 'damage' | 'missing' } | null>(null);
   const [assignmentNote, setAssignmentNote] = useState('');
+  
+  // Resolution state
+  const [resolvingReport, setResolvingReport] = useState<{ shiftId: string, report: SpecialReport, type: 'maintenance' | 'damage' | 'missing' } | null>(null);
+  const [resolutionPhotos, setResolutionPhotos] = useState<string[]>([]);
+  const resolutionFileRef = useRef<HTMLInputElement>(null);
 
   const reviewQueue = useMemo(() => shifts.filter(s => s.status === 'completed' && s.approvalStatus === 'pending'), [shifts]);
   const rejectedQueue = useMemo(() => shifts.filter(s => s.approvalStatus === 'rejected' && s.correctionStatus !== 'fixing'), [shifts]);
@@ -42,11 +48,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
   }, [shifts]);
 
-  const handleResolveIncident = (shiftId: string, reportId: string, type: 'maintenance' | 'damage' | 'missing') => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+        const url = await uploadFile(file);
+        setResolutionPhotos(prev => [...prev, url]);
+    } catch (err) {
+        console.error("Upload failed", err);
+        alert("Failed to upload photo.");
+    }
+  };
+
+  const confirmResolveIncident = () => {
+    if (!resolvingReport) return;
+    const { shiftId, report, type } = resolvingReport;
+    
     setShifts(prev => prev.map(s => {
       if (s.id === shiftId) {
         const field = type === 'maintenance' ? 'maintenanceReports' : type === 'damage' ? 'damageReports' : 'missingReports';
-        const updatedReports = (s[field] || []).map(r => r.id === reportId ? { ...r, status: 'resolved' as const } : r);
+        const updatedReports = (s[field] || []).map(r => r.id === report.id ? { 
+            ...r, 
+            status: 'resolved' as const,
+            photos: [...(r.photos || []), ...resolutionPhotos]
+        } : r);
+        
         if (viewingIncidentShift?.id === shiftId) {
             setViewingIncidentShift({ ...s, [field]: updatedReports });
         }
@@ -54,6 +80,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
       return s;
     }));
+    
+    setResolvingReport(null);
+    setResolutionPhotos([]);
   };
 
   const handleAssignIncident = (userId: string) => {
@@ -140,83 +169,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
       </div>
 
-      <div className="flex flex-col md:flex-row justify-between items-start gap-6">
-        <div className="space-y-1">
-          <p className="text-[#C5A059] font-black uppercase tracking-[0.4em] text-[10px]">Command Center</p>
-          <h1 className="text-2xl md:text-3xl font-serif-brand text-black font-bold uppercase leading-tight tracking-tight">WELCOME, <span className="text-[#C5A059] italic">{user.name.toUpperCase()}</span></h1>
-        </div>
-        
-        <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 md:gap-3 w-full md:w-auto">
-          <button 
-            onClick={onOpenManualTask}
-            className="bg-black hover:bg-zinc-900 text-[#C5A059] font-black px-4 md:px-6 py-3 rounded-xl text-[8px] md:text-[9px] uppercase tracking-[0.15em] md:tracking-[0.2em] flex items-center justify-center gap-2 transition-all shadow-xl active:scale-95"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            TASK
-          </button>
-          <button 
-            onClick={() => setActiveTab('users')} 
-            className="bg-[#D4B476] hover:bg-[#8B6B2E] text-black font-black px-4 md:px-6 py-3 rounded-xl text-[8px] md:text-[9px] uppercase tracking-[0.15em] md:tracking-[0.2em] flex items-center justify-center gap-2 transition-all shadow-xl active:scale-95"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            USERS
-          </button>
-          <button 
-            onClick={() => setActiveTab('clients')} 
-            className="col-span-2 sm:col-auto bg-[#C5A059] hover:bg-[#A68342] text-black font-black px-4 md:px-6 py-3 rounded-xl text-[8px] md:text-[9px] uppercase tracking-[0.15em] md:tracking-[0.2em] flex items-center justify-center gap-2 transition-all shadow-xl active:scale-95"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            CLIENTS
-          </button>
-        </div>
-      </div>
-
-      {/* FIELD INCIDENT CENTER (Maintenance, Damage, Missing) */}
-      {shiftsWithIncidents.length > 0 && (
-        <section className="bg-white border-2 border-[#C5A059] p-8 rounded-[40px] shadow-2xl space-y-8 animate-in slide-in-from-bottom-4">
-           <div className="flex justify-between items-center px-2">
-              <div className="flex items-center gap-3">
-                 <div className="w-2 h-2 rounded-full bg-[#C5A059] animate-pulse"></div>
-                 <h2 className="text-[10px] font-black text-black uppercase tracking-[0.3em]">FIELD INCIDENT CENTER</h2>
-              </div>
-              <span className="text-[8px] font-black text-[#C5A059] bg-[#C5A059]/10 px-3 py-1 rounded-full">{shiftsWithIncidents.length} UNITS REPORTING</span>
-           </div>
-           
-           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {shiftsWithIncidents.map((shift) => {
-                 const maintenanceCount = shift.maintenanceReports?.filter(r => r.status !== 'resolved').length || 0;
-                 const damageCount = shift.damageReports?.filter(r => r.status !== 'resolved').length || 0;
-                 const missingCount = shift.missingReports?.filter(r => r.status !== 'resolved').length || 0;
-                 const staffNames = shift.userIds?.map(uid => users.find(u => u.id === uid)?.name.split(' ')[0]).join(', ');
-
-                 return (
-                    <div key={shift.id} className="p-6 rounded-3xl border border-gray-200 shadow-sm space-y-5 transition-all group hover:border-[#C5A059] bg-white flex flex-col justify-between">
-                       <div className="space-y-4">
-                          <div className="space-y-1">
-                             <h4 className="text-sm font-bold text-black uppercase tracking-tight leading-tight">{shift.propertyName}</h4>
-                             <p className="text-[8px] text-black/40 font-black uppercase tracking-widest">Reported By: {staffNames}</p>
-                          </div>
-                          
-                          <div className="flex flex-wrap gap-2">
-                             {maintenanceCount > 0 && <span className="text-[8px] font-black bg-blue-50 text-blue-600 px-2 py-1 rounded border border-blue-100">{maintenanceCount} MAINTENANCE</span>}
-                             {damageCount > 0 && <span className="text-[8px] font-black bg-orange-50 text-orange-600 px-2 py-1 rounded border border-orange-100">{damageCount} DAMAGE</span>}
-                             {missingCount > 0 && <span className="text-[8px] font-black bg-purple-50 text-purple-600 px-2 py-1 rounded border border-purple-100">{missingCount} MISSING</span>}
-                          </div>
-                       </div>
-
-                       <button 
-                         onClick={() => setViewingIncidentShift(shift)}
-                         className="w-full bg-[#C5A059] text-black font-black py-3 rounded-xl uppercase text-[9px] tracking-widest shadow-sm hover:bg-[#d4b476] transition-all active:scale-95 flex items-center justify-center gap-2"
-                       >
-                         MANAGE REPORTS <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-                       </button>
-                    </div>
-                 );
-              })}
-           </div>
-        </section>
-      )}
-
       {/* Main Incident Management Modal */}
       {viewingIncidentShift && (
          <div className="fixed inset-0 bg-black/70 z-[400] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
@@ -250,7 +202,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               {report.status !== 'resolved' && (
                                  <div className="flex gap-2 shrink-0">
                                     <button onClick={() => setAssigningReport({ shiftId: viewingIncidentShift.id, report, type: 'maintenance' })} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-[8px] font-black uppercase shadow-md active:scale-95">Assign</button>
-                                    <button onClick={() => handleResolveIncident(viewingIncidentShift.id, report.id, 'maintenance')} className="border border-gray-200 text-black/40 px-4 py-2 rounded-xl text-[8px] font-black uppercase hover:bg-gray-50">Resolve</button>
+                                    <button onClick={() => setResolvingReport({ shiftId: viewingIncidentShift.id, report, type: 'maintenance' })} className="border border-gray-200 text-black/40 px-4 py-2 rounded-xl text-[8px] font-black uppercase hover:bg-gray-50">Resolve</button>
                                  </div>
                               )}
                               {report.status === 'resolved' && <span className="text-[8px] font-black text-green-600 bg-green-50 px-3 py-1 rounded uppercase">Resolved</span>}
@@ -280,7 +232,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               {report.status !== 'resolved' && (
                                  <div className="flex gap-2 shrink-0">
                                     <button onClick={() => setAssigningReport({ shiftId: viewingIncidentShift.id, report, type: 'damage' })} className="bg-orange-600 text-white px-4 py-2 rounded-xl text-[8px] font-black uppercase shadow-md active:scale-95">Assign</button>
-                                    <button onClick={() => handleResolveIncident(viewingIncidentShift.id, report.id, 'damage')} className="border border-gray-200 text-black/40 px-4 py-2 rounded-xl text-[8px] font-black uppercase hover:bg-gray-50">Resolve</button>
+                                    <button onClick={() => setResolvingReport({ shiftId: viewingIncidentShift.id, report, type: 'damage' })} className="border border-gray-200 text-black/40 px-4 py-2 rounded-xl text-[8px] font-black uppercase hover:bg-gray-50">Resolve</button>
                                  </div>
                               )}
                               {report.status === 'resolved' && <span className="text-[8px] font-black text-green-600 bg-green-50 px-3 py-1 rounded uppercase">Resolved</span>}
@@ -307,7 +259,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     {report.status !== 'resolved' && (
                                        <div className="flex gap-2 shrink-0">
                                           <button onClick={() => setAssigningReport({ shiftId: viewingIncidentShift.id, report, type: 'missing' })} className="bg-purple-600 text-white px-4 py-2 rounded-xl text-[8px] font-black uppercase shadow-md active:scale-95">Assign</button>
-                                          <button onClick={() => handleResolveIncident(viewingIncidentShift.id, report.id, 'missing')} className="border border-gray-200 text-black/40 px-4 py-2 rounded-xl text-[8px] font-black uppercase hover:bg-gray-50">Resolve</button>
+                                          <button onClick={() => setResolvingReport({ shiftId: viewingIncidentShift.id, report, type: 'missing' })} className="border border-gray-200 text-black/40 px-4 py-2 rounded-xl text-[8px] font-black uppercase hover:bg-gray-50">Resolve</button>
                                        </div>
                                     )}
                                     {report.status === 'resolved' && <span className="text-[8px] font-black text-green-600 bg-green-50 px-3 py-1 rounded uppercase">Resolved</span>}
@@ -315,7 +267,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               ))}
                            </div>
                         )}
-                        {/* Laundry Missing kept brief */}
+                        
+                        {/* Missing from Laundry */}
+                        {getMissingItemsBreakdown(viewingIncidentShift.missingReports).laundry.length > 0 && (
+                           <div className="space-y-3">
+                              <div className="flex items-center gap-3 border-b border-black/5 pb-2">
+                                 <span className="w-2 h-2 rounded-full bg-pink-500"></span>
+                                 <h4 className="text-xs font-black text-black uppercase tracking-widest">Missing (Laundry)</h4>
+                              </div>
+                              {getMissingItemsBreakdown(viewingIncidentShift.missingReports).laundry.map((report, idx) => (
+                                 <div key={idx} className={`bg-white p-4 rounded-2xl border ${report.status === 'resolved' ? 'border-gray-100 opacity-60' : 'border-pink-100 shadow-sm'} flex flex-col md:flex-row gap-4 items-start md:items-center justify-between`}>
+                                    <div className="flex-1 space-y-2">
+                                       <p className="text-[10px] text-black font-medium italic">"{report.description}"</p>
+                                       {report.assignedToName && <p className="text-[8px] text-pink-600 font-bold uppercase">Assigned to: {report.assignedToName}</p>}
+                                    </div>
+                                    {report.status !== 'resolved' && (
+                                       <div className="flex gap-2 shrink-0">
+                                          <button onClick={() => setAssigningReport({ shiftId: viewingIncidentShift.id, report, type: 'missing' })} className="bg-pink-600 text-white px-4 py-2 rounded-xl text-[8px] font-black uppercase shadow-md active:scale-95">Assign</button>
+                                          <button onClick={() => setResolvingReport({ shiftId: viewingIncidentShift.id, report, type: 'missing' })} className="border border-gray-200 text-black/40 px-4 py-2 rounded-xl text-[8px] font-black uppercase hover:bg-gray-50">Resolve</button>
+                                       </div>
+                                    )}
+                                    {report.status === 'resolved' && <span className="text-[8px] font-black text-green-600 bg-green-50 px-3 py-1 rounded uppercase">Resolved</span>}
+                                 </div>
+                              ))}
+                           </div>
+                        )}
                      </div>
                   )}
                </div>
@@ -362,6 +338,42 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                      </button>
                    );
                  })}
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* Resolution Modal (Admin Direct Resolve) */}
+      {resolvingReport && (
+        <div className="fixed inset-0 bg-black/80 z-[500] flex items-center justify-center p-4 backdrop-blur-sm animate-in zoom-in-95">
+           <div className="bg-white rounded-[40px] w-full max-w-md p-8 space-y-6 shadow-2xl relative text-left">
+              <div className="space-y-1">
+                 <h3 className="text-xl font-bold text-black uppercase">Confirm Resolution</h3>
+                 <p className="text-[8px] text-black/40 font-black uppercase tracking-widest">Close this incident manually</p>
+              </div>
+              <div className="space-y-4">
+                 <p className="text-xs text-black/70 italic">
+                    Are you sure you want to mark this {resolvingReport.type.toLowerCase()} report as resolved? 
+                    This will remove it from the active queue.
+                 </p>
+                 <div>
+                    <label className="text-[8px] font-black text-black/40 uppercase tracking-[0.2em] mb-1.5 block">Attach Proof (Optional)</label>
+                    <div className="flex gap-2 items-center">
+                        <button onClick={() => resolutionFileRef.current?.click()} className="h-12 w-12 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center hover:bg-gray-100 transition-all text-black/40">
+                            +
+                        </button>
+                        <div className="flex gap-2 overflow-x-auto">
+                            {resolutionPhotos.map((url, i) => (
+                                <img key={i} src={url} className="h-12 w-12 rounded-xl object-cover border border-gray-200" />
+                            ))}
+                        </div>
+                        <input type="file" ref={resolutionFileRef} className="hidden" accept="image/*" onChange={handlePhotoUpload} />
+                    </div>
+                 </div>
+              </div>
+              <div className="flex gap-3">
+                 <button onClick={confirmResolveIncident} className="flex-1 bg-green-600 text-white font-black py-4 rounded-2xl uppercase text-[9px] tracking-widest shadow-xl">CONFIRM RESOLUTION</button>
+                 <button onClick={() => { setResolvingReport(null); setResolutionPhotos([]); }} className="px-6 border border-gray-200 text-black/40 font-black py-4 rounded-2xl uppercase text-[9px] tracking-widest">CANCEL</button>
               </div>
            </div>
         </div>

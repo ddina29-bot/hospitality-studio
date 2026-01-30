@@ -1,5 +1,7 @@
+
 import React, { useState, useRef } from 'react';
 import { Tutorial, UserRole } from '../types';
+import { uploadFile } from '../services/storageService';
 
 interface TutorialsHubProps {
   tutorials: Tutorial[];
@@ -70,14 +72,17 @@ const TutorialsHub: React.FC<TutorialsHubProps> = ({ tutorials, setTutorials, us
     }
   };
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setForm({ ...form, thumbnail: event.target?.result as string });
-    };
-    reader.readAsDataURL(file);
+    
+    try {
+        const url = await uploadFile(file);
+        setForm(prev => ({ ...prev, thumbnail: url }));
+    } catch (err) {
+        console.error("Upload failed", err);
+        alert("Failed to upload image.");
+    }
   };
 
   const handleAddCategory = () => {
@@ -149,7 +154,7 @@ const TutorialsHub: React.FC<TutorialsHubProps> = ({ tutorials, setTutorials, us
         ))}
       </div>
 
-      {/* Viewing Modal - Fixed with max-height and scrolling */}
+      {/* Viewing Modal */}
       {selected && (
         <div className="fixed inset-0 bg-black/40 z-[300] flex items-center justify-center p-4 backdrop-blur-sm animate-in zoom-in-95">
            <div className="bg-[#FDF8EE] border border-[#D4B476]/30 rounded-[48px] w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl relative overflow-hidden">

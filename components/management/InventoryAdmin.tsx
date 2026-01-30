@@ -1,5 +1,7 @@
+
 import React, { useState, useMemo, useRef } from 'react';
 import { SupplyItem, SupplyRequest, User } from '../../types';
+import { uploadFile } from '../../services/storageService';
 
 interface InventoryAdminProps {
   inventoryItems: SupplyItem[];
@@ -105,14 +107,17 @@ const InventoryAdmin: React.FC<InventoryAdminProps> = ({
     setProductForm({ name: '', unit: '', category: 'basic', explanation: '', photo: '', type: 'cleaning' });
   };
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setProductForm({ ...productForm, photo: event.target?.result as string });
-    };
-    reader.readAsDataURL(file);
+    
+    try {
+        const url = await uploadFile(file);
+        setProductForm({ ...productForm, photo: url });
+    } catch (e) {
+        console.error("Upload failed", e);
+        if (showToast) showToast('PHOTO UPLOAD FAILED', 'error');
+    }
   };
 
   const labelStyle = "text-[7px] font-black text-[#8B6B2E] uppercase tracking-[0.4em] opacity-80 mb-1.5 block px-1";

@@ -1,6 +1,7 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { MaintenanceTicket, User, UserRole, Shift, SpecialReport } from '../types';
+import { uploadFile } from '../services/storageService';
 
 interface MaintenancePortalProps {
   users?: User[];
@@ -20,6 +21,9 @@ const MaintenancePortal: React.FC<MaintenancePortalProps> = ({ users = [], userR
   const [vendorCost, setVendorCost] = useState('');
   const [invoiceRef, setInvoiceRef] = useState('');
   const [vendorNotes, setVendorNotes] = useState('');
+  const [completionPhotos, setCompletionPhotos] = useState<string[]>([]);
+  
+  const completionFileRef = useRef<HTMLInputElement>(null);
 
   // Extract all active reports across all shifts
   const allIncidents = useMemo(() => {
@@ -61,6 +65,18 @@ const MaintenancePortal: React.FC<MaintenancePortalProps> = ({ users = [], userR
     });
   }, [allIncidents, users]);
 
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+        const url = await uploadFile(file);
+        setCompletionPhotos(prev => [...prev, url]);
+    } catch (err) {
+        console.error("Upload failed", err);
+        alert("Failed to upload photo.");
+    }
+  };
+
   const handleVendorComplete = () => {
     if (!finishingReport || !setShifts) return;
     
@@ -72,7 +88,8 @@ const MaintenancePortal: React.FC<MaintenancePortalProps> = ({ users = [], userR
                     status: 'resolved' as const, 
                     cost: parseFloat(vendorCost) || 0,
                     invoiceRef: invoiceRef,
-                    vendorNotes: vendorNotes 
+                    vendorNotes: vendorNotes,
+                    photos: [...(r.photos || []), ...completionPhotos] // Append completion photos
                 } : r);
             };
 
@@ -90,6 +107,7 @@ const MaintenancePortal: React.FC<MaintenancePortalProps> = ({ users = [], userR
     setVendorCost('');
     setInvoiceRef('');
     setVendorNotes('');
+    setCompletionPhotos([]);
     alert("Job Completed & Invoice Submitted");
   };
 
@@ -158,8 +176,8 @@ const MaintenancePortal: React.FC<MaintenancePortalProps> = ({ users = [], userR
 
             {/* Completion Modal */}
             {finishingReport && (
-                <div className="fixed inset-0 bg-black/80 z-[500] flex items-center justify-center p-4 backdrop-blur-sm animate-in zoom-in-95">
-                    <div className="bg-white rounded-[40px] w-full max-w-md p-8 space-y-6 shadow-2xl relative text-left">
+                <div className="fixed inset-0 bg-black/80 z-[500] flex items-center justify-center p-4 backdrop-blur-sm animate-in zoom-in-95 overflow-y-auto">
+                    <div className="bg-white rounded-[40px] w-full max-w-md p-8 space-y-6 shadow-2xl relative text-left my-auto">
                         <div className="space-y-1">
                             <h3 className="text-xl font-bold text-black uppercase">Finalize Job</h3>
                             <p className="text-[8px] text-black/40 font-black uppercase tracking-widest">Billing Information</p>
@@ -176,6 +194,20 @@ const MaintenancePortal: React.FC<MaintenancePortalProps> = ({ users = [], userR
                             <div>
                                 <label className="text-[8px] font-black text-black/40 uppercase tracking-[0.2em] mb-1.5 block">Vendor Notes</label>
                                 <textarea className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-black font-medium outline-none focus:border-blue-500 h-24 italic text-xs" placeholder="Work performed details..." value={vendorNotes} onChange={e => setVendorNotes(e.target.value)} />
+                            </div>
+                            <div>
+                                <label className="text-[8px] font-black text-black/40 uppercase tracking-[0.2em] mb-1.5 block">Attach Proof (Photos)</label>
+                                <div className="flex gap-2 items-center">
+                                    <button onClick={() => completionFileRef.current?.click()} className="h-12 w-12 rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center hover:bg-gray-200 transition-all text-black/40">
+                                        +
+                                    </button>
+                                    <div className="flex gap-2 overflow-x-auto">
+                                        {completionPhotos.map((url, i) => (
+                                            <img key={i} src={url} className="h-12 w-12 rounded-xl object-cover border border-gray-200" />
+                                        ))}
+                                    </div>
+                                    <input type="file" ref={completionFileRef} className="hidden" accept="image/*" onChange={handlePhotoUpload} />
+                                </div>
                             </div>
                         </div>
                         <div className="flex gap-3">
@@ -245,7 +277,7 @@ const MaintenancePortal: React.FC<MaintenancePortalProps> = ({ users = [], userR
                              
                              <div className="flex items-center gap-4">
                                 {job.report.status === 'assigned' && <span className="text-[8px] font-black text-blue-400 bg-blue-500/10 px-3 py-1 rounded-full border border-blue-500/20 uppercase tracking-widest">IN PROGRESS</span>}
-                                <button className="bg-white/5 hover:bg-white/10 text-white px-6 py-3 rounded-xl text-[8px] font-black uppercase tracking-widest transition-all">Details</button>
+                                {job.report.status === 'resolved' && <span className="text-[8px] font-black text-green-400 bg-green-500/10 px-3 py-1 rounded-full border border-green-500/20 uppercase tracking-widest">RESOLVED</span>}
                              </div>
                            </div>
                          );

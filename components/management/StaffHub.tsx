@@ -1,6 +1,7 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { User, UserRole, EmploymentType, PaymentType } from '../../types';
+import { uploadFile } from '../../services/storageService';
 
 interface StaffHubProps {
   users: User[];
@@ -26,6 +27,7 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
   // Edit State
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [newPassword, setNewPassword] = useState(''); // For admin password reset
+  const profileInputRef = useRef<HTMLInputElement>(null);
   
   const currentUser = JSON.parse(localStorage.getItem('current_user_obj') || '{}');
 
@@ -128,6 +130,18 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
     if (showToast) showToast('PERSONNEL RECORD UPDATED', 'success');
   };
 
+  const handleProfileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editingUser) return;
+    try {
+        const url = await uploadFile(file);
+        setEditingUser(prev => prev ? ({ ...prev, photoUrl: url }) : null);
+    } catch (err) {
+        console.error("Profile Upload Error:", err);
+        alert("Failed to upload profile photo.");
+    }
+  };
+
   const getActivationUrl = (code?: string) => {
     const finalCode = code || inviteToken;
     if (!finalCode) return '';
@@ -184,10 +198,14 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
                       className={`p-5 rounded-[28px] border flex items-center justify-between gap-4 shadow-sm cursor-pointer transition-all group ${u.status === 'inactive' ? 'bg-gray-50 border-gray-200 opacity-60' : 'bg-white border-gray-100 hover:border-[#D4B476]'}`}
                     >
                       <div className="flex items-center gap-5 flex-1 min-w-0 text-left">
-                        <div className={`w-12 h-12 rounded-full border border-gray-100 flex items-center justify-center font-serif-brand text-lg font-bold transition-colors relative ${u.status === 'inactive' ? 'bg-gray-200 text-gray-400' : 'bg-gray-50 text-black/40 group-hover:bg-[#C5A059]/10 group-hover:text-[#C5A059]'}`}>
-                            {u.name.charAt(0)}
-                            <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${u.status === 'active' ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                        </div>
+                        {u.photoUrl ? (
+                            <img src={u.photoUrl} className="w-12 h-12 rounded-full object-cover border border-gray-100 relative" alt={u.name} />
+                        ) : (
+                            <div className={`w-12 h-12 rounded-full border border-gray-100 flex items-center justify-center font-serif-brand text-lg font-bold transition-colors relative ${u.status === 'inactive' ? 'bg-gray-200 text-gray-400' : 'bg-gray-50 text-black/40 group-hover:bg-[#C5A059]/10 group-hover:text-[#C5A059]'}`}>
+                                {u.name.charAt(0)}
+                                <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${u.status === 'active' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                            </div>
+                        )}
                         <div className="flex-1 min-w-0">
                           <h3 className="text-sm font-bold uppercase truncate text-black">{u.name}</h3>
                           <div className="flex items-center gap-2 mt-0.5">
@@ -291,6 +309,21 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
               </div>
 
               <form onSubmit={handleSaveEdit} className="space-y-8">
+                 {/* Profile Photo Section */}
+                 <div className="flex justify-center">
+                    <div onClick={() => profileInputRef.current?.click()} className="w-24 h-24 rounded-full bg-white border-2 border-dashed border-[#D4B476] flex items-center justify-center cursor-pointer overflow-hidden relative group shadow-inner hover:border-solid hover:border-[#C5A059] transition-all">
+                        {editingUser.photoUrl ? (
+                            <img src={editingUser.photoUrl} className="w-full h-full object-cover" />
+                        ) : (
+                            <span className="text-2xl font-bold text-[#D4B476]">{editingUser.name.charAt(0)}</span>
+                        )}
+                        <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            <span className="text-[8px] font-black text-white uppercase tracking-widest">UPLOAD</span>
+                        </div>
+                    </div>
+                    <input type="file" ref={profileInputRef} className="hidden" accept="image/*" onChange={handleProfileUpload} />
+                 </div>
+
                  <div className="space-y-4">
                     <h4 className="text-[10px] font-black text-black/30 uppercase tracking-[0.5em] border-l-2 border-[#C5A059] pl-3">Identity & Access</h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
