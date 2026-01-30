@@ -144,7 +144,8 @@ const seedMainAdmin = () => {
 
   console.log(`[SEED] Creating NEW Org for Main Admin: ${targetEmail}`);
   
-  const newOrgId = `org-seed-${Date.now()}`;
+  // Use a STATIC ID so local storage remains valid across restarts
+  const newOrgId = `org-seed-main`;
   const newAdminId = `admin-main`;
   
   const newOrg = {

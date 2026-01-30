@@ -28,30 +28,94 @@ import ClientDashboard from './components/dashboards/ClientDashboard';
 import HousekeeperDashboard from './components/dashboards/HousekeeperDashboard';
 import LaundryDashboard from './components/dashboards/LaundryDashboard';
 
-const App: React.FC = () => {
-  // --- AUTH STATE ---
-  const [user, setUser] = useState<User | null>(null);
-  const [orgId, setOrgId] = useState<string | null>(null);
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+// Helper: Smart Merge (Prefers Local ID if conflict, adds missing from server)
+const smartMerge = <T extends { id: string }>(localList: T[], serverList: T[] | undefined): T[] => {
+  if (!serverList || !Array.isArray(serverList) || serverList.length === 0) return localList;
+  if (!localList || localList.length === 0) return serverList;
+
+  const localMap = new Map(localList.map(i => [i.id, i]));
+  const merged = [...localList];
   
-  // --- APP DATA STATE (Starts Empty - Loaded from Server) ---
-  const [users, setUsers] = useState<User[]>([]);
-  const [shifts, setShifts] = useState<Shift[]>([]);
-  const [properties, setProperties] = useState<Property[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
-  const [supplyRequests, setSupplyRequests] = useState<SupplyRequest[]>([]);
-  const [inventoryItems, setInventoryItems] = useState<SupplyItem[]>([]);
-  const [manualTasks, setManualTasks] = useState<ManualTask[]>([]);
-  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [tutorials, setTutorials] = useState<Tutorial[]>([]);
-  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
-  const [organization, setOrganization] = useState<OrganizationSettings>({
-    name: '', legalEntity: '', taxId: '', address: '', email: '', phone: '', website: ''
+  serverList.forEach(serverItem => {
+    if (!localMap.has(serverItem.id)) {
+      merged.push(serverItem);
+    }
+  });
+  
+  return merged;
+};
+
+// Helper: Lazy State Loader with Safety Check
+const loadState = <T,>(key: string, fallback: T): T => {
+  try {
+    const saved = localStorage.getItem('studio_org_settings');
+    if (saved) {
+       const parsed = JSON.parse(saved);
+       const val = parsed[key];
+       if (Array.isArray(fallback) && Array.isArray(val)) return val as unknown as T;
+       if (val !== undefined) return val;
+    }
+  } catch(e) { 
+    console.warn(`[State Load] Failed to load ${key}`, e); 
+  }
+  return fallback;
+};
+
+const App: React.FC = () => {
+  // --- AUTH STATE (Lazy Load for Immediate Access) ---
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const savedUser = localStorage.getItem('current_user_obj');
+      return savedUser ? JSON.parse(savedUser) : null;
+    } catch { return null; }
   });
 
-  const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+  const [orgId, setOrgId] = useState<string | null>(() => {
+    try {
+      const savedSettings = localStorage.getItem('studio_org_settings');
+      return savedSettings ? JSON.parse(savedSettings).id : null;
+    } catch { return null; }
+  });
+
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+
+  // --- APP DATA STATE (Initialize from LocalStorage to prevent flicker/empty state) ---
+  const [users, setUsers] = useState<User[]>(() => loadState('users', []));
+  const [shifts, setShifts] = useState<Shift[]>(() => loadState('shifts', []));
+  const [properties, setProperties] = useState<Property[]>(() => loadState('properties', []));
+  const [clients, setClients] = useState<Client[]>(() => loadState('clients', []));
+  const [supplyRequests, setSupplyRequests] = useState<SupplyRequest[]>(() => loadState('supplyRequests', []));
+  const [inventoryItems, setInventoryItems] = useState<SupplyItem[]>(() => loadState('inventoryItems', []));
+  const [manualTasks, setManualTasks] = useState<ManualTask[]>(() => loadState('manualTasks', []));
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(() => loadState('leaveRequests', []));
+  const [invoices, setInvoices] = useState<Invoice[]>(() => loadState('invoices', []));
+  const [tutorials, setTutorials] = useState<Tutorial[]>(() => loadState('tutorials', []));
+  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>(() => loadState('timeEntries', []));
   
+  const [organization, setOrganization] = useState<OrganizationSettings>(() => {
+      try {
+        const saved = localStorage.getItem('studio_org_settings');
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            return parsed.settings || parsed.organization || parsed; 
+        }
+      } catch {}
+      return { name: '', legalEntity: '', taxId: '', address: '', email: '', phone: '', website: '' };
+  });
+
+  // --- NAVIGATION STATE (Persistent) ---
+  const [activeTab, setActiveTab] = useState<TabType>(() => {
+      const savedTab = localStorage.getItem('studio_active_tab');
+      return (savedTab as TabType) || 'dashboard';
+  });
+
+  // Persist Active Tab changes immediately
+  useEffect(() => {
+    if (user) {
+        localStorage.setItem('studio_active_tab', activeTab);
+    }
+  }, [activeTab, user]);
+
   // --- UI STATE ---
   const [authorizedLaundryUserIds, setAuthorizedLaundryUserIds] = useState<string[]>([]);
   const [authorizedInspectorIds, setAuthorizedInspectorIds] = useState<string[]>([]);
@@ -59,92 +123,133 @@ const App: React.FC = () => {
   const [deepLinkShiftId, setDeepLinkShiftId] = useState<string | null>(null);
   const [savedTaskNames, setSavedTaskNames] = useState<string[]>(['Extra Towels', 'Deep Clean Fridge', 'Balcony Sweep']);
   const [isSyncing, setIsSyncing] = useState(false);
-
-  // --- 0. INITIAL LOAD (Restore Session) ---
-  useEffect(() => {
-    const savedUser = localStorage.getItem('current_user_obj');
-    const savedOrgSettings = localStorage.getItem('studio_org_settings');
-    
-    if (savedUser && savedOrgSettings) {
-      try {
-        const u = JSON.parse(savedUser);
-        const o = JSON.parse(savedOrgSettings);
-        
-        setUser(u);
-        setOrgId(o.id);
-        setOrganization(o.settings || o); // Handle structure variation
-        
-      } catch (e) {
-        console.error("Failed to restore session", e);
-        localStorage.clear();
-      }
-    }
-  }, []);
+  
+  // FAIL-SAFE: Prevent auto-save until we confirm we have data from server or local restore
+  const [hasFetchedServer, setHasFetchedServer] = useState(false);
 
   // --- 1. LOGIN HANDLER ---
   const handleLogin = (u: User, orgData: any) => {
     setUser(u);
     setOrgId(orgData.id);
     
-    // Hydrate State from the Organization Data (Database)
-    setUsers(orgData.users || []);
-    setShifts(orgData.shifts || []);
-    setProperties(orgData.properties || []);
-    setClients(orgData.clients || []);
-    setInventoryItems(orgData.inventoryItems || []);
-    setManualTasks(orgData.manualTasks || []);
-    setSupplyRequests(orgData.supplyRequests || []);
-    setOrganization(orgData.settings || {});
-    setTimeEntries(orgData.timeEntries || []);
+    // On explicit login, we merge server data into state
+    setUsers(prev => smartMerge(prev, orgData.users || []));
+    setShifts(prev => smartMerge(prev, orgData.shifts || []));
+    setProperties(prev => smartMerge(prev, orgData.properties || []));
+    setClients(prev => smartMerge(prev, orgData.clients || []));
+    setInventoryItems(prev => smartMerge(prev, orgData.inventoryItems || []));
+    setManualTasks(prev => smartMerge(prev, orgData.manualTasks || []));
+    setSupplyRequests(prev => smartMerge(prev, orgData.supplyRequests || []));
+    setOrganization(orgData.settings || orgData.organization || {});
+    setInvoices(prev => smartMerge(prev, orgData.invoices || []));
+    setTimeEntries(prev => smartMerge(prev, orgData.timeEntries || []));
     
+    setHasFetchedServer(true);
     setActiveTab('dashboard');
   };
 
-  // --- 2. SIGNUP HANDLER ---
   const handleSignupComplete = (u: User, orgData: any) => {
     handleLogin(u, orgData);
   };
 
-  // --- 3. SYNC TO CLOUD (Auto-Save) ---
+  // --- 2. BACKGROUND SYNC & RESTORE LOGIC ---
+  useEffect(() => {
+    if (user && orgId) {
+        // Fetch server state
+        fetch(`/api/organization/${orgId}`)
+          .then(res => res.json())
+          .then(serverOrg => {
+             if(serverOrg.error) return;
+
+             // SAFETY CHECK: Does local have data but server is empty?
+             // This happens if server restarts/wipes but client is valid.
+             const localHasProperties = properties.length > 0;
+             const serverMissingProperties = !serverOrg.properties || serverOrg.properties.length === 0;
+             
+             if (localHasProperties && serverMissingProperties) {
+                 console.warn("Server data appears empty. Initiating Client-to-Server Restore...");
+                 setHasFetchedServer(true); // Allow save to trigger immediately to push local data up
+                 return; 
+             }
+
+             // Normal Sync: Merge server updates into local
+             setUsers(prev => smartMerge(prev, serverOrg.users));
+             setProperties(prev => smartMerge(prev, serverOrg.properties));
+             setClients(prev => smartMerge(prev, serverOrg.clients));
+             setShifts(prev => smartMerge(prev, serverOrg.shifts));
+             setInventoryItems(prev => smartMerge(prev, serverOrg.inventoryItems));
+             setManualTasks(prev => smartMerge(prev, serverOrg.manualTasks));
+             setSupplyRequests(prev => smartMerge(prev, serverOrg.supplyRequests));
+             setInvoices(prev => smartMerge(prev, serverOrg.invoices));
+             setTimeEntries(prev => smartMerge(prev, serverOrg.timeEntries));
+             setLeaveRequests(prev => smartMerge(prev, serverOrg.leaveRequests));
+             setTutorials(prev => smartMerge(prev, serverOrg.tutorials));
+             
+             if (serverOrg.settings) setOrganization(serverOrg.settings);
+          })
+          .catch(err => {
+              console.error("Background sync failed - Running in Offline Mode", err);
+          })
+          .finally(() => {
+              setHasFetchedServer(true);
+          });
+    }
+  }, [user, orgId]);
+
+  // --- 3. AUTO SAVE LOOP (The "Master" Sync) ---
   useEffect(() => {
     if (!user || !orgId) return;
 
-    const timeout = setTimeout(async () => {
-      setIsSyncing(true);
-      try {
-        await fetch('/api/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            orgId,
-            data: {
-              users, shifts, properties, clients, supplyRequests, inventoryItems, manualTasks, organization, timeEntries
-            }
-          })
-        });
-      } catch (e) {
-        console.error("Sync Failed", e);
-      } finally {
-        setIsSyncing(false);
-      }
-    }, 2000); // Debounce saves
+    const payload: any = {
+        id: orgId,
+        users, shifts, properties, clients, supplyRequests, inventoryItems, manualTasks, 
+        timeEntries, leaveRequests, tutorials, settings: organization, invoices
+    };
 
-    return () => clearTimeout(timeout);
-  }, [users, shifts, properties, clients, supplyRequests, inventoryItems, manualTasks, organization, timeEntries]);
+    // 1. Instant Local Persistence (The "Safe" Copy) - Always do this
+    localStorage.setItem('studio_org_settings', JSON.stringify(payload));
+
+    // 2. Cloud Sync - ONLY if we have confirmed server state (Prevents overwriting with blank)
+    if (hasFetchedServer) {
+        const timeout = setTimeout(async () => {
+          setIsSyncing(true);
+          try {
+            await fetch('/api/sync', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                orgId,
+                data: payload
+              })
+            });
+          } catch (e) {
+            console.error("Cloud Sync Failed", e);
+          } finally {
+            setIsSyncing(false);
+          }
+        }, 2000); // 2s Debounce for network
+
+        return () => clearTimeout(timeout);
+    }
+  }, [users, shifts, properties, clients, supplyRequests, inventoryItems, manualTasks, organization, invoices, timeEntries, leaveRequests, tutorials, user, orgId, hasFetchedServer]);
 
   const handleLogout = () => {
     setUser(null);
     setOrgId(null);
     setAuthMode('login');
-    // Clear local state
+    // Clear local state variables
     setUsers([]);
     setShifts([]);
     setProperties([]);
     setTimeEntries([]);
+    // Clear persistence
     localStorage.removeItem('current_user_obj');
     localStorage.removeItem('studio_org_settings');
+    localStorage.removeItem('studio_active_tab');
+    setHasFetchedServer(false);
   };
 
+  // ... (Rest of handlers remain unchanged) ...
   const handleUpdateLeaveStatus = (id: string, status: 'approved' | 'rejected') => {
     setLeaveRequests(prev => prev.map(l => l.id === id ? { ...l, status } : l));
   };
@@ -186,14 +291,10 @@ const App: React.FC = () => {
     setShowTaskModal(false);
   };
 
-  // Generic Time Clock Handler for App
   const handleToggleTimeClock = () => {
     if (!user) return;
-    
-    // Determine last state
     const myEntries = timeEntries.filter(e => e.userId === user.id).sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     const isClockedIn = myEntries.length > 0 && myEntries[0].type === 'in';
-    
     const newType = isClockedIn ? 'out' : 'in';
     const newEntry: TimeEntry = {
       id: `time-${Date.now()}`,
@@ -201,7 +302,6 @@ const App: React.FC = () => {
       type: newType,
       timestamp: new Date().toISOString()
     };
-
     setTimeEntries(prev => [...prev, newEntry]);
   };
 
@@ -226,7 +326,6 @@ const App: React.FC = () => {
         if (user.role === 'maintenance' || user.role === 'outsourced_maintenance') return <MaintenancePortal users={users} userRole={user.role} shifts={shifts} setShifts={setShifts} setActiveTab={setActiveTab} onLogout={handleLogout} />;
         if (user.role === 'client') return <ClientDashboard user={user} setActiveTab={setActiveTab} onLogout={handleLogout} invoices={invoices} />;
         if (user.role === 'laundry') return <LaundryDashboard user={user} setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} setShifts={setShifts} users={users} properties={properties} onTogglePrepared={(id) => setShifts(prev => prev.map(s => s.id === id ? { ...s, isLaundryPrepared: !s.isLaundryPrepared } : s))} authorizedLaundryUserIds={authorizedLaundryUserIds} onToggleAuthority={(id) => setAuthorizedLaundryUserIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])} timeEntries={timeEntries} setTimeEntries={setTimeEntries} />;
-        // Default Dashboard (Cleaners) receives time entries now
         return <Dashboard user={user} onLogout={handleLogout} setActiveTab={setActiveTab} shifts={shifts} supplyRequests={supplyRequests} properties={properties} inventoryItems={inventoryItems} onAddSupplyRequest={handleAddSupplyRequest} onUpdateSupplyStatus={(id, status) => setSupplyRequests(prev => prev.map(r => r.id === id ? { ...r, status } : r))} timeEntries={timeEntries} onToggleClock={handleToggleTimeClock} />;
       
       case 'shifts':
@@ -283,11 +382,17 @@ const App: React.FC = () => {
 
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab} role={user.role} onLogout={handleLogout} currentUserId={user.id} authorizedLaundryUserIds={authorizedLaundryUserIds}>
-      {isSyncing && (
-        <div className="fixed bottom-4 right-4 z-50 bg-black text-[#C5A059] px-4 py-2 rounded-full text-[9px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 animate-pulse">
-           <div className="w-1.5 h-1.5 bg-[#C5A059] rounded-full"></div> Syncing...
-        </div>
-      )}
+      <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2">
+        {isSyncing ? (
+          <div className="bg-black text-[#C5A059] px-4 py-2 rounded-full text-[9px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 animate-pulse">
+             <div className="w-1.5 h-1.5 bg-[#C5A059] rounded-full"></div> Syncing...
+          </div>
+        ) : (
+          <div className="bg-black/5 text-black/20 px-4 py-2 rounded-full text-[8px] font-black uppercase tracking-widest flex items-center gap-2">
+             <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div> Saved
+          </div>
+        )}
+      </div>
       {renderContent()}
       {showTaskModal && (
         <AddTaskModal 
