@@ -1,6 +1,5 @@
 
-// ... existing imports ...
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
 import CleanerPortal from './components/CleanerPortal';
@@ -16,11 +15,10 @@ import TutorialsHub from './components/TutorialsHub';
 import AddTaskModal from './components/management/AddTaskModal';
 import StudioSettings from './components/management/StudioSettings';
 import AppManual from './components/AppManual';
-import { TabType, Shift, SupplyRequest, User, Client, Property, SupplyItem, AuditReport, Tutorial, LeaveRequest, ManualTask, OrganizationSettings, Invoice, TimeEntry } from './types';
+import { TabType, Shift, SupplyRequest, User, Client, Property, SupplyItem, Tutorial, LeaveRequest, ManualTask, OrganizationSettings, Invoice, TimeEntry, LeaveType } from './types';
 
 // Role-specific Dashboards
 import AdminDashboard from './components/dashboards/AdminDashboard';
-import HRDashboard from './components/dashboards/HRDashboard';
 import FinanceDashboard from './components/dashboards/FinanceDashboard';
 import SupervisorDashboard from './components/dashboards/SupervisorDashboard';
 import DriverDashboard from './components/dashboards/DriverDashboard';
@@ -28,11 +26,9 @@ import MaintenanceDashboard from './components/dashboards/MaintenanceDashboard';
 import ClientDashboard from './components/dashboards/ClientDashboard';
 import HousekeeperDashboard from './components/dashboards/HousekeeperDashboard';
 import LaundryDashboard from './components/dashboards/LaundryDashboard';
+import HRDashboard from './components/dashboards/HRDashboard';
 
 // Helper: Smart Merge 
-// 1. If server list is provided, we merge it into local list.
-// 2. Server items overwrite local items with same ID (to ensure status updates like 'active' propagate).
-// 3. Local items not on server are kept (preserves offline creations).
 const smartMerge = <T extends { id: string }>(localList: T[], serverList: T[] | undefined): T[] => {
   if (!serverList || !Array.isArray(serverList)) return localList;
   
@@ -204,7 +200,31 @@ const App: React.FC = () => {
     }
   }, [user, orgId]);
 
-  // --- 3. AUTO SAVE LOOP (The "Master" Sync) ---
+  // --- 3. POLLING FOR REAL-TIME UPDATES (Fixes "Clocked In" lag) ---
+  useEffect(() => {
+    if (!user || !orgId || isSyncing) return; // Don't poll while saving to avoid conflicts
+
+    const pollInterval = setInterval(() => {
+        fetch(`/api/organization/${orgId}`)
+          .then(res => res.json())
+          .then(serverOrg => {
+             if(serverOrg.error) return;
+             
+             // Merge updates to reflect status changes from other devices (e.g. Cleaner finishing shift)
+             setShifts(prev => smartMerge(prev, serverOrg.shifts));
+             setSupplyRequests(prev => smartMerge(prev, serverOrg.supplyRequests));
+             setLeaveRequests(prev => smartMerge(prev, serverOrg.leaveRequests));
+             setManualTasks(prev => smartMerge(prev, serverOrg.manualTasks));
+             setUsers(prev => smartMerge(prev, serverOrg.users));
+             setTimeEntries(prev => smartMerge(prev, serverOrg.timeEntries));
+          })
+          .catch(err => console.error("Poll failed", err));
+    }, 5000); // Poll every 5 seconds
+
+    return () => clearInterval(pollInterval);
+  }, [user, orgId, isSyncing]);
+
+  // --- 4. AUTO SAVE LOOP (The "Master" Sync) ---
   useEffect(() => {
     if (!user || !orgId) return;
 
@@ -262,9 +282,22 @@ const App: React.FC = () => {
     setHasFetchedServer(false);
   };
 
-  // ... (Rest of handlers remain unchanged) ...
   const handleUpdateLeaveStatus = (id: string, status: 'approved' | 'rejected') => {
     setLeaveRequests(prev => prev.map(l => l.id === id ? { ...l, status } : l));
+  };
+
+  const handleRequestLeave = (type: LeaveType, startDate: string, endDate: string) => {
+    if (!user) return;
+    const newLeave: LeaveRequest = {
+      id: `leave-${Date.now()}`,
+      userId: user.id,
+      userName: user.name,
+      type,
+      startDate,
+      endDate,
+      status: 'pending'
+    };
+    setLeaveRequests(prev => [...prev, newLeave]);
   };
 
   const handleAddSupplyRequest = (items: Record<string, number>) => {
@@ -332,7 +365,7 @@ const App: React.FC = () => {
       case 'dashboard':
         if (user.role === 'admin') return <AdminDashboard user={user} setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} setShifts={setShifts} users={users} supplyRequests={supplyRequests} leaveRequests={leaveRequests} onResolveLogistics={handleResolveLogistics} onAuditDeepLink={handleAuditDeepLink} onOpenManualTask={() => setShowTaskModal(true)} manualTasks={manualTasks} setManualTasks={setManualTasks} />;
         if (user.role === 'housekeeping') return <HousekeeperDashboard user={user} setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} setShifts={setShifts} users={users} properties={properties} supplyRequests={supplyRequests} leaveRequests={leaveRequests} onResolveLogistics={handleResolveLogistics} onAuditDeepLink={handleAuditDeepLink} onOpenManualTask={() => setShowTaskModal(true)} manualTasks={manualTasks} setManualTasks={setManualTasks} />;
-        if (user.role === 'hr') return <AdminPortal view="users" users={users} setUsers={setUsers} setActiveTab={setActiveTab} leaveRequests={leaveRequests} onUpdateLeaveStatus={handleUpdateLeaveStatus} />;
+        if (user.role === 'hr') return <HRDashboard user={user} setActiveTab={setActiveTab} onLogout={handleLogout} users={users} leaveRequests={leaveRequests} onUpdateLeaveStatus={handleUpdateLeaveStatus} />;
         if (user.role === 'finance') return <FinanceDashboard setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} setShifts={setShifts} users={users} properties={properties} invoices={invoices} setInvoices={setInvoices} clients={clients} organization={organization} manualTasks={manualTasks} />;
         if (user.role === 'supervisor') return <SupervisorDashboard user={user} users={users} setActiveTab={setActiveTab} shifts={shifts} onLogout={handleLogout} manualTasks={manualTasks} setManualTasks={setManualTasks} onToggleLaundryPrepared={(id) => setShifts(prev => prev.map(s => s.id === id ? { ...s, isLaundryPrepared: !s.isLaundryPrepared } : s))} onAuditDeepLink={handleAuditDeepLink} authorizedInspectorIds={authorizedInspectorIds} setAuthorizedInspectorIds={setAuthorizedInspectorIds} />;
         if (user.role === 'driver') return <DriverDashboard user={user} setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} properties={properties} onResolveLogistics={handleResolveLogistics} onTogglePickedUp={(id) => setShifts(prev => prev.map(s => s.id === id ? { ...s, isLaundryPickedUp: !s.isLaundryPickedUp } : s))} onToggleLaundryPrepared={(id) => setShifts(prev => prev.map(s => s.id === id ? { ...s, isLaundryPrepared: !s.isLaundryPrepared } : s))} />;
@@ -375,11 +408,11 @@ const App: React.FC = () => {
       case 'maintenance':
         return <MaintenancePortal users={users} userRole={user.role} shifts={shifts} setShifts={setShifts} setActiveTab={setActiveTab} onLogout={handleLogout} />;
       case 'reports':
-        return <ReportsPortal users={users} shifts={shifts} userRole={user.role} />;
+        return <ReportsPortal users={users} shifts={shifts} userRole={user.role} leaveRequests={leaveRequests} />;
       case 'finance':
         return <FinanceDashboard setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} setShifts={setShifts} users={users} properties={properties} invoices={invoices} setInvoices={setInvoices} clients={clients} organization={organization} manualTasks={manualTasks} />;
       case 'personnel_profile':
-        return <PersonnelProfile user={user} shifts={shifts} properties={properties} onUpdateUser={(updated) => setUsers(prev => prev.map(u => u.id === updated.id ? updated : u))} organization={organization} />;
+        return <PersonnelProfile user={user} shifts={shifts} properties={properties} onUpdateUser={(updated) => setUsers(prev => prev.map(u => u.id === updated.id ? updated : u))} organization={organization} leaveRequests={leaveRequests} onRequestLeave={handleRequestLeave} />;
       case 'users':
         return <AdminPortal view="users" users={users} setUsers={setUsers} setActiveTab={setActiveTab} leaveRequests={leaveRequests} onUpdateLeaveStatus={handleUpdateLeaveStatus} />;
       case 'settings':
