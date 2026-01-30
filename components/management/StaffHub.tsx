@@ -25,6 +25,7 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
 
   // Edit State
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [newPassword, setNewPassword] = useState(''); // For admin password reset
   
   const currentUser = JSON.parse(localStorage.getItem('current_user_obj') || '{}');
 
@@ -109,11 +110,20 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
     e.preventDefault();
     if (!editingUser) return;
     
+    // Create updated user object
+    const updatedUser = { ...editingUser };
+    
+    // If admin set a new password, apply it
+    if (newPassword.trim()) {
+        updatedUser.password = newPassword.trim();
+    }
+
     // Optimistic Update
-    setUsers(prev => prev.map(u => u.id === editingUser.id ? editingUser : u));
+    setUsers(prev => prev.map(u => u.id === editingUser.id ? updatedUser : u));
     
     setShowEditModal(false);
     setEditingUser(null);
+    setNewPassword('');
     if (showToast) showToast('PERSONNEL RECORD UPDATED', 'success');
   };
 
@@ -132,6 +142,7 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
 
   const openEditModal = (u: User) => {
     setEditingUser(u);
+    setNewPassword('');
     setShowEditModal(true);
   };
 
@@ -290,6 +301,22 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
                               <option value="maintenance">MAINTENANCE</option>
                            </select>
                         </div>
+                    </div>
+                 </div>
+
+                 {/* Password Reset Section */}
+                 <div className="space-y-4 bg-red-50 p-4 rounded-2xl border border-red-100">
+                    <h4 className="text-[10px] font-black text-red-600 uppercase tracking-[0.5em] border-l-2 border-red-500 pl-3">Security & Recovery</h4>
+                    <div>
+                        <label className={labelStyle}>Reset Password (Admin Override)</label>
+                        <input 
+                            type="text" 
+                            className="w-full bg-white border border-red-200 rounded-lg px-3 py-2.5 text-black text-[10px] font-bold outline-none focus:border-red-500 transition-all placeholder:text-black/20" 
+                            value={newPassword}
+                            onChange={e => setNewPassword(e.target.value)}
+                            placeholder="Type new password to reset..."
+                        />
+                        <p className="text-[8px] text-red-500 font-bold mt-1 uppercase tracking-wider">Warning: This will immediately change the user's login credentials.</p>
                     </div>
                  </div>
 

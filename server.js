@@ -83,11 +83,13 @@ const getOrgById = (id) => {
 };
 
 const findOrgByUserEmail = (email) => {
+  if (!email) return null;
+  const cleanEmail = email.trim().toLowerCase();
   try {
     const stmt = db.prepare('SELECT data FROM organizations');
     for (const row of stmt.iterate()) {
       const org = JSON.parse(row.data);
-      if (org.users && org.users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
+      if (org.users && org.users.some(u => u.email.toLowerCase() === cleanEmail)) {
         return org;
       }
     }
@@ -261,16 +263,22 @@ app.post('/api/auth/signup', async (req, res) => {
 // 2. LOGIN
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
+  const cleanEmail = email ? email.trim() : '';
+  const cleanPassword = password ? password.trim() : '';
+
   try {
-    const org = findOrgByUserEmail(email);
+    const org = findOrgByUserEmail(cleanEmail);
     if (!org) return res.status(401).json({ error: 'User not found.' });
-    const user = org.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    const user = org.users.find(u => u.email.toLowerCase() === cleanEmail.toLowerCase());
     
-    if (user.status !== 'pending' && user.password !== password) {
+    // Check credentials (case sensitive password)
+    if (user.status !== 'pending' && user.password !== cleanPassword) {
       return res.status(401).json({ error: 'Invalid credentials.' });
     }
+    
     if (user.status === 'inactive') return res.status(403).json({ error: 'Account suspended.' });
 
+    // Success - user is either Active (checked pass) or Pending (no pass check, handled by frontend)
     res.json({ success: true, user: user, organization: org });
   } catch (error) {
     console.error("Login Error:", error);
@@ -284,11 +292,14 @@ app.post('/api/auth/invite', async (req, res) => {
   try {
     const org = getOrgById(orgId);
     if (!org) return res.status(404).json({ error: 'Organization not found.' });
-    const globalCheck = findOrgByUserEmail(newUser.email);
+    
+    const cleanEmail = newUser.email ? newUser.email.trim() : '';
+    const globalCheck = findOrgByUserEmail(cleanEmail);
     if (globalCheck) return res.status(400).json({ error: 'User email already exists in the system.' });
 
     const createdUser = {
       ...newUser,
+      email: cleanEmail,
       id: `u-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       status: 'pending',
       activationToken: Math.random().toString(36).substring(7)
@@ -306,7 +317,7 @@ app.post('/api/auth/invite', async (req, res) => {
       try {
         await transporter.sendMail({
           from: `"Reset Studio" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
-          to: newUser.email,
+          to: cleanEmail,
           subject: "Invitation to Reset Studio",
           html: `<p>You have been invited to join Reset Studio.</p><p><a href="${activationUrl}">Click here to activate your account</a></p>`
         });
@@ -324,10 +335,11 @@ app.post('/api/auth/invite', async (req, res) => {
 // 3.1 RESEND INVITE
 app.post('/api/auth/resend-invite', async (req, res) => {
   const { email } = req.body;
+  const cleanEmail = email ? email.trim() : '';
   try {
-    const org = findOrgByUserEmail(email);
+    const org = findOrgByUserEmail(cleanEmail);
     if (!org) return res.status(404).json({ error: 'User not found.' });
-    const user = org.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    const user = org.users.find(u => u.email.toLowerCase() === cleanEmail.toLowerCase());
     if (!user || user.status !== 'pending') return res.status(400).json({ error: 'User is active or not pending.' });
     const inviteLink = user.activationToken;
     const activationUrl = `${req.protocol}://${req.get('host')}/?code=${inviteLink}`;
@@ -337,7 +349,7 @@ app.post('/api/auth/resend-invite', async (req, res) => {
       try {
         await transporter.sendMail({
           from: `"Reset Studio" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
-          to: email,
+          to: cleanEmail,
           subject: "Invitation Reminder",
           html: `<p>Reminder to join.</p><p><a href="${activationUrl}">Click here to activate</a></p>`
         });
@@ -374,10 +386,13 @@ app.get('/api/auth/verify-invite', (req, res) => {
 // 4. ACTIVATE USER
 app.post('/api/auth/activate', async (req, res) => {
   const { email, password, details } = req.body;
+  const cleanEmail = email ? email.trim() : '';
+  const cleanPassword = password ? password.trim() : '';
+
   try {
-    const org = findOrgByUserEmail(email);
+    const org = findOrgByUserEmail(cleanEmail);
     if (!org) return res.status(404).json({ error: 'User not found.' });
-    const userIndex = org.users.findIndex(u => u.email.toLowerCase() === email.toLowerCase());
+    const userIndex = org.users.findIndex(u => u.email.toLowerCase() === cleanEmail.toLowerCase());
     
     if (org.users[userIndex].status === 'active') {
         return res.status(400).json({ error: 'Account already active. Please login.' });
@@ -386,7 +401,7 @@ app.post('/api/auth/activate', async (req, res) => {
     org.users[userIndex] = {
       ...org.users[userIndex],
       ...details,
-      password: password,
+      password: cleanPassword,
       status: 'active',
       activationDate: new Date().toISOString(),
       activationToken: null

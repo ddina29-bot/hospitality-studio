@@ -12,6 +12,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
   
   // --- ACTIVATION STATE ---
   const [isActivationMode, setIsActivationMode] = useState(false);
@@ -31,6 +32,8 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
 
   const labelStyle = "text-[9px] font-black text-black uppercase tracking-[0.4em] italic mb-2.5 block px-1";
   const inputStyle = "w-full bg-white border border-gray-200 rounded-2xl px-6 py-4 text-black text-[11px] font-bold uppercase tracking-widest outline-none focus:border-[#A68342] transition-all placeholder:text-black/10 shadow-sm";
+  // Password inputs should NOT be uppercase to avoid confusion
+  const passwordInputStyle = "w-full bg-white border border-gray-200 rounded-2xl px-6 py-4 text-black text-[11px] font-bold outline-none focus:border-[#A68342] transition-all placeholder:text-black/10 shadow-sm"; 
   const buttonStyle = "w-full bg-[#A68342] text-white font-black py-6 rounded-3xl uppercase tracking-[0.4em] text-[11px] shadow-xl hover:bg-[#8B6B2E] transition-all active:scale-[0.98]";
   const cardStyle = "w-full bg-[#FDF8EE] p-10 md:p-12 rounded-[56px] border border-[#D4B476]/30 shadow-2xl relative space-y-10 text-left";
 
@@ -90,16 +93,22 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
     e.preventDefault();
     setIsLoading(true);
     setErrorMsg(null);
+    
+    // TRIM INPUTS TO FIX "INVALID CREDENTIALS"
+    const cleanEmail = emailInput.trim();
+    const cleanPassword = password.trim(); 
+
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: emailInput, password })
+        body: JSON.stringify({ email: cleanEmail, password: cleanPassword })
       });
       
       const data = await res.json();
       
       if (!res.ok) {
+        // If server says unauthorized but status is pending, redirect to activation
         if (data.user?.status === 'pending') {
            setIsActivationMode(true);
            setActName(data.user.name); 
@@ -107,6 +116,14 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
            return;
         }
         throw new Error(data.error || 'Login failed');
+      }
+
+      // CRITICAL FIX: If server returns success but user is PENDING, force activation flow.
+      if (data.user.status === 'pending') {
+           setIsActivationMode(true);
+           setActName(data.user.name); 
+           setIsLoading(false);
+           return;
       }
 
       localStorage.setItem('current_user_obj', JSON.stringify(data.user));
@@ -122,7 +139,11 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
   const handleActivationSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
-    if (actPass !== actPassConfirm) {
+    
+    const cleanPass = actPass.trim();
+    const cleanPassConfirm = actPassConfirm.trim();
+
+    if (cleanPass !== cleanPassConfirm) {
         setErrorMsg("Passwords do not match.");
         return;
     }
@@ -133,8 +154,8 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          email: emailInput, 
-          password: actPass,
+          email: emailInput.trim(), 
+          password: cleanPass,
           details: { 
               name: actName, 
               phone: actPhone, 
@@ -228,8 +249,8 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
                 <div className="space-y-4">
                     <h3 className="text-[10px] font-black uppercase text-black/20 tracking-widest border-b border-gray-100 pb-2 pt-2">3. Account Security</h3>
                     <div className="grid grid-cols-2 gap-4">
-                        <div><label className={labelStyle}>Create Password</label><input required type="password" className={inputStyle} value={actPass} onChange={e => setActPass(e.target.value)} /></div>
-                        <div><label className={labelStyle}>Confirm Password</label><input required type="password" className={inputStyle} value={actPassConfirm} onChange={e => setActPassConfirm(e.target.value)} /></div>
+                        <div><label className={labelStyle}>Create Password</label><input required type="password" className={passwordInputStyle} value={actPass} onChange={e => setActPass(e.target.value)} placeholder="Case sensitive" /></div>
+                        <div><label className={labelStyle}>Confirm Password</label><input required type="password" className={passwordInputStyle} value={actPassConfirm} onChange={e => setActPassConfirm(e.target.value)} /></div>
                     </div>
                 </div>
              </div>
@@ -261,7 +282,13 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
             
             <div className="space-y-4">
               <div><label className={labelStyle}>EMAIL ID</label><input type="email" value={emailInput} onChange={(e) => setEmailInput(e.target.value)} required className={inputStyle} /></div>
-              <div><label className={labelStyle}>PASSWORD</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputStyle} /></div>
+              <div className="relative">
+                <label className={labelStyle}>PASSWORD</label>
+                <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} className={passwordInputStyle} placeholder="Enter your password" />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-10 text-[9px] font-bold text-black/30 hover:text-black uppercase">
+                    {showPassword ? 'HIDE' : 'SHOW'}
+                </button>
+              </div>
             </div>
             
             <div className="pt-2 space-y-4">

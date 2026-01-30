@@ -36,6 +36,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
   const [editPhone, setEditPhone] = useState(user.phone || '');
   const [editMaritalStatus, setEditMaritalStatus] = useState(user.maritalStatus || 'Single');
   const [editIsParent, setEditIsParent] = useState(user.isParent || false);
+  const [editPassword, setEditPassword] = useState('');
 
   const subLabelStyle = "text-[7px] font-black text-[#8B6B2E] uppercase tracking-[0.4em] mb-1.5 opacity-60";
   const detailValueStyle = "text-sm font-bold text-black uppercase tracking-tight";
@@ -73,14 +74,22 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
 
   const handleSaveProfile = () => {
     if (onUpdateUser) {
-      onUpdateUser({
+      const updates: User = {
         ...user,
         phone: editPhone,
         maritalStatus: editMaritalStatus,
         isParent: editIsParent
-      });
+      };
+      
+      // Only update password if user typed something
+      if (editPassword.trim()) {
+        updates.password = editPassword.trim();
+      }
+
+      onUpdateUser(updates);
     }
     setIsEditingProfile(false);
+    setEditPassword('');
   };
 
   const myLeaves = leaveRequests.filter(l => l.userId === user.id);
@@ -367,6 +376,21 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                     )}
                   </div>
                 </div>
+                
+                {/* PASSWORD CHANGE SECTION */}
+                {isEditingProfile && (
+                  <div className="pt-4 border-t border-[#D4B476]/20 animate-in fade-in">
+                     <p className={subLabelStyle}>Security Update (Optional)</p>
+                     <input 
+                        type="password" 
+                        placeholder="Enter New Password" 
+                        className="w-full bg-white border border-[#D4B476]/20 rounded-lg px-2 py-2 text-black font-bold outline-none focus:border-[#C5A059]"
+                        value={editPassword}
+                        onChange={e => setEditPassword(e.target.value)}
+                     />
+                     <p className="text-[7px] text-[#8B6B2E] mt-1 italic">Leave blank to keep current password.</p>
+                  </div>
+                )}
               </div>
             </div>
           </section>
