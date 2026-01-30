@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { User } from '../types';
 
@@ -22,6 +23,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
   const [actAddress, setActAddress] = useState('');
   const [actDob, setActDob] = useState('');
   const [actMarital, setActMarital] = useState('Single');
+  const [actIsParent, setActIsParent] = useState(false);
   const [actIdNumber, setActIdNumber] = useState('');
   const [actIban, setActIban] = useState('');
   const [actPass, setActPass] = useState('');
@@ -107,7 +109,6 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
         throw new Error(data.error || 'Login failed');
       }
 
-      // Explicitly saving to localStorage here ensures the next App mount finds it immediately
       localStorage.setItem('current_user_obj', JSON.stringify(data.user));
       localStorage.setItem('studio_org_settings', JSON.stringify(data.organization));
 
@@ -140,6 +141,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
               address: actAddress,
               dateOfBirth: actDob,
               maritalStatus: actMarital,
+              isParent: actIsParent,
               idPassportNumber: actIdNumber,
               iban: actIban
           } 
@@ -193,26 +195,12 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
                </div>
              )}
              <div className="space-y-6 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
-                {/* 1. Identity */}
                 <div className="space-y-4">
                     <h3 className="text-[10px] font-black uppercase text-black/20 tracking-widest border-b border-gray-100 pb-2">1. Identity Verification</h3>
-                    <div>
-                        <label className={labelStyle}>Verify Full Name</label>
-                        <input required className={inputStyle} value={actName} onChange={e => setActName(e.target.value)} />
-                    </div>
-                    <div>
-                        <label className={labelStyle}>Account Email</label>
-                        <input className={`${inputStyle} bg-gray-50 text-gray-500`} value={emailInput} disabled />
-                    </div>
+                    <div><label className={labelStyle}>Verify Full Name</label><input required className={inputStyle} value={actName} onChange={e => setActName(e.target.value)} /></div>
                     <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className={labelStyle}>Date of Birth</label>
-                            <input required type="date" className={inputStyle} value={actDob} onChange={e => setActDob(e.target.value)} />
-                        </div>
-                        <div>
-                            <label className={labelStyle}>ID / Passport No.</label>
-                            <input required className={inputStyle} value={actIdNumber} onChange={e => setActIdNumber(e.target.value)} placeholder="NO SPACES" />
-                        </div>
+                        <div><label className={labelStyle}>Date of Birth</label><input required type="date" className={inputStyle} value={actDob} onChange={e => setActDob(e.target.value)} /></div>
+                        <div><label className={labelStyle}>ID / Passport No.</label><input required className={inputStyle} value={actIdNumber} onChange={e => setActIdNumber(e.target.value)} placeholder="NO SPACES" /></div>
                     </div>
                     <div>
                         <label className={labelStyle}>Marital Status (For Tax)</label>
@@ -224,40 +212,26 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
                             <option value="Widowed">Widowed</option>
                         </select>
                     </div>
+                    <div className="flex items-center gap-3">
+                        <input type="checkbox" className="w-5 h-5 accent-[#A68342] rounded" checked={actIsParent} onChange={e => setActIsParent(e.target.checked)} />
+                        <label className="text-[10px] font-bold uppercase text-black">I am a parent (Apply Parent Rates)</label>
+                    </div>
                 </div>
 
-                {/* 2. Contact & Payroll */}
                 <div className="space-y-4">
                     <h3 className="text-[10px] font-black uppercase text-black/20 tracking-widest border-b border-gray-100 pb-2 pt-2">2. Contact & Payroll</h3>
-                    <div>
-                        <label className={labelStyle}>Mobile Number</label>
-                        <input required type="tel" className={inputStyle} value={actPhone} onChange={e => setActPhone(e.target.value)} placeholder="+356..." />
-                    </div>
-                    <div>
-                        <label className={labelStyle}>Residential Address</label>
-                        <input required className={inputStyle} value={actAddress} onChange={e => setActAddress(e.target.value)} placeholder="Full address..." />
-                    </div>
-                    <div>
-                        <label className={labelStyle}>IBAN (For Salary)</label>
-                        <input className={inputStyle} value={actIban} onChange={e => setActIban(e.target.value)} placeholder="MT..." />
-                    </div>
+                    <div><label className={labelStyle}>Mobile Number</label><input required type="tel" className={inputStyle} value={actPhone} onChange={e => setActPhone(e.target.value)} placeholder="+356..." /></div>
+                    <div><label className={labelStyle}>Residential Address</label><input required className={inputStyle} value={actAddress} onChange={e => setActAddress(e.target.value)} placeholder="Full address..." /></div>
+                    <div><label className={labelStyle}>IBAN (For Salary)</label><input className={inputStyle} value={actIban} onChange={e => setActIban(e.target.value)} placeholder="MT..." /></div>
                 </div>
 
-                {/* 3. Security */}
                 <div className="space-y-4">
                     <h3 className="text-[10px] font-black uppercase text-black/20 tracking-widest border-b border-gray-100 pb-2 pt-2">3. Account Security</h3>
                     <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className={labelStyle}>Create Password</label>
-                            <input required type="password" className={inputStyle} value={actPass} onChange={e => setActPass(e.target.value)} />
-                        </div>
-                        <div>
-                            <label className={labelStyle}>Confirm Password</label>
-                            <input required type="password" className={inputStyle} value={actPassConfirm} onChange={e => setActPassConfirm(e.target.value)} />
-                        </div>
+                        <div><label className={labelStyle}>Create Password</label><input required type="password" className={inputStyle} value={actPass} onChange={e => setActPass(e.target.value)} /></div>
+                        <div><label className={labelStyle}>Confirm Password</label><input required type="password" className={inputStyle} value={actPassConfirm} onChange={e => setActPassConfirm(e.target.value)} /></div>
                     </div>
                 </div>
-
              </div>
              <button type="submit" disabled={isLoading} className={buttonStyle}>{isLoading ? 'ACTIVATING...' : 'COMPLETE SETUP'}</button>
           </form>

@@ -27,7 +27,6 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
   const [editingUser, setEditingUser] = useState<User | null>(null);
   
   const currentUser = JSON.parse(localStorage.getItem('current_user_obj') || '{}');
-  const canManage = ['admin', 'housekeeping', 'hr'].includes(currentUser.role);
 
   useEffect(() => {
     if (shouldOpenAddModal) {
@@ -322,6 +321,16 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div><label className={labelStyle}>ID / Passport No.</label><input className={inputStyle} value={editingUser.idPassportNumber || ''} onChange={e => setEditingUser({...editingUser, idPassportNumber: e.target.value})} placeholder="NO SPACES" /></div>
                         <div><label className={labelStyle}>IBAN</label><input className={inputStyle} value={editingUser.iban || ''} onChange={e => setEditingUser({...editingUser, iban: e.target.value})} placeholder="MT..." /></div>
+                    </div>
+                    
+                    <div className="flex items-center gap-2 mt-2 bg-white/50 p-2 rounded-xl border border-gray-100">
+                        <input 
+                          type="checkbox" 
+                          className="w-4 h-4 accent-[#C5A059]" 
+                          checked={editingUser.isParent || false} 
+                          onChange={e => setEditingUser({...editingUser, isParent: e.target.checked})} 
+                        />
+                        <label className="text-[9px] font-bold uppercase text-black">Parent Status (Tax Rate)</label>
                     </div>
                  </div>
 

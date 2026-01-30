@@ -28,21 +28,22 @@ import ClientDashboard from './components/dashboards/ClientDashboard';
 import HousekeeperDashboard from './components/dashboards/HousekeeperDashboard';
 import LaundryDashboard from './components/dashboards/LaundryDashboard';
 
-// Helper: Smart Merge (Prefers Local ID if conflict, adds missing from server)
+// Helper: Smart Merge 
+// 1. If server list is provided, we merge it into local list.
+// 2. Server items overwrite local items with same ID (to ensure status updates like 'active' propagate).
+// 3. Local items not on server are kept (preserves offline creations).
 const smartMerge = <T extends { id: string }>(localList: T[], serverList: T[] | undefined): T[] => {
-  if (!serverList || !Array.isArray(serverList) || serverList.length === 0) return localList;
-  if (!localList || localList.length === 0) return serverList;
+  if (!serverList || !Array.isArray(serverList)) return localList;
+  
+  const mergedMap = new Map<string, T>();
 
-  const localMap = new Map(localList.map(i => [i.id, i]));
-  const merged = [...localList];
-  
-  serverList.forEach(serverItem => {
-    if (!localMap.has(serverItem.id)) {
-      merged.push(serverItem);
-    }
-  });
-  
-  return merged;
+  // 1. Add all Local items first
+  localList.forEach(item => mergedMap.set(item.id, item));
+
+  // 2. Overlay Server items (Server Wins for updates)
+  serverList.forEach(item => mergedMap.set(item.id, item));
+
+  return Array.from(mergedMap.values());
 };
 
 // Helper: Lazy State Loader with Safety Check
@@ -52,6 +53,7 @@ const loadState = <T,>(key: string, fallback: T): T => {
     if (saved) {
        const parsed = JSON.parse(saved);
        const val = parsed[key];
+       // Only return if it's a valid value (array for lists)
        if (Array.isArray(fallback) && Array.isArray(val)) return val as unknown as T;
        if (val !== undefined) return val;
     }
@@ -132,8 +134,13 @@ const App: React.FC = () => {
     setUser(u);
     setOrgId(orgData.id);
     
-    // On explicit login, we merge server data into state
-    setUsers(prev => smartMerge(prev, orgData.users || []));
+    // Explicitly force the logged-in user to be updated in the users list
+    // This fixes the issue where 'smartMerge' might keep the old 'pending' status locally
+    setUsers(prev => {
+        const merged = smartMerge(prev, orgData.users || []);
+        return merged.map(existing => existing.id === u.id ? u : existing);
+    });
+
     setShifts(prev => smartMerge(prev, orgData.shifts || []));
     setProperties(prev => smartMerge(prev, orgData.properties || []));
     setClients(prev => smartMerge(prev, orgData.clients || []));
