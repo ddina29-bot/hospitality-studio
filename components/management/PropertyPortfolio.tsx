@@ -621,7 +621,7 @@ const PropertyPortfolio: React.FC<PropertyPortfolioProps> = ({
                         placeholder="e.g. 14.5148"
                       />
                     </div>
-                    <p className="col-span-2 text-[7px] text-[#A68342] italic text-center font-bold">Right-click on Google Maps > Copy coordinates to enable Geofencing.</p>
+                    <p className="col-span-2 text-[7px] text-[#A68342] italic text-center font-bold">Right-click on Google Maps &gt; Copy coordinates to enable Geofencing.</p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
