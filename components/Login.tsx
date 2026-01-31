@@ -287,7 +287,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
               <button type="submit" disabled={isLoading} className={buttonStyle}>{isLoading ? 'VERIFYING...' : 'ENTER STUDIO'}</button>
             </div>
             <div className="text-center pt-2">
-                <p className="text-[8px] font-black text-black/20 uppercase tracking-[0.3em]">Studio v1.0.3</p>
+                <p className="text-[8px] font-black text-black/20 uppercase tracking-[0.3em]">Studio v1.0.4</p>
             </div>
           </form>
         </div>

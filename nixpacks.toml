@@ -5,9 +5,8 @@ providers = ["node"]
 nixPkgs = ["nodejs", "npm", "python3", "make", "gcc", "g++"]
 
 [phases.install]
-# Crucial: Remove lockfile to prevent npm ci from running or failing due to checksum mismatches
-# Then run a fresh install
-cmds = ["rm -f package-lock.json", "npm install"]
+# Force a fresh install ignoring the lockfile to resolve version conflicts
+cmds = ["npm install --no-package-lock"]
 
 [phases.build]
 cmds = ["npm run build"]
