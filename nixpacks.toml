@@ -7,9 +7,9 @@ providers = []
 nixPkgs = ["nodejs_20", "npm", "python3", "make", "gcc", "g++"]
 
 [phases.install]
-# Force delete lockfile and use npm install. 
-# This ensures we generate a fresh lockfile based on package.json, avoiding conflicts.
-cmds = ["rm -f package-lock.json", "npm install"]
+# CRITICAL FIX: Remove node_modules and lockfile to force a clean slate npm install.
+# This bypasses the 'npm ci' synchronization error.
+cmds = ["rm -rf node_modules package-lock.json", "npm install"]
 
 [phases.build]
 cmds = ["npm run build"]
