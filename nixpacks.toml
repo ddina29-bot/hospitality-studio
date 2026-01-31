@@ -1,14 +1,15 @@
 
-# We define no providers to prevent default Node behavior (which forces npm ci)
+# Disable default providers to prevent auto-detection of 'npm ci'
 providers = []
 
 [phases.setup]
-# Ensure all build dependencies for sqlite are present
+# Install Node 20 and build tools
 nixPkgs = ["nodejs_20", "npm", "python3", "make", "gcc", "g++"]
 
 [phases.install]
-# We use 'npm install' which auto-fixes lockfile discrepancies, unlike 'npm ci' which fails
-cmds = ["npm install"]
+# CRITICAL FIX: We remove the lockfile first to prevent conflicts, then install fresh.
+# This ignores any 'vite@7.3.1' vs 'vite@5.4' conflicts.
+cmds = ["rm -f package-lock.json", "npm install"]
 
 [phases.build]
 cmds = ["npm run build"]

@@ -128,6 +128,7 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
     printWindow.document.close();
   };
 
+  // --- CSV EXPORT ENGINE ---
   const handleExportCSV = () => {
     if (activeTab !== 'incidents') return;
     
@@ -137,7 +138,7 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
       inc.propertyName,
       inc.type,
       inc.resolved ? 'Resolved' : 'Open',
-      `"${inc.description.replace(/"/g, '""')}"`, // Escape quotes
+      `"${(inc.description || '').replace(/"/g, '""')}"`, 
       users.find(u => u.id === inc.assignedTo)?.name || 'Unassigned'
     ]);
 
