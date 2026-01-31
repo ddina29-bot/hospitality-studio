@@ -1,6 +1,6 @@
 
-# We disable the default 'node' provider.
-# This stops the server from automatically running 'npm ci' based on the lockfile.
+# We disable the default 'node' provider to stop it from running 'npm ci'.
+# We will manually define the setup, install, and build phases.
 providers = []
 
 [phases.setup]
@@ -8,7 +8,7 @@ nixPkgs = ["nodejs_20", "npm", "python3", "make", "gcc", "g++"]
 
 [phases.install]
 # CRITICAL: We DELETE package-lock.json and node_modules to force a fresh install.
-# This bypasses the 'npm ci' mismatch error seen in the logs.
+# This fixes the version mismatch error by regenerating the lockfile.
 cmds = ["rm -rf package-lock.json node_modules", "npm install"]
 
 [phases.build]
