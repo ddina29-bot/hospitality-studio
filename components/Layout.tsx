@@ -1,8 +1,7 @@
 
-import React, { useState } from 'react';
+import React from 'react';
 import { TabType, UserRole } from '../types';
 import { Icons } from '../constants';
-import DownloadAppModal from './DownloadAppModal';
 
 interface LayoutProps {
   children?: React.ReactNode;
@@ -21,9 +20,8 @@ const Layout = ({
   role, 
   onLogout, 
   authorizedLaundryUserIds = [], 
-  currentUserId = '' 
+  currentUserId = ''
 }: LayoutProps) => {
-  const [showDownloadModal, setShowDownloadModal] = useState(false);
   
   const isLaundryTabVisible = 
     role === 'admin' || 
@@ -123,11 +121,10 @@ const Layout = ({
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#F9FAFB] text-[#1A1A1A]">
-      {showDownloadModal && <DownloadAppModal onClose={() => setShowDownloadModal(false)} />}
       
       {/* --- DESKTOP SIDEBAR (Hidden on Mobile) --- */}
       <aside className="hidden md:flex flex-col w-72 bg-white border-r border-gray-100 text-black shadow-sm z-20">
-        <div className="p-8 pb-6">
+        <div className="p-8 pb-6 flex items-center justify-between">
           <h1 className="font-serif-brand flex flex-col tracking-tight uppercase leading-none">
             <span className="text-[#C5A059] text-[10px] font-black tracking-[0.4em] mb-1">RESET</span>
             <span className="text-black font-bold text-2xl tracking-tighter">STUDIO</span>
@@ -155,13 +152,6 @@ const Layout = ({
 
         <div className="p-6 space-y-3 border-t border-gray-50">
           <button 
-            onClick={() => setShowDownloadModal(true)}
-            className="w-full py-3 bg-gray-50 hover:bg-gray-100 text-black font-bold rounded-xl text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-3 border border-gray-100"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            GET MOBILE APP
-          </button>
-          <button 
             onClick={onLogout}
             className="w-full py-3 text-red-500 font-bold rounded-xl text-[10px] uppercase tracking-widest transition-all hover:bg-red-50"
           >
@@ -184,12 +174,6 @@ const Layout = ({
               className={`p-2.5 rounded-full transition-all ${activeTab === 'ai' ? 'bg-[#C5A059] text-white shadow-lg' : 'bg-gray-50 text-gray-400'}`}
             >
                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-            </button>
-            <button 
-              onClick={onLogout}
-              className="p-2.5 bg-gray-50 text-gray-400 rounded-full active:scale-95 transition-all"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
             </button>
           </div>
         </header>

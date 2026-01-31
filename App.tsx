@@ -449,7 +449,14 @@ const App: React.FC = () => {
   };
 
   return (
-    <Layout activeTab={activeTab} setActiveTab={setActiveTab} role={user.role} onLogout={handleLogout} currentUserId={user.id} authorizedLaundryUserIds={authorizedLaundryUserIds}>
+    <Layout 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
+        role={user.role} 
+        onLogout={handleLogout} 
+        currentUserId={user.id} 
+        authorizedLaundryUserIds={authorizedLaundryUserIds}
+    >
       <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2">
         {isSyncing ? (
           <div className="bg-black text-[#C5A059] px-4 py-2 rounded-full text-[9px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 animate-pulse">

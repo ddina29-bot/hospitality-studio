@@ -356,3 +356,13 @@ export interface MaintenanceTicket {
   quotedCost?: number;
   timestamp: number;
 }
+
+export interface AppNotification {
+  id: string;
+  type: 'alert' | 'success' | 'warning' | 'info';
+  title: string;
+  message: string;
+  timestamp: number;
+  linkTab?: TabType;
+  linkId?: string;
+}

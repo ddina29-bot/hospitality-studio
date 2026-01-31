@@ -22,6 +22,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
 }) => {
   const [activeModule, setActiveModule] = useState<'payroll' | 'invoicing' | 'records'>('payroll');
   const [selectedPayslipId, setSelectedPayslipId] = useState<string | null>(null);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
   
   // Records / Archive State
   const [recordsSearch, setRecordsSearch] = useState('');
@@ -390,7 +391,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
     setAppendForm({ startDate: '', endDate: '' });
   };
 
-  const handleSaveInvoice = (status: 'draft' | 'sent') => {
+  const handleSaveInvoice = async (status: 'draft' | 'sent') => {
     if (!generatedPreview || !setInvoices) return;
 
     if (status === 'sent') {
@@ -399,6 +400,35 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
             alert(`Cannot send invoice: ${invalidItems.length} item(s) have a price of €0.00. Please insert price manually.`);
             return;
         }
+    }
+
+    // --- EMAIL SENDING LOGIC ---
+    if (status === 'sent') {
+       const client = clients.find(c => c.id === generatedPreview.clientId);
+       if (!client || !client.contactEmail) {
+           alert("Client email not found. Invoice saved as sent, but email failed.");
+       } else {
+           setIsSendingEmail(true);
+           try {
+               const response = await fetch('/api/invoice/send', {
+                   method: 'POST',
+                   headers: { 'Content-Type': 'application/json' },
+                   body: JSON.stringify({
+                       invoice: { ...generatedPreview, legalEntity: organization?.legalEntity || organization?.name },
+                       clientEmail: client.contactEmail,
+                       clientName: client.name
+                   })
+               });
+               
+               if (!response.ok) throw new Error("Email service error");
+               alert(`Invoice sent to ${client.contactEmail}`);
+           } catch (e) {
+               console.error(e);
+               alert("Failed to send email. Check network or server configuration.");
+           } finally {
+               setIsSendingEmail(false);
+           }
+       }
     }
 
     const finalInvoice: Invoice = { ...generatedPreview, status };
@@ -581,8 +611,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
         </div>
       )}
 
-      {/* Records Module Omitted for brevity as it is unchanged structurally but included in the full component rendering if needed */}
-      
+      {/* Records Module Omitted for brevity */}
       {activeModule === 'records' && (
         <div className="space-y-6 animate-in slide-in-from-right-4">
            <div className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-xl space-y-6">
@@ -642,7 +671,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
         </div>
       )}
 
-      {/* VIEWING RECORDS USER MODAL (Reuses PersonnelProfile) */}
+      {/* VIEWING RECORDS USER MODAL */}
       {viewingRecordsUser && (
         <div className="fixed inset-0 bg-black/95 z-[300] flex items-center justify-center p-4 backdrop-blur-xl animate-in zoom-in-95 duration-300">
            <div className="bg-[#FDF8EE] w-full max-w-5xl h-[90vh] rounded-[48px] relative overflow-y-auto custom-scrollbar border border-[#D4B476]/30 shadow-2xl">
@@ -928,7 +957,13 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                         <div className="flex gap-4">
                             <button onClick={() => setGeneratedPreview(null)} className="flex-1 bg-white border border-gray-200 text-gray-400 font-black py-4 rounded-2xl uppercase tracking-[0.2em] text-[9px] hover:text-black hover:border-black/20">Back to Config</button>
                             <button onClick={() => handleSaveInvoice('draft')} className="flex-1 bg-gray-100 text-black/60 font-black py-4 rounded-2xl uppercase tracking-[0.2em] text-[9px] hover:bg-gray-200">SAVE DRAFT</button>
-                            <button onClick={() => handleSaveInvoice('sent')} disabled={generatedPreview.items.length === 0} className="flex-1 bg-[#C5A059] text-black font-black py-4 rounded-2xl uppercase tracking-[0.2em] text-[9px] shadow-xl hover:bg-[#E2C994] disabled:opacity-50 disabled:cursor-not-allowed">CONFIRM & SEND</button>
+                            <button 
+                                onClick={() => handleSaveInvoice('sent')} 
+                                disabled={generatedPreview.items.length === 0 || isSendingEmail} 
+                                className="flex-1 bg-[#C5A059] text-black font-black py-4 rounded-2xl uppercase tracking-[0.2em] text-[9px] shadow-xl hover:bg-[#E2C994] disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {isSendingEmail ? 'SENDING EMAIL...' : 'CONFIRM & SEND'}
+                            </button>
                         </div>
                     </div>
                 )}

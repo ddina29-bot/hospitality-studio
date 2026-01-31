@@ -506,7 +506,72 @@ app.post('/api/upload', (req, res) => {
   });
 });
 
-// 8. AI CHAT
+// 8. SEND INVOICE EMAIL
+app.post('/api/invoice/send', async (req, res) => {
+  const { invoice, clientEmail, clientName } = req.body;
+  if (!invoice || !clientEmail) return res.status(400).json({ error: 'Missing invoice details or client email' });
+
+  const transporter = createTransporter();
+  if (!transporter) {
+    return res.status(500).json({ error: 'Email configuration missing on server (SMTP_HOST, etc.)' });
+  }
+
+  const itemsHtml = invoice.items.map(item => `
+    <tr>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd;">${item.date}</td>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd;">${item.description}</td>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">€${Number(item.amount).toFixed(2)}</td>
+    </tr>
+  `).join('');
+
+  const emailHtml = `
+    <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #eee; padding: 20px;">
+      <h2 style="color: #000; text-transform: uppercase; margin-bottom: 5px;">${invoice.invoiceNumber}</h2>
+      <p style="font-size: 12px; color: #888; text-transform: uppercase;">Due: ${invoice.dueDate}</p>
+      
+      <p>Dear ${clientName},</p>
+      <p>Please find below the invoice for services rendered by <strong>${invoice.legalEntity || 'Reset Hospitality Studio'}</strong>.</p>
+      
+      <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+        <thead>
+          <tr style="background-color: #f9f9f9; text-transform: uppercase; font-size: 10px;">
+            <th style="padding: 8px; text-align: left;">Date</th>
+            <th style="padding: 8px; text-align: left;">Description</th>
+            <th style="padding: 8px; text-align: right;">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${itemsHtml}
+        </tbody>
+      </table>
+      
+      <div style="margin-top: 20px; text-align: right;">
+        <p>Subtotal: €${invoice.subtotal.toFixed(2)}</p>
+        ${invoice.discount > 0 ? `<p style="color: red;">Discount: -€${invoice.discount.toFixed(2)}</p>` : ''}
+        <p>VAT: €${invoice.vat.toFixed(2)}</p>
+        <h3 style="color: #000; font-size: 20px;">Total Due: €${invoice.totalAmount.toFixed(2)}</h3>
+      </div>
+      
+      <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+      <p style="font-size: 10px; color: #888;">This is an automated message from Reset Studio.</p>
+    </div>
+  `;
+
+  try {
+    await transporter.sendMail({
+      from: `"Reset Finance" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+      to: clientEmail,
+      subject: `Invoice ${invoice.invoiceNumber} from Reset Studio`,
+      html: emailHtml
+    });
+    res.json({ success: true });
+  } catch (e) {
+    console.error("Failed to send invoice email:", e);
+    res.status(500).json({ error: 'Failed to send email. Check server logs.' });
+  }
+});
+
+// 9. AI CHAT
 let ai;
 if (process.env.API_KEY) {
   ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
