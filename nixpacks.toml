@@ -1,14 +1,14 @@
 
-# 1. Disable auto-detection to prevent the server from choosing 'npm ci'
+# 1. Disable auto-detection to prevent the server from defaulting to strict 'npm ci'
 providers = []
 
-# 2. Define the environment
+# 2. Define the environment with necessary build tools for SQLite
 [phases.setup]
 nixPkgs = ["nodejs_20", "npm", "python3", "make", "gcc", "g++"]
 
 # 3. OVERRIDE INSTALL: 
-# Explicitly delete the lockfile causing the error.
-# Run 'npm install' to generate a fresh, correct one.
+# We explicitly delete the existing lockfile and node_modules to ensure a fresh start.
+# We then run 'npm install' which generates a new, correct lockfile automatically.
 [phases.install]
 cmds = ["rm -rf package-lock.json node_modules", "npm install"]
 
