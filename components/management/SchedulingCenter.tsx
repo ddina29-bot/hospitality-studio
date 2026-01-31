@@ -60,7 +60,7 @@ const getShiftAttributedPhotos = (shift: Shift): { url: string }[] => {
   if (shift.maintenanceReports) shift.maintenanceReports.forEach(r => r.photos?.forEach(url => allPhotos.push({ url })));
   if (shift.damageReports) shift.damageReports.forEach(r => r.photos?.forEach(url => allPhotos.push({ url })));
   if (shift.missingReports) shift.missingReports.forEach(r => r.photos?.forEach(url => allPhotos.push({ url })));
-  if (shift.inspectionPhotos) shift.inspectionPhotos.forEach(url => allPhotos.push({ url })));
+  if (shift.inspectionPhotos) shift.inspectionPhotos.forEach(url => allPhotos.push({ url }));
   return allPhotos;
 };
 

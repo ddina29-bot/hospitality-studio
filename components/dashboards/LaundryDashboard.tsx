@@ -242,7 +242,8 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
                   </div>
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-[0.3em]">STOCK LEVEL ALERT</p>
-                    <p className="text-[9px] font-bold uppercase mt-0.5 opacity-90">Critical damage threshold exceeded (>10 units). Restock required.</p>
+                    {/* FIXED: Escaped > symbol to &gt; */}
+                    <p className="text-[9px] font-bold uppercase mt-0.5 opacity-90">Critical damage threshold exceeded (&gt;10 units). Restock required.</p>
                   </div>
                </div>
                <button className="bg-white text-red-600 px-6 py-3 rounded-xl text-[8px] font-black uppercase tracking-widest shadow-lg hover:bg-red-50 transition-all">
