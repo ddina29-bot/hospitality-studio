@@ -30,120 +30,53 @@ const Layout = ({
     role === 'laundry' ||
     (['supervisor', 'driver'].includes(role) && (authorizedLaundryUserIds || []).includes(currentUserId));
 
-  const allNavItems: { id: TabType; label: string; icon: React.FC; roles: UserRole[] }[] = [
+  // Define navigation items with their visibility logic
+  const allNavItems: { id: TabType; label: string; icon: React.FC<any>; roles: UserRole[] }[] = [
     { 
       id: 'dashboard', 
-      label: 'DASHBOARD', 
+      label: 'Home', 
       icon: Icons.Dashboard, 
       roles: ['cleaner', 'driver', 'supervisor', 'admin', 'housekeeping', 'maintenance', 'hr', 'finance', 'laundry', 'client', 'outsourced_maintenance'] 
     },
     { 
+      id: 'shifts', 
+      label: 'Schedule', 
+      icon: Icons.Calendar, 
+      roles: ['cleaner', 'admin', 'supervisor', 'housekeeping', 'maintenance'] 
+    },
+    { 
       id: 'laundry', 
-      label: 'LAUNDRY', 
+      label: 'Laundry', 
       icon: () => (
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M3 12h18"/><path d="M3 18h18"/></svg>
       ),
       roles: ['admin', 'supervisor', 'driver', 'laundry'],
     },
     { 
-      id: 'shifts', 
-      label: 'SCHEDULE', 
-      icon: Icons.Calendar, 
-      roles: ['cleaner', 'admin', 'supervisor', 'housekeeping', 'maintenance'] 
-    },
-    { 
       id: 'logistics', 
-      label: role === 'driver' ? 'MY ROUTES' : 'DRIVER ROUTES', 
+      label: 'Routes', 
       icon: Icons.Truck, 
       roles: ['driver', 'admin', 'housekeeping'] 
     },
     { 
-      id: 'supervisor_portal', 
-      label: 'SUPERVISOR', 
-      icon: () => (
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 21a8 8 0 0 1 13.29-6"/><circle cx="10" cy="8" r="5"/><path d="M19 16v6"/><path d="M22 19h-6"/></svg>
-      ), 
-      roles: ['admin', 'housekeeping'] 
-    },
-    { 
       id: 'properties', 
-      label: 'PROPERTIES', 
+      label: 'Units', 
       icon: Icons.Building, 
       roles: ['admin', 'housekeeping', 'client'] 
     },
     { 
-      id: 'clients', 
-      label: 'CLIENTS', 
-      icon: () => (
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-      ), 
-      roles: ['admin', 'client'] 
-    },
-    { 
-      id: 'tutorials', 
-      label: 'KNOWLEDGE BASE', 
-      icon: () => (
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-      ), 
-      roles: ['cleaner', 'supervisor', 'housekeeping', 'admin'] 
-    },
-    { 
-      id: 'inventory_admin', 
-      label: 'SUPPLIES', 
-      icon: Icons.Sparkles, 
-      roles: ['admin', 'housekeeping'] 
-    },
-    /* Maintenance Disabled as requested
-    { 
-      id: 'maintenance', 
-      label: 'MAINTENANCE', 
-      icon: Icons.Maintenance, 
-      roles: ['admin', 'outsourced_maintenance'] 
-    },
-    */
-    { 
-      id: 'reports', 
-      label: 'REPORTS', 
-      icon: () => (
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y2="13"/><line x1="16" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-      ), 
-      roles: ['admin', 'housekeeping', 'hr'] 
-    },
-    { 
-      id: 'finance', 
-      label: 'FINANCE', 
-      icon: Icons.Payroll, 
-      roles: ['admin', 'finance'] 
-    },
-    { 
-      id: 'personnel_profile', 
-      label: 'STUDIO DETAILS', 
-      icon: () => (
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-      ),
-      roles: ['cleaner', 'driver', 'maintenance', 'laundry', 'supervisor', 'housekeeping'] 
-    },
-    { 
       id: 'users', 
-      label: 'HUMAN CAPITAL', 
+      label: 'Team', 
       icon: () => (
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M17 3.13a4 4 0 0 1 0 7.75"/></svg>
       ), 
       roles: ['admin', 'hr', 'housekeeping'] 
     },
-    {
-      id: 'settings',
-      label: 'SETTINGS',
-      icon: Icons.Settings,
-      roles: ['admin']
-    },
-    {
-      id: 'manual',
-      label: 'SYSTEM MANUAL',
-      icon: () => (
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-      ),
-      roles: ['cleaner', 'driver', 'supervisor', 'admin', 'housekeeping', 'maintenance', 'hr', 'finance', 'laundry', 'client', 'outsourced_maintenance']
+    { 
+      id: 'settings', 
+      label: 'Settings', 
+      icon: Icons.Settings, 
+      roles: ['admin'] 
     }
   ];
 
@@ -153,97 +86,120 @@ const Layout = ({
   });
 
   return (
-    <div className="flex h-screen overflow-hidden bg-white text-[#1A1A1A]">
+    <div className="flex h-screen overflow-hidden bg-[#F9FAFB] text-[#1A1A1A]">
       {showDownloadModal && <DownloadAppModal onClose={() => setShowDownloadModal(false)} />}
       
-      <aside className="hidden md:flex flex-col w-72 bg-[#A68342] border-r border-black/5 text-black shadow-2xl">
-        <div className="p-10 pb-6">
+      {/* --- DESKTOP SIDEBAR (Hidden on Mobile) --- */}
+      <aside className="hidden md:flex flex-col w-72 bg-white border-r border-gray-100 text-black shadow-sm z-20">
+        <div className="p-8 pb-6">
           <h1 className="font-serif-brand flex flex-col tracking-tight uppercase leading-none">
-            <span className="text-black/30 text-[10px] font-black tracking-[0.4em] mb-1">RESET</span>
-            <span className="text-black font-bold text-2xl tracking-tighter">HOSPITALITY</span>
-            <span className="text-black/60 text-base italic tracking-[0.2em] font-bold">STUDIO</span>
+            <span className="text-[#C5A059] text-[10px] font-black tracking-[0.4em] mb-1">RESET</span>
+            <span className="text-black font-bold text-2xl tracking-tighter">STUDIO</span>
           </h1>
         </div>
         
-        <nav className="flex-1 px-4 py-8 space-y-2 overflow-y-auto custom-scrollbar">
+        <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto custom-scrollbar">
           {navItems.map((item) => (
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all ${
+              className={`w-full flex items-center gap-4 px-6 py-4 rounded-xl transition-all duration-200 ${
                 activeTab === item.id
-                  ? 'bg-[#8B6B2E] text-white font-black shadow-lg scale-[1.02]' 
-                  : 'bg-transparent text-black/60 hover:text-black hover:bg-black/5 font-bold' 
+                  ? 'bg-[#FDF8EE] text-[#C5A059] font-bold shadow-sm border border-[#C5A059]/20' 
+                  : 'bg-transparent text-gray-500 hover:text-black hover:bg-gray-50 font-medium' 
               }`}
             >
-              <div className={activeTab === item.id ? 'text-white' : 'text-black/40'}>
+              <div className={activeTab === item.id ? 'text-[#C5A059]' : 'text-gray-400'}>
                 <item.icon />
               </div>
-              <span className="uppercase tracking-[0.15em] text-[10px] font-black">{item.label}</span>
+              <span className="uppercase tracking-widest text-[10px] font-bold pt-0.5">{item.label}</span>
             </button>
           ))}
         </nav>
 
-        <div className="p-6 space-y-3">
+        <div className="p-6 space-y-3 border-t border-gray-50">
           <button 
             onClick={() => setShowDownloadModal(true)}
-            className="w-full py-4 bg-black/5 hover:bg-black/10 border border-black/5 text-black font-black rounded-xl text-[10px] uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3"
+            className="w-full py-3 bg-gray-50 hover:bg-gray-100 text-black font-bold rounded-xl text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-3 border border-gray-100"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            INSTALL APP
+            GET MOBILE APP
           </button>
           <button 
             onClick={onLogout}
-            className="w-full py-4 bg-black/10 hover:bg-black/20 border border-black/10 text-black font-black rounded-xl text-[10px] uppercase tracking-[0.2em] transition-all"
+            className="w-full py-3 text-red-500 font-bold rounded-xl text-[10px] uppercase tracking-widest transition-all hover:bg-red-50"
           >
-            EXIT STUDIO
+            LOG OUT
           </button>
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative bg-white">
-        <header className="md:hidden sticky top-0 bg-white/80 backdrop-blur-xl border-b border-gray-100 flex justify-between items-center px-6 py-4 z-50 pt-[calc(1rem+env(safe-area-inset-top))]">
-          <h1 className="font-serif-brand flex flex-col tracking-tight uppercase leading-none scale-75 origin-left">
-            <span className="text-black/30 text-[10px] font-black tracking-[0.4em]">RESET</span>
-            <span className="text-black font-bold text-xl">HOSPITALITY</span>
+      {/* --- MAIN CONTENT AREA --- */}
+      <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative bg-[#F9FAFB]">
+        {/* Mobile Header */}
+        <header className="md:hidden sticky top-0 bg-white/90 backdrop-blur-md border-b border-gray-100 flex justify-between items-center px-5 py-4 z-50 pt-[calc(1rem+env(safe-area-inset-top))]">
+          <h1 className="font-serif-brand flex flex-col tracking-tight uppercase leading-none">
+            <span className="text-[#C5A059] text-[9px] font-black tracking-[0.3em]">RESET</span>
+            <span className="text-black font-bold text-lg tracking-tight">STUDIO</span>
           </h1>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <button 
-              onClick={() => setShowDownloadModal(true)}
-              className="p-2.5 bg-black/5 text-black/60 rounded-xl active:scale-95 transition-all border border-black/5"
-              aria-label="Download App"
+              onClick={() => setActiveTab('ai')}
+              className={`p-2.5 rounded-full transition-all ${activeTab === 'ai' ? 'bg-[#C5A059] text-white shadow-lg' : 'bg-gray-50 text-gray-400'}`}
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
             </button>
             <button 
               onClick={onLogout}
-              className="p-2.5 bg-red-50 text-red-600 rounded-xl active:scale-95 transition-all border border-red-100"
-              aria-label="Logout"
+              className="p-2.5 bg-gray-50 text-gray-400 rounded-full active:scale-95 transition-all"
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
             </button>
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-6 md:p-10 pb-32 md:pb-10 custom-scrollbar">
+        {/* Content - Padding Bottom added for mobile nav */}
+        <div className="flex-1 overflow-y-auto p-4 md:p-10 pb-28 md:pb-10 custom-scrollbar">
           <div className="max-w-6xl mx-auto w-full">
             {children}
           </div>
         </div>
 
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-gray-100 flex items-center px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] z-50 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] overflow-x-auto no-scrollbar gap-8">
-          {navItems.map((item) => (
+        {/* --- MOBILE BOTTOM NAVIGATION (Connecteam Style) --- */}
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex items-center justify-around px-2 py-2 pb-[calc(1.2rem+env(safe-area-inset-bottom))] z-50 shadow-[0_-10px_40px_rgba(0,0,0,0.03)]">
+          {navItems.slice(0, 4).map((item) => (
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`flex flex-col items-center gap-1.5 min-w-[50px] shrink-0 transition-all ${
-                activeTab === item.id ? 'text-[#C5A059]' : 'text-[#1A1A1A]/30'
+              className={`flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all flex-1 ${
+                activeTab === item.id ? 'text-[#C5A059]' : 'text-gray-300'
               }`}
             >
-              <item.icon />
-              <span className="text-[7px] font-black uppercase tracking-tight whitespace-nowrap">{item.label}</span>
+              <div className={`${activeTab === item.id ? 'transform scale-110 transition-transform' : ''}`}>
+                <item.icon />
+              </div>
+              <span className={`text-[9px] font-bold uppercase tracking-wide ${activeTab === item.id ? 'text-black' : 'text-gray-300'}`}>
+                {item.label}
+              </span>
             </button>
           ))}
+          
+          {/* "Menu" button for remaining items */}
+          {navItems.length > 4 && (
+             <button
+                onClick={() => setActiveTab('manual')} 
+                className={`flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all flex-1 ${
+                  activeTab === 'manual' ? 'text-[#C5A059]' : 'text-gray-300'
+                }`}
+             >
+                <div className={`${activeTab === 'manual' ? 'transform scale-110 transition-transform' : ''}`}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                </div>
+                <span className={`text-[9px] font-bold uppercase tracking-wide ${activeTab === 'manual' ? 'text-black' : 'text-gray-300'}`}>
+                  Menu
+                </span>
+             </button>
+          )}
         </nav>
       </main>
     </div>

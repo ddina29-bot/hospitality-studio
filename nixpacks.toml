@@ -5,8 +5,9 @@ providers = ["node"]
 nixPkgs = ["nodejs_22", "npm", "python3", "make", "gcc", "g++"]
 
 [phases.install]
-# Force remove lockfile to prevent 'npm ci' mismatch errors and ensure a clean install
-cmds = ["rm -f package-lock.json", "npm install"]
+# CRITICAL FIX: We use 'npm install' instead of 'npm ci'. 
+# 'npm ci' fails if the lockfile isn't perfect. 'npm install' fixes it automatically.
+cmds = ["npm install"]
 
 [phases.build]
 cmds = ["npm run build"]
