@@ -1,14 +1,15 @@
 
-# Explicitly use the Node provider
-providers = ["node"]
+# We disable the default 'node' provider.
+# This stops the server from automatically running 'npm ci' based on the lockfile.
+providers = []
 
 [phases.setup]
 nixPkgs = ["nodejs_20", "npm", "python3", "make", "gcc", "g++"]
 
 [phases.install]
-# CRITICAL: Delete lockfile and use legacy-peer-deps to ignore version conflicts.
-# This prevents the 'exit code 1' error during deployment.
-cmds = ["rm -rf package-lock.json node_modules", "npm install --legacy-peer-deps"]
+# CRITICAL: We DELETE package-lock.json and node_modules to force a fresh install.
+# This bypasses the 'npm ci' mismatch error seen in the logs.
+cmds = ["rm -rf package-lock.json node_modules", "npm install"]
 
 [phases.build]
 cmds = ["npm run build"]
