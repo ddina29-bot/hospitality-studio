@@ -47,6 +47,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const hasUnpublishedShifts = useMemo(() => shifts.some(s => !s.isPublished), [shifts]);
 
   const todayStr = useMemo(() => new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase(), []);
+  
+  // Determine if it is past 3 PM (15:00)
+  const isPast3PM = useMemo(() => new Date().getHours() >= 15, []);
 
   // --- LOGISTICS ALERTS (Driver didn't deliver/collect/return keys) ---
   const logisticsAlerts = useMemo(() => {
@@ -54,15 +57,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
        if (s.excludeLaundry) return false;
        const isLogisticsType = ['CHECK OUT / CHECK IN CLEANING', 'REFRESH', 'MID STAY CLEANING', 'BEDS ONLY', 'LINEN DROP / COLLECTION'].includes(s.serviceType);
        if (!isLogisticsType) return false;
-       const isRelevantDate = s.date <= todayStr; 
-       if (!isRelevantDate) return false;
+       
+       // Date Logic: 
+       // If shift is today, only show alert if it's past 3 PM.
+       // If shift is in the past, always show.
+       // If shift is future, never show.
+       if (s.date === todayStr) {
+           if (!isPast3PM) return false;
+       } else if (s.date > todayStr) {
+           return false;
+       }
+       // (Implicitly: s.date < todayStr is allowed)
+
        const missingDelivery = !s.isDelivered;
        const missingCollection = !s.isCollected;
        const missingKeys = s.keysHandled && !s.keysAtOffice;
        return missingDelivery || missingCollection || missingKeys;
     }).map(s => {
-        // STRICTLY FIND DRIVER - DO NOT FALLBACK TO CLEANER NAME
-        const driver = users.find(u => s.userIds.includes(u.id) && u.role === 'driver');
+        // DRIVER ASSIGNMENT LOGIC:
+        // 1. Check if a driver is explicitly assigned to this shift.
+        let driver = users.find(u => s.userIds.includes(u.id) && u.role === 'driver');
+        
+        // 2. If not, auto-assign the general driver (assuming there is one main driver).
+        if (!driver) {
+            driver = users.find(u => u.role === 'driver' && u.status === 'active');
+        }
+
         const assigneeName = driver ? driver.name : 'UNASSIGNED';
         
         // Find cleaners for context only (cleaner, supervisor, housekeeping)
@@ -81,7 +101,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             reason: s.keyLocationReason
         };
     });
-  }, [shifts, todayStr, users]);
+  }, [shifts, todayStr, users, isPast3PM]);
 
   const shiftsWithIncidents = useMemo(() => {
     return shifts.filter(s => {
@@ -249,6 +269,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </section>
         )}
 
+        {/* ... Rest of components ... */}
         {hasUnpublishedShifts && (
           <section className="bg-[#FDF8EE] border-2 border-red-500 p-6 rounded-[32px] shadow-2xl flex flex-col md:flex-row items-center justify-between gap-6 animate-in slide-in-from-top-4">
             <div className="flex items-center gap-6">
@@ -477,6 +498,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
+      {/* ... (Rest of modal content remains same) ... */}
+      
       {/* Main Incident Management Modal */}
       {viewingIncidentShift && (
          <div className="fixed inset-0 bg-black/70 z-[400] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
