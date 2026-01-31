@@ -1,6 +1,6 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { SupplyRequest, Shift, Property, User, TabType, ManualTask, TimeEntry } from '../types';
+import React, { useMemo, useState, useEffect } from 'react';
+import { TabType, User, Shift, Property, ManualTask, SupplyRequest, TimeEntry } from '../../types';
 
 interface DriverPortalProps {
   supplyRequests?: SupplyRequest[];
@@ -30,7 +30,8 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
   const currentUser = JSON.parse(localStorage.getItem('current_user_obj') || '{}');
   const [elapsedTime, setElapsedTime] = useState(0);
   const [overrideDriverId, setOverrideDriverId] = useState<string | null>(null);
-  const [refreshToggle, setRefreshToggle] = useState(0); 
+  const [refreshToggle, setRefreshToggle] = useState(0);
+  const [reasons, setReasons] = useState<Record<string, string>>({});
   
   const getLocalISO = (d: Date) => {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -171,14 +172,13 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
     ];
   }, [supplyRequests, manualTasks, activeUserId]);
 
-  // LOGISTICS ALERTS
+  // LOGISTICS ALERTS (For Driver's own view)
   const unresolvedLogistics = useMemo(() => {
     return logisticsTasks.filter(t => !t.isDelivered || !t.isCollected || (t.keysHandled && !t.keysAtOffice));
   }, [logisticsTasks]);
 
   const handleStartDay = () => {
     // We assume App.tsx passes setTimeEntries to trigger a real save
-    // Fallback if not passed (though we added it to Props)
     localStorage.setItem(`route_start_time_${activeUserId}`, Date.now().toString());
     localStorage.setItem(`route_active_${activeUserId}`, 'true');
     setRefreshToggle(prev => prev + 1);
@@ -186,20 +186,20 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
 
   const handleFinishDay = () => {
     if (isHousekeeping && !overrideDriverId) return; 
-    
-    // Legacy localStorage cleanup just in case
     localStorage.removeItem(`route_active_${activeUserId}`);
     localStorage.removeItem(`route_start_time_${activeUserId}`);
-    
     setRefreshToggle(prev => prev + 1);
     if (setActiveTab && !overrideDriverId) setActiveTab('dashboard');
   };
 
-  const toggleTaskField = (shiftId: string, field: keyof Shift) => {
+  const toggleTaskField = (shiftId: string, field: keyof Shift, reason?: string) => {
     if (!canInteract || !routeActive) return;
     setShifts?.(prev => prev.map(s => {
       if (s.id === shiftId) {
         const updated = { ...s, [field]: !s[field] };
+        if (field === 'keysAtOffice' && reason) {
+            updated.keyLocationReason = reason;
+        }
         if (isAdmin && overrideDriverId) updated.replacedUserId = currentUser.id;
         return updated;
       }
@@ -210,6 +210,18 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
   const toggleManualTaskDone = (taskId: string) => {
     if (!canInteract || !routeActive) return;
     setManualTasks?.(prev => prev.map(t => t.id === taskId ? { ...t, status: t.status === 'completed' ? 'pending' : 'completed' } : t));
+  };
+
+  const handleUpdateReason = (id: string, val: string) => {
+    setReasons(prev => ({ ...prev, [id]: val }));
+  };
+
+  const handleSaveKeyNote = (id: string) => {
+    if (!reasons[id]) return;
+    setShifts?.(prev => prev.map(s => 
+      s.id === id ? { ...s, keyLocationReason: reasons[id] } : s
+    ));
+    alert("Reason Saved");
   };
 
   const weekDays = useMemo(() => {
@@ -385,35 +397,56 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-4">
-                {canInteract && routeActive ? (
-                  <>
-                    <button onClick={() => toggleTaskField(task.id, 'isDelivered')} className={`flex-1 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all shadow-sm ${task.isDelivered ? 'bg-green-600 text-white' : 'bg-white border border-gray-200 text-black/40 hover:bg-gray-50'}`}>DELIVERED</button>
-                    <button onClick={() => toggleTaskField(task.id, 'isCollected')} className={`flex-1 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all shadow-sm ${task.isCollected ? 'bg-[#C5A059] text-white' : 'bg-white border border-gray-200 text-black/40 hover:bg-gray-50'}`}>COLLECTED</button>
-                    {task.keysHandled && (
-                      <button onClick={() => toggleTaskField(task.id, 'keysAtOffice')} className={`flex-1 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all shadow-sm ${task.keysAtOffice ? 'bg-orange-600 text-white' : 'bg-orange-50 text-orange-500 border border-orange-200'}`}>RETURNED</button>
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col sm:flex-row gap-4">
+                    {canInteract && routeActive ? (
+                    <>
+                        <button onClick={() => toggleTaskField(task.id, 'isDelivered')} className={`flex-1 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all shadow-sm ${task.isDelivered ? 'bg-green-600 text-white' : 'bg-white border border-gray-200 text-black/40 hover:bg-gray-50'}`}>DELIVERED</button>
+                        <button onClick={() => toggleTaskField(task.id, 'isCollected')} className={`flex-1 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all shadow-sm ${task.isCollected ? 'bg-[#C5A059] text-white' : 'bg-white border border-gray-200 text-black/40 hover:bg-gray-50'}`}>COLLECTED</button>
+                    </>
+                    ) : (
+                    <>
+                        <div className={`flex-1 py-4 rounded-2xl text-center border shadow-sm ${task.isDelivered ? 'bg-green-50 border-green-200 text-green-600' : 'bg-white/40 border-gray-200 text-black/10'}`}>
+                        <span className="text-[9px] font-black uppercase">{task.isDelivered ? '✓ DELIVERED' : 'PENDING'}</span>
+                        </div>
+                        <div className={`flex-1 py-4 rounded-2xl text-center border shadow-sm ${task.isCollected ? 'bg-yellow-50 border-yellow-200 text-[#A68342]' : 'bg-white/40 border-gray-200 text-black/10'}`}>
+                        <span className="text-[9px] font-black uppercase">{task.isCollected ? '✓ COLLECTED' : 'PENDING'}</span>
+                        </div>
+                    </>
                     )}
-                  </>
-                ) : (
-                  <>
-                    <div className={`flex-1 py-4 rounded-2xl text-center border shadow-sm ${task.isDelivered ? 'bg-green-50 border-green-200 text-green-600' : 'bg-white/40 border-gray-200 text-black/10'}`}>
-                      <span className="text-[9px] font-black uppercase">{task.isDelivered ? '✓ DELIVERED' : 'PENDING'}</span>
+                </div>
+
+                {task.keysHandled && (
+                    <div className="bg-orange-50 p-4 rounded-2xl border border-orange-200 flex flex-col sm:flex-row items-center gap-4">
+                       <div className="flex-1 w-full">
+                          <p className="text-[8px] font-black text-orange-600 uppercase tracking-widest mb-1.5">Key Status Reason (If Not Returned)</p>
+                          <div className="flex gap-2">
+                             <input 
+                                className="flex-1 bg-white border border-orange-300 rounded-lg px-3 py-2 text-[10px] outline-none focus:border-orange-500"
+                                placeholder="Why key isn't back? (e.g. Guest inside)"
+                                value={reasons[task.id] || task.keyLocationReason || ''}
+                                onChange={(e) => handleUpdateReason(task.id, e.target.value)}
+                             />
+                             <button onClick={() => handleSaveKeyNote(task.id)} className="px-4 bg-orange-200 text-orange-700 font-bold rounded-lg text-[9px] hover:bg-orange-300">SAVE</button>
+                          </div>
+                       </div>
+                       {canInteract && routeActive ? (
+                          <button onClick={() => toggleTaskField(task.id, 'keysAtOffice', reasons[task.id])} className={`w-full sm:w-auto px-8 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest transition-all shadow-sm ${task.keysAtOffice ? 'bg-orange-600 text-white' : 'bg-white border border-orange-300 text-orange-500 hover:bg-orange-50'}`}>
+                             {task.keysAtOffice ? 'RETURNED' : 'MARK RETURNED'}
+                          </button>
+                       ) : (
+                          <div className={`px-8 py-3 rounded-xl border text-[9px] font-black uppercase tracking-widest ${task.keysAtOffice ? 'bg-orange-50 border-orange-200 text-orange-600' : 'bg-white/40 border-gray-200 text-black/10'}`}>
+                             {task.keysAtOffice ? '✓ RETURNED' : 'KEYS HELD'}
+                          </div>
+                       )}
                     </div>
-                    <div className={`flex-1 py-4 rounded-2xl text-center border shadow-sm ${task.isCollected ? 'bg-yellow-50 border-yellow-200 text-[#A68342]' : 'bg-white/40 border-gray-200 text-black/10'}`}>
-                      <span className="text-[9px] font-black uppercase">{task.isCollected ? '✓ COLLECTED' : 'PENDING'}</span>
-                    </div>
-                    {task.keysHandled && (
-                      <div className={`flex-1 py-4 rounded-2xl text-center border shadow-sm ${task.keysAtOffice ? 'bg-orange-50 border-orange-200 text-orange-600' : 'bg-white/40 border-gray-200 text-black/10'}`}>
-                        <span className="text-[9px] font-black uppercase">{task.keysAtOffice ? '✓ RETURNED' : 'KEYS HELD'}</span>
-                      </div>
-                    )}
-                  </>
                 )}
               </div>
             </div>
           ))}
         </div>
 
+        {/* ... (Rest of existing content like groupedStandaloneByProperty and groupedSuppliesByUser) ... */}
         {groupedStandaloneByProperty.length > 0 && (
           <div className="space-y-4">
              <div className="flex items-center gap-3 px-2">

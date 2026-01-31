@@ -56,7 +56,8 @@ const PropertyPortfolio: React.FC<PropertyPortfolioProps> = ({
     entrancePhoto: '',
     keyboxPhoto: '',
     hasDishwasher: false, hasCoffeeMachine: false, coffeeMachineType: '', specialRequests: [], 
-    roomReferencePhotos: {}, status: 'active'
+    roomReferencePhotos: {}, status: 'active',
+    lat: undefined, lng: undefined
   };
 
   const [form, setForm] = useState<Partial<Property>>(initialFormState);
@@ -587,14 +588,42 @@ const PropertyPortfolio: React.FC<PropertyPortfolioProps> = ({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
                 <div className="space-y-6">
-                  <h4 className="text-[10px] font-black text-black/30 uppercase tracking-[0.5em] border-l-2 border-[#8B6B2E] pl-4">3. Location Intel</h4>
+                  <h4 className="text-[10px] font-black text-black/30 uppercase tracking-[0.5em] border-l-2 border-[#8B6B2E] pl-4">3. Location Intel (For Geofencing)</h4>
                   <div>
-                    <label className={labelStyle}>Full Address (Suggestion Enabled)</label>
+                    <label className={labelStyle}>Full Address</label>
                     <div className="flex gap-2">
                        <input required className={inputStyle} value={form.address} onChange={e => setForm({...form, address: e.target.value})} />
                        <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(form.address || '')}`} target="_blank" className="w-10 bg-white border border-gray-300 rounded-lg flex items-center justify-center text-black/40 hover:text-black shrink-0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="12" cy="10" r="3"/><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/></svg></a>
                     </div>
                   </div>
+                  
+                  {/* NEW GEOFENCING INPUTS */}
+                  <div className="grid grid-cols-2 gap-4 bg-[#FDF8EE] p-3 rounded-2xl border border-dashed border-[#D4B476]/40">
+                    <div>
+                      <label className={labelStyle}>Latitude (From Google Maps)</label>
+                      <input 
+                        type="number" 
+                        step="any"
+                        className={inputStyle} 
+                        value={form.lat || ''} 
+                        onChange={e => setForm({...form, lat: parseFloat(e.target.value)})} 
+                        placeholder="e.g. 35.8997"
+                      />
+                    </div>
+                    <div>
+                      <label className={labelStyle}>Longitude (From Google Maps)</label>
+                      <input 
+                        type="number" 
+                        step="any"
+                        className={inputStyle} 
+                        value={form.lng || ''} 
+                        onChange={e => setForm({...form, lng: parseFloat(e.target.value)})} 
+                        placeholder="e.g. 14.5148"
+                      />
+                    </div>
+                    <p className="col-span-2 text-[7px] text-[#A68342] italic text-center font-bold">Right-click on Google Maps > Copy coordinates to enable Geofencing.</p>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className={labelStyle}>Apt No.</label>

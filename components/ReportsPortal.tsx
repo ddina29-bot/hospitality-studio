@@ -43,6 +43,13 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
     const cleanerNames = shift.userIds.map(id => users.find(u => u.id === id)?.name || 'Unknown').join(', ');
     const inspectorName = shift.decidedBy || 'System/Admin';
     const date = shift.date;
+    // Format times for display (using actual if available, fallback to scheduled)
+    const formatTime = (ts?: number, str?: string) => {
+       if (ts) return new Date(ts).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+       return str || 'N/A';
+    };
+    const timeRange = `${formatTime(shift.actualStartTime, shift.startTime)} - ${formatTime(shift.actualEndTime, shift.endTime)}`;
+
     const allPhotos = [
         ...(shift.tasks?.flatMap(t => t.photos) || []),
         ...(shift.checkoutPhotos?.keyInBox || []),
@@ -77,6 +84,7 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
               <p class="text-[10px] font-black text-[#C5A059] uppercase tracking-[0.4em] mb-2">RESET HOSPITALITY STUDIO</p>
               <h1 class="text-3xl brand-font font-bold uppercase tracking-tight">${shift.propertyName}</h1>
               <p class="text-xs font-bold text-gray-500 uppercase tracking-widest mt-2">${date} • ${shift.serviceType}</p>
+              <p class="text-[10px] font-black text-black/40 uppercase tracking-widest mt-1">Duration: ${timeRange}</p>
            </div>
            <div class="text-right">
               <span class="bg-[#C5A059] text-black px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest">
@@ -477,6 +485,11 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                    {dayGroup.shifts.map(shift => {
                                       const isApproved = shift.approvalStatus === 'approved';
+                                      // Time Duration Calculation
+                                      const durationText = shift.actualStartTime && shift.actualEndTime 
+                                        ? `${new Date(shift.actualStartTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} - ${new Date(shift.actualEndTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}` 
+                                        : `${shift.startTime} - ${shift.endTime}`;
+
                                       return (
                                          <div key={shift.id} className={`p-6 rounded-[32px] border shadow-xl flex flex-col justify-between gap-6 relative overflow-hidden transition-all group hover:scale-[1.02] ${isApproved ? 'bg-white border-green-500/20' : 'bg-red-50/50 border-red-200'}`}>
                                             <div className={`absolute top-0 left-0 w-1.5 h-full ${isApproved ? 'bg-green-500' : 'bg-red-500'}`}></div>
@@ -484,6 +497,7 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
                                                <div>
                                                   <h4 className="text-sm font-bold text-black uppercase tracking-tight">{shift.propertyName}</h4>
                                                   <p className="text-[8px] font-black text-[#C5A059] uppercase tracking-widest mt-1">{shift.serviceType}</p>
+                                                  <p className="text-[7px] text-black/30 font-bold uppercase mt-1">{durationText}</p>
                                                </div>
                                                {shift.approvalComment && <p className={`text-[10px] italic leading-relaxed line-clamp-2 ${isApproved ? 'text-black/60' : 'text-red-600 font-medium'}`}>"{shift.approvalComment}"</p>}
                                             </div>
@@ -505,9 +519,10 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
         </div>
       )}
 
-      {/* --- ACTIVITY LOGS (Cleaner Reports) --- */}
+      {/* ... (Activity and Employees tabs remain unchanged) ... */}
       {activeTab === 'activity' && (
         <div className="space-y-10 animate-in slide-in-from-right-4">
+           {/* ... existing code ... */}
            <div className="relative w-full">
               <input type="text" placeholder="SEARCH COMPLETED JOBS..." className={`${inputStyle} w-full pl-12`} value={activitySearch} onChange={(e) => setActivitySearch(e.target.value)} />
               <div className="absolute left-4 top-3 text-black/20"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
@@ -558,7 +573,6 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
         </div>
       )}
       
-      {/* --- EMPLOYEES TAB --- */}
       {activeTab === 'employees' && (
         <div className="space-y-10 animate-in slide-in-from-right-4">
           <div className="relative w-full md:w-96">
@@ -632,6 +646,11 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
                <header className="space-y-1">
                   <h2 className="text-2xl md:text-3xl font-serif-brand font-bold text-black uppercase tracking-tight">{selectedAuditShift.propertyName}</h2>
                   <p className="text-[9px] font-black text-[#C5A059] uppercase tracking-[0.4em]">{selectedAuditShift.date} • {selectedAuditShift.serviceType}</p>
+                  <p className="text-[10px] font-bold text-black/40 mt-1 uppercase">
+                    Duration: {selectedAuditShift.actualStartTime && selectedAuditShift.actualEndTime 
+                      ? `${new Date(selectedAuditShift.actualStartTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} - ${new Date(selectedAuditShift.actualEndTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}` 
+                      : `${selectedAuditShift.startTime} - ${selectedAuditShift.endTime}`}
+                  </p>
                </header>
                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className="space-y-6">

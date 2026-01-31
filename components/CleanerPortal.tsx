@@ -205,6 +205,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   // GPS Monitor
   useEffect(() => {
     let watchId: number | null = null;
+    // Check if property has coordinates before enabling strict monitoring
     if (currentStep === 'active' && activeProperty?.lat && activeProperty?.lng && !isManagement) {
       watchId = navigator.geolocation.watchPosition(
         (position) => {
@@ -214,7 +215,8 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
             position.coords.latitude, 
             position.coords.longitude
           );
-          if (distance > 0.05) { // 50 meters
+          // 50m radius (0.05 km)
+          if (distance > 0.05) { 
             console.warn(`Geofence Breach: ${distance.toFixed(4)}km`);
             handleForceClockOut();
           }
@@ -314,7 +316,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                 position.coords.longitude
             );
             
-            // Strict 100m Geofence
+            // Strict 100m Geofence for check-in
             if (distance <= 0.1) {
                 setIsLocationVerified(true);
                 showNotification("Location Verified Successfully", 'success');
@@ -694,6 +696,12 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                     <div>
                         <p className="text-[8px] font-black uppercase tracking-[0.4em] mb-1 opacity-60">Deployment Active</p>
                         <h3 className="text-xl font-serif-brand font-bold uppercase tracking-tight">{activeShift.propertyName}</h3>
+                        {(activeProperty?.lat && activeProperty?.lng) && (
+                           <div className="mt-2 flex items-center gap-1.5 bg-black/10 w-fit px-2 py-1 rounded-lg">
+                              <span className="w-1.5 h-1.5 rounded-full bg-black animate-pulse"></span>
+                              <span className="text-[7px] font-black uppercase tracking-widest">GPS LOCK ACTIVE</span>
+                           </div>
+                        )}
                     </div>
                     <div className="text-right flex flex-col items-end">
                         <p className="text-2xl font-bold font-mono tracking-tighter">{Math.floor(timer / 60)}:{(timer % 60).toString().padStart(2, '0')}</p>

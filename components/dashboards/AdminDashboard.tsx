@@ -46,6 +46,45 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const pendingLeaves = useMemo(() => (leaveRequests || []).filter(r => r.status === 'pending'), [leaveRequests]);
   const hasUnpublishedShifts = useMemo(() => shifts.some(s => !s.isPublished), [shifts]);
 
+  const todayStr = useMemo(() => new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase(), []);
+
+  // --- LOGISTICS ALERTS (Driver didn't deliver/collect/return keys) ---
+  const logisticsAlerts = useMemo(() => {
+    // Check today and yesterday to catch recent failures
+    return shifts.filter(s => {
+       if (s.excludeLaundry) return false;
+       // Only care about shifts that involve logistics
+       const isLogisticsType = ['CHECK OUT / CHECK IN CLEANING', 'REFRESH', 'MID STAY CLEANING', 'BEDS ONLY', 'LINEN DROP / COLLECTION'].includes(s.serviceType);
+       if (!isLogisticsType) return false;
+
+       // Condition: Date is today or in the past, and status is incomplete
+       const isRelevantDate = s.date <= todayStr; 
+       if (!isRelevantDate) return false;
+
+       const missingDelivery = !s.isDelivered;
+       const missingCollection = !s.isCollected;
+       const missingKeys = s.keysHandled && !s.keysAtOffice;
+
+       return missingDelivery || missingCollection || missingKeys;
+    }).map(s => {
+        // Find assigned driver (if any) or cleaner if no driver
+        const driver = users.find(u => s.userIds.includes(u.id) && u.role === 'driver');
+        const assigneeName = driver ? driver.name : (users.find(u => s.userIds.includes(u.id))?.name || 'Unassigned');
+        
+        const issues = [];
+        if (!s.isDelivered) issues.push('Delivery Pending');
+        if (!s.isCollected) issues.push('Collection Pending');
+        if (s.keysHandled && !s.keysAtOffice) issues.push('Keys Not Returned');
+
+        return {
+            shift: s,
+            assignee: assigneeName,
+            issues: issues.join(', '),
+            reason: s.keyLocationReason
+        };
+    });
+  }, [shifts, todayStr, users]);
+
   const shiftsWithIncidents = useMemo(() => {
     return shifts.filter(s => {
       const hasMaintenance = s.maintenanceReports?.some(r => r.status !== 'resolved');
@@ -140,24 +179,80 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   return (
     <div className="space-y-6 animate-in fade-in duration-700 text-left pb-24">
       <div className="flex flex-col gap-4">
-        {/* LAUNDRY ACCESS CONTROL BUTTON (New Requirement) */}
-        <section className="bg-white border border-gray-200 p-4 rounded-[28px] shadow-sm flex items-center justify-between gap-6 animate-in slide-in-from-top-4">
-            <div className="flex items-center gap-4">
-                <div className="w-10 h-10 bg-[#C5A059]/10 rounded-full flex items-center justify-center text-[#C5A059]">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        
+        {/* TOP ACTION BAR: LAUNDRY & TASKS */}
+        <section className="flex flex-col md:flex-row gap-4 items-stretch">
+            {/* LAUNDRY ACCESS CONTROL */}
+            <div className="flex-1 bg-white border border-gray-200 p-4 rounded-[28px] shadow-sm flex items-center justify-between gap-6">
+                <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-[#C5A059]/10 rounded-full flex items-center justify-center text-[#C5A059]">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                    </div>
+                    <div>
+                        <p className="text-[10px] font-black text-black uppercase tracking-[0.2em]">Laundry Delegation</p>
+                        <p className="text-[9px] text-black/40 font-bold uppercase mt-0.5">Authorize Supervisors & Drivers</p>
+                    </div>
                 </div>
-                <div>
-                    <p className="text-[10px] font-black text-black uppercase tracking-[0.2em]">Laundry Delegation</p>
-                    <p className="text-[9px] text-black/40 font-bold uppercase mt-0.5">Authorize Supervisors & Drivers</p>
-                </div>
+                <button 
+                    onClick={() => setShowLaundryAccessModal(true)}
+                    className="bg-[#C5A059] text-black font-black px-6 py-2.5 rounded-xl text-[9px] uppercase tracking-widest shadow-lg active:scale-95 transition-all hover:bg-[#d4b476]"
+                >
+                    MANAGE ACCESS
+                </button>
             </div>
+
+            {/* ADD TASK BUTTON (Restored) */}
             <button 
-                onClick={() => setShowLaundryAccessModal(true)}
-                className="bg-[#C5A059] text-black font-black px-6 py-2.5 rounded-xl text-[9px] uppercase tracking-widest shadow-lg active:scale-95 transition-all hover:bg-[#d4b476]"
+                onClick={onOpenManualTask}
+                className="bg-black hover:bg-zinc-900 text-[#C5A059] font-black px-8 py-4 rounded-[28px] text-[9px] uppercase tracking-[0.2em] flex items-center justify-center gap-3 transition-all shadow-xl active:scale-95"
             >
-                MANAGE ACCESS
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                ADD MANUAL TASK
             </button>
         </section>
+
+        {/* LOGISTICS ALERTS (New Section) */}
+        {logisticsAlerts.length > 0 && (
+            <section className="bg-orange-50 border-2 border-orange-200 p-6 rounded-[32px] shadow-xl space-y-4 animate-in slide-in-from-top-4">
+                <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white animate-pulse">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                    </div>
+                    <div>
+                        <h3 className="text-xs font-black text-orange-700 uppercase tracking-[0.3em]">LOGISTICS FAILURES</h3>
+                        <p className="text-[9px] text-orange-600 font-bold uppercase">{logisticsAlerts.length} Issues Requiring Attention</p>
+                    </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {logisticsAlerts.map((alert, i) => (
+                        <div key={i} className="bg-white p-4 rounded-2xl border border-orange-200 flex flex-col justify-between gap-3 shadow-sm">
+                            <div>
+                                <div className="flex justify-between items-start mb-1">
+                                    <h4 className="text-[10px] font-bold text-black uppercase truncate pr-2">{alert.shift.propertyName}</h4>
+                                    <span className="text-[7px] font-black text-orange-500 bg-orange-50 px-2 py-0.5 rounded border border-orange-100">{alert.shift.date}</span>
+                                </div>
+                                <p className="text-[8px] font-black text-red-500 uppercase tracking-widest">{alert.issues}</p>
+                                <p className="text-[9px] text-black/60 uppercase mt-2 font-bold">Driver: {alert.assignee}</p>
+                            </div>
+                            
+                            {alert.reason && (
+                                <div className="bg-orange-50 p-2 rounded-lg border border-orange-100">
+                                    <p className="text-[8px] font-black text-orange-700 uppercase tracking-widest mb-0.5">Driver Reason:</p>
+                                    <p className="text-[9px] text-black font-medium italic">"{alert.reason}"</p>
+                                </div>
+                            )}
+                            
+                            <button 
+                                onClick={() => onResolveLogistics?.(alert.shift.id, alert.shift.keysHandled && !alert.shift.keysAtOffice ? 'keysAtOffice' : 'isDelivered')}
+                                className="w-full bg-orange-600 text-white py-2 rounded-lg font-black uppercase text-[8px] tracking-widest hover:bg-orange-700 transition-all"
+                            >
+                                FORCE RESOLVE
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            </section>
+        )}
 
         {hasUnpublishedShifts && (
           <section className="bg-[#FDF8EE] border-2 border-red-500 p-6 rounded-[32px] shadow-2xl flex flex-col md:flex-row items-center justify-between gap-6 animate-in slide-in-from-top-4">
@@ -179,6 +274,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </section>
         )}
 
+        {/* ... (Existing Leave and Supply Sections remain the same) ... */}
         {pendingLeaves.length > 0 && (
           <section className="bg-blue-50 border-2 border-blue-200 p-6 rounded-[32px] shadow-2xl flex flex-col md:flex-row items-center justify-between gap-6 animate-in slide-in-from-top-4">
             <div className="flex items-center gap-6">
