@@ -116,8 +116,9 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
       });
   }, [shifts, properties, viewedDateStrShort]);
 
+  // UPDATED: Exclude 'housekeeping' from delegation pool
   const delegatePool = useMemo(() => {
-    return users.filter(u => ['supervisor', 'admin', 'driver', 'housekeeping'].includes(u.role));
+    return users.filter(u => ['supervisor', 'admin', 'driver'].includes(u.role));
   }, [users]);
 
   const handleToggleClock = () => {
@@ -270,7 +271,7 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
                                         className="peer sr-only"
                                         onChange={() => handleResolveReport(item.shiftId, item.report.id)}
                                     />
-                                    <div className="w-4 h-4 border-2 border-red-300 rounded peer-checked:bg-green-500 peer-checked:border-green-500 transition-all"></div>
+                                    <div className="w-4 h-4 border-2 border-red-300 rounded peer-checked:bg-green-50 peer-checked:border-green-50 transition-all"></div>
                                     <svg className="absolute top-0.5 left-0.5 w-3 h-3 text-white opacity-0 peer-checked:opacity-100 transition-opacity" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><polyline points="20 6 9 17 4 12"/></svg>
                                 </div>
                                 <span className="text-[8px] font-black text-black/40 group-hover:text-black uppercase tracking-widest transition-colors">Mark Prepared</span>

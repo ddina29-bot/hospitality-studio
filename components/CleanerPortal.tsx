@@ -1,10 +1,8 @@
 
-// ... existing imports ...
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Property, CleaningTask, Shift, User, AttributedPhoto, SpecialReport, SupplyItem } from '../types';
 import { uploadFile } from '../services/storageService';
 
-// ... (existing helper functions: parseTimeValue, getLocalISO, calculateDistance) ...
 const parseTimeValue = (timeStr: string) => {
   if (!timeStr) return 0;
   const [time, modifier] = timeStr.split(' ');
@@ -40,12 +38,10 @@ interface CleanerPortalProps {
   onAddSupplyRequest?: (item: Record<string, number>) => void;
 }
 
-// ... (rest of component) ...
 const CleanerPortal: React.FC<CleanerPortalProps> = ({ 
   shifts, setShifts, properties, users, initialSelectedShiftId, onConsumedDeepLink, authorizedInspectorIds = [], onClosePortal,
   inventoryItems = [], onAddSupplyRequest
 }) => {
-  // ... (existing state and hooks unchanged until render) ...
   const currentUser = JSON.parse(localStorage.getItem('current_user_obj') || '{}');
   const isAdmin = currentUser.role === 'admin';
   const isHousekeeping = currentUser.role === 'housekeeping';
@@ -60,9 +56,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   const [isLocationVerified, setIsLocationVerified] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
-
-  const [inspectionNotes, setInspectionNotes] = useState('');
-  const [inspectionPhotos, setInspectionPhotos] = useState<string[]>([]);
 
   // Checkout Key states
   const [keyInBoxPhotos, setKeyInBoxPhotos] = useState<AttributedPhoto[]>([]);
@@ -89,7 +82,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   const [notification, setNotification] = useState<{message: string, type: 'error' | 'success'} | null>(null);
 
   const cameraInputRef = useRef<HTMLInputElement>(null);
-  const inspectionCameraRef = useRef<HTMLInputElement>(null);
   const messCameraRef = useRef<HTMLInputElement>(null);
   const reportCameraRef = useRef<HTMLInputElement>(null);
   const checkoutKeyRef = useRef<HTMLInputElement>(null);
@@ -169,23 +161,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
       });
   }, [shifts, currentUser.id, isManagement, viewedDateStr]);
 
-  // ... (rest of logic methods like generateDynamicTasks, handleForceClockOut, etc. remain unchanged) ...
-  // ... (omitting for brevity, but they are included in the full component) ...
-  
-  // NOTE: Ensuring we include all necessary methods for the component to function
-  const linkedCleanerShift = useMemo(() => {
-    if (!activeShift) return null;
-    if (activeShift.serviceType === 'TO CHECK APARTMENT') {
-        return shifts
-          .filter(s => s.propertyId === activeShift.propertyId && s.serviceType !== 'TO CHECK APARTMENT' && s.status === 'completed')
-          .sort((a, b) => (b.actualEndTime || 0) - (a.actualEndTime || 0))[0];
-    }
-    if (activeShift.status === 'completed' && activeShift.approvalStatus === 'pending') {
-        return activeShift;
-    }
-    return null;
-  }, [activeShift, shifts]);
-
   const generateDynamicTasks = (property: Property): CleaningTask[] => {
     const dynamicTasks: CleaningTask[] = [];
     dynamicTasks.push({ id: 'kitchen-task', label: 'KITCHEN: Surfaces & Appliances sanitized', isMandatory: true, minPhotos: 1, photos: [] });
@@ -227,7 +202,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     showNotification("⚠️ SECURITY ALERT: You left the property perimeter. Shift terminated.", 'error');
   }, [selectedShiftId, setShifts, tasks, isManagement]);
 
-  // ... (useEffect for Geolocation and State restoration - unchanged) ...
+  // GPS Monitor
   useEffect(() => {
     let watchId: number | null = null;
     if (currentStep === 'active' && activeProperty?.lat && activeProperty?.lng && !isManagement) {
@@ -239,7 +214,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
             position.coords.latitude, 
             position.coords.longitude
           );
-          if (distance > 0.05) {
+          if (distance > 0.05) { // 50 meters
             console.warn(`Geofence Breach: ${distance.toFixed(4)}km`);
             handleForceClockOut();
           }
@@ -321,25 +296,52 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     return () => clearInterval(interval);
   }, [currentStep, activeShift]);
 
-  // ... (helper methods like verifyLocation, handleCapture, handleStartShift, handleFinishShift, etc.) ...
-  // ... (These remain identical to previous versions, just placeholders here to show context) ...
-  const verifyLocation = () => { /* ... */ setIsLocationVerified(true); };
+  const verifyLocation = () => {
+    if (!activeProperty || !activeProperty.lat || !activeProperty.lng) {
+        // Fallback if properties don't have coords yet - allow entry for now but warn
+        showNotification("Property coordinates missing. Proceeding with caution.", 'success');
+        setIsLocationVerified(true);
+        return;
+    }
+
+    setIsVerifying(true);
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+            const distance = calculateDistance(
+                activeProperty.lat!,
+                activeProperty.lng!,
+                position.coords.latitude,
+                position.coords.longitude
+            );
+            
+            // Strict 100m Geofence
+            if (distance <= 0.1) {
+                setIsLocationVerified(true);
+                showNotification("Location Verified Successfully", 'success');
+            } else {
+                showNotification(`Location Error: You are ${distance.toFixed(2)}km away. Must be within 100m.`, 'error');
+            }
+            setIsVerifying(false);
+        },
+        (error) => {
+            console.error(error);
+            showNotification("GPS Signal Required. Please enable location services.", 'error');
+            setIsVerifying(false);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  };
   
   const setSelectedIdAndStart = (shift: Shift) => {
-    // If selecting a COMPLETED shift (pending review), don't block.
-    // If selecting a NEW shift while another is ACTIVE, block.
     if (currentlyActiveShift && currentlyActiveShift.id !== shift.id) {
         showNotification(`ACTIVE SHIFT ALERT: You must clock out of ${currentlyActiveShift.propertyName} first.`, 'error');
         return;
     }
     
-    // Logic: If it's pending review, user (cleaner) generally can't re-enter unless it's management view.
-    // But they can click it to see status. 
-    // If it's active or pending (not started), they can enter.
     const isCompleted = shift.status === 'completed';
     const canEnter = !isCompleted || (isManagement && shift.approvalStatus === 'pending');
     
-    if (!canEnter) return; // Prevent re-entry into finished shifts for cleaners
+    if (!canEnter) return;
 
     setSelectedShiftId(shift.id);
     setIsLocationVerified(false);
@@ -353,8 +355,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     }
   };
 
-  const handleCapture = async (e: React.ChangeEvent<HTMLInputElement>, target: 'task' | 'inspection' | 'mess' | 'report' | 'checkout') => {
-    // ... same implementation ...
+  const handleCapture = async (e: React.ChangeEvent<HTMLInputElement>, target: 'task' | 'mess' | 'report' | 'checkout') => {
     const file = e.target.files?.[0];
     if (!file || !currentUser.id || isProcessingPhoto) return;
     setIsProcessingPhoto(true);
@@ -362,8 +363,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
       const url = await uploadFile(file);
       if (url) {
         const attributed: AttributedPhoto = { url: url, userId: currentUser.id };
-        if (target === 'inspection') setInspectionPhotos(prev => [...prev, url]);
-        else if (target === 'mess') setMessPhotos(prev => [...prev, url]);
+        if (target === 'mess') setMessPhotos(prev => [...prev, url]);
         else if (target === 'report') setReportPhotos(prev => [...prev, url]);
         else if (target === 'checkout') {
             if (checkoutTarget === 'keyInBox') setKeyInBoxPhotos(prev => [...prev, attributed]);
@@ -411,7 +411,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
         checkoutPhotos: { keyInBox: keyInBoxPhotos, boxClosed: boxClosedPhotos }
     } as Shift) : s));
     
-    // Clear local storage for this shift
     localStorage.removeItem(`shared_protocol_v8_${selectedShiftId}`);
     localStorage.removeItem(`shared_special_reqs_v1_${selectedShiftId}`);
     localStorage.removeItem(`shared_checkout_keys_v1_${selectedShiftId}`);
@@ -420,14 +419,76 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     else { setCurrentStep('list'); setSelectedShiftId(null); }
   };
 
-  // ... (other handlers: handleAdminDirectDecision, handleSupervisorReport, handleSubmitMessReport, handleReportSubmit, handleUpdateSupplyQty, handleSubmitSupplyRequest) ...
-  // Keeping them here for completeness but omitting full body as they are unchanged.
-  const handleSubmitMessReport = () => { /*...*/ setShowMessReport(false); };
-  const handleReportSubmit = () => { /*...*/ setReportModalType(null); };
-  const handleUpdateSupplyQty = (id: string, delta: number) => { /*...*/ };
-  const handleSubmitSupplyRequest = () => { /*...*/ setShowSupplyModal(false); };
-  const handleAdminDirectDecision = (decision: 'approved' | 'rejected' | 'remedial') => { /*...*/ };
-  const handleSupervisorReport = () => { /*...*/ };
+  const handleSubmitMessReport = () => {
+    if (!selectedShiftId) return;
+    setShifts(prev => prev.map(s => s.id === selectedShiftId ? {
+      ...s,
+      messReport: {
+        description: messDescription,
+        photos: messPhotos,
+        status: 'pending'
+      }
+    } : s));
+    setShowMessReport(false);
+    setMessDescription('');
+    setMessPhotos([]);
+    showNotification("Request for extra time submitted.", 'success');
+  };
+
+  const handleReportSubmit = () => {
+    if (!selectedShiftId || !reportModalType) return;
+    
+    // Validation
+    if (!reportDescription.trim()) {
+        showNotification("Please describe the issue.", 'error');
+        return;
+    }
+    if ((reportModalType === 'maintenance' || reportModalType === 'damage') && reportPhotos.length === 0) {
+        showNotification("A photo from camera is required for this report.", 'error');
+        return;
+    }
+
+    const report: SpecialReport = {
+        id: `rep-${Date.now()}`,
+        description: reportDescription,
+        photos: reportPhotos,
+        timestamp: Date.now(),
+        category: reportModalType === 'missing' ? missingCategory : undefined
+    };
+
+    setShifts(prev => prev.map(s => {
+        if (s.id === selectedShiftId) {
+            if (reportModalType === 'maintenance') return { ...s, maintenanceReports: [...(s.maintenanceReports || []), report] };
+            if (reportModalType === 'damage') return { ...s, damageReports: [...(s.damageReports || []), report] };
+            if (reportModalType === 'missing') return { ...s, missingReports: [...(s.missingReports || []), report] };
+        }
+        return s;
+    }));
+
+    setReportModalType(null);
+    setReportDescription('');
+    setReportPhotos([]);
+    setMissingCategory('apartment');
+    showNotification("Incident reported successfully.", 'success');
+  };
+
+  const handleUpdateSupplyQty = (id: string, delta: number) => {
+    setSelectedSupplyItems(prev => {
+        const current = prev[id] || 0;
+        return { ...prev, [id]: Math.max(0, current + delta) };
+    });
+  };
+
+  const handleSubmitSupplyRequest = () => {
+    if (onAddSupplyRequest) {
+        onAddSupplyRequest(selectedSupplyItems);
+        setSelectedSupplyItems({});
+        setShowSupplyModal(false);
+        showNotification("Supply request sent.", 'success');
+    }
+  };
+
+  // --- RENDER ---
 
   if (currentStep === 'list') {
     return (
@@ -530,18 +591,13 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     );
   }
 
-  // ... (Overview, Active, and Review/Inspection Render Blocks remain mostly unchanged, omitting for brevity as they are just details views) ...
-  // ... (Full implementation follows the same structure as provided previously, just ensuring this List View change is propagated) ...
-  
   if (currentStep === 'overview' && activeShift && activeProperty) {
-      // ... same overview code ...
       const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activeProperty.address)}`;
       return (
         <div className="space-y-8 animate-in fade-in duration-700 pb-32 max-w-2xl mx-auto text-left px-2 relative">
             <button onClick={() => setCurrentStep('list')} className="text-[10px] font-black text-black/30 hover:text-black uppercase tracking-widest flex items-center gap-2 mb-4 transition-colors">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="15 18 9 12 15 6"/></svg> Back to List
             </button>
-            {/* ... rest of overview ... */}
             <header className="space-y-4">
                 <div onClick={() => setZoomedImage(activeProperty.entrancePhoto || 'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=800&q=80')} className="relative h-64 w-full rounded-[40px] overflow-hidden shadow-2xl border border-gray-100 cursor-zoom-in group">
                     <img src={activeProperty.entrancePhoto || 'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=800&q=80'} className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-700" alt="Entrance reference" />
@@ -552,7 +608,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                     </div>
                 </div>
             </header>
-            {/* ... location verification block ... */}
             <section className="space-y-6">
                 <div className="bg-white border border-gray-100 p-8 rounded-[40px] shadow-lg flex flex-col md:flex-row items-center justify-between gap-6">
                     <div className="text-left space-y-1">
@@ -577,7 +632,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                         </div>
                     )}
                 </div>
-                {/* ... access codes block ... */}
                 {isLocationVerified && (
                     <div className="animate-in slide-in-from-top-4 duration-700 space-y-4">
                         {activeProperty.keyboxPhoto && (
@@ -627,14 +681,14 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
       );
   }
 
-  // ... (active and review steps render logic remains identical) ...
-  // ... (ensuring we return null if no step matches) ...
   if (currentStep === 'active' && activeShift) {
-      // (Full Active View Code - same as previous blocks)
       return (
         <div className="space-y-8 animate-in fade-in duration-700 pb-32 max-w-2xl mx-auto text-left px-2 relative">
-            {/* ... header, tasks, reports ... */}
-            {/* Same implementation as before */}
+            {notification && (
+                <div className={`fixed top-6 left-1/2 transform -translate-x-1/2 z-[1000] px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 min-w-[300px] max-w-[90vw] animate-in slide-in-from-top-4 duration-300 ${notification.type === 'error' ? 'bg-red-600 text-white' : 'bg-green-600 text-white'}`}>
+                    <p className="text-xs font-bold leading-tight">{notification.message}</p>
+                </div>
+            )}
             <header className="flex flex-col gap-4 bg-[#C5A059] p-8 rounded-[40px] text-black shadow-2xl relative overflow-hidden">
                 <div className="flex justify-between items-start relative z-10">
                     <div>
@@ -690,9 +744,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
 
             <button onClick={handleProceedToClockOut} className="w-full bg-black text-[#C5A059] font-black py-6 rounded-3xl uppercase tracking-[0.4em] text-sm shadow-xl active:scale-95 transition-all mt-10">Proceed to Clock Out</button>
             
-            {/* ... (Modals for reporting included in full file) ... */}
-            {/* Omitted for brevity as they are unchanged logic */}
-            {/* Same modals as previously provided */}
             {showMessReport && (
                 <div className="fixed inset-0 bg-black/60 z-[500] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
                     <div className="bg-white border border-red-100 rounded-[48px] w-full max-w-lg p-8 md:p-12 space-y-8 shadow-2xl relative text-left my-auto animate-in zoom-in-95">
@@ -707,6 +758,71 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                     </div>
                 </div>
             )}
+
+            {/* General Reporting Modal */}
+            {reportModalType && (
+                <div className="fixed inset-0 bg-black/60 z-[500] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
+                    <div className="bg-white border border-[#D4B476]/30 rounded-[48px] w-full max-w-lg p-8 md:p-12 space-y-8 shadow-2xl relative text-left my-auto animate-in zoom-in-95">
+                        <button onClick={() => { setReportModalType(null); setReportDescription(''); setReportPhotos([]); }} className="absolute top-8 right-8 text-black/20 hover:text-black"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+                        <header className="space-y-1">
+                            <h2 className="text-2xl font-serif-brand font-bold uppercase tracking-tight text-black">Report {reportModalType}</h2>
+                            <p className="text-[8px] font-black text-[#C5A059] uppercase tracking-[0.4em]">Field Incident Logger</p>
+                        </header>
+                        <div className="space-y-6">
+                            <div className="space-y-2">
+                                <label className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-[0.4em] mb-1.5 block px-1">Details</label>
+                                <textarea className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 text-[11px] h-32 outline-none" value={reportDescription} onChange={e => setReportDescription(e.target.value)} placeholder="Describe the issue..." />
+                            </div>
+                            
+                            {reportModalType === 'missing' && (
+                                <div className="flex gap-2 bg-gray-50 p-1 rounded-xl border border-gray-100">
+                                    <button onClick={() => setMissingCategory('apartment')} className={`flex-1 py-3 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${missingCategory === 'apartment' ? 'bg-black text-white shadow-md' : 'text-black/40 hover:bg-white'}`}>From Apartment</button>
+                                    <button onClick={() => setMissingCategory('laundry')} className={`flex-1 py-3 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${missingCategory === 'laundry' ? 'bg-[#C5A059] text-black shadow-md' : 'text-black/40 hover:bg-white'}`}>From Laundry</button>
+                                </div>
+                            )}
+
+                            <div>
+                                <label className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-[0.4em] mb-1.5 block px-1">Evidence {reportModalType !== 'missing' ? '(Required)' : '(Optional)'}</label>
+                                <div className="flex gap-2 overflow-x-auto pb-2">
+                                    <button onClick={() => reportCameraRef.current?.click()} className="w-24 h-24 rounded-2xl border-2 border-dashed border-[#D4B476]/30 bg-[#FDF8EE] flex items-center justify-center text-[#C5A059] font-black shrink-0 hover:border-[#C5A059] transition-all">+</button>
+                                    {reportPhotos.map((url, i) => (
+                                        <img key={i} src={url} className="w-24 h-24 rounded-2xl object-cover border border-gray-200" />
+                                    ))}
+                                </div>
+                                <input type="file" ref={reportCameraRef} className="hidden" accept="image/*" capture="environment" onChange={(e) => handleCapture(e, 'report')} />
+                            </div>
+
+                            <button onClick={handleReportSubmit} className="w-full bg-black text-[#C5A059] font-black py-4 rounded-2xl uppercase tracking-[0.3em] text-[10px] shadow-xl">SUBMIT REPORT</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Supply Modal */}
+            {showSupplyModal && (
+                <div className="fixed inset-0 bg-black/60 z-[500] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
+                    <div className="bg-white border border-green-200 rounded-[48px] w-full max-w-lg p-8 md:p-12 space-y-8 shadow-2xl relative text-left my-auto animate-in zoom-in-95">
+                        <button onClick={() => setShowSupplyModal(false)} className="absolute top-8 right-8 text-black/20 hover:text-black"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+                        <header className="space-y-1">
+                            <h2 className="text-2xl font-serif-brand font-bold text-green-700 uppercase tracking-tight">Request Supplies</h2>
+                            <p className="text-[8px] font-black text-green-600 uppercase tracking-[0.4em]">Inventory Restock</p>
+                        </header>
+                        <div className="space-y-4 max-h-[40vh] overflow-y-auto custom-scrollbar pr-2">
+                            {inventoryItems.map(item => (
+                                <div key={item.id} className="flex justify-between items-center p-3 border-b border-gray-100 last:border-0">
+                                    <span className="text-[10px] font-bold text-black uppercase">{item.name}</span>
+                                    <div className="flex items-center gap-3">
+                                        <button onClick={() => handleUpdateSupplyQty(item.id, -1)} className="w-6 h-6 rounded bg-gray-100 flex items-center justify-center text-black font-bold">-</button>
+                                        <span className="text-[10px] font-mono font-bold w-4 text-center">{selectedSupplyItems[item.id] || 0}</span>
+                                        <button onClick={() => handleUpdateSupplyQty(item.id, 1)} className="w-6 h-6 rounded bg-gray-100 flex items-center justify-center text-black font-bold">+</button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <button onClick={handleSubmitSupplyRequest} disabled={Object.values(selectedSupplyItems).every(v => v === 0)} className="w-full bg-green-600 text-white font-black py-4 rounded-2xl uppercase tracking-[0.3em] text-[10px] shadow-xl disabled:opacity-50">SEND REQUEST</button>
+                    </div>
+                </div>
+            )}
             
             {zoomedImage && <div className="fixed inset-0 bg-black/95 z-[500] flex items-center justify-center p-4 cursor-pointer" onClick={() => setZoomedImage(null)}><img src={zoomedImage} className="max-w-full max-h-full object-contain rounded-3xl" alt="Preview" /></div>}
         </div>
@@ -715,13 +831,10 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
 
   // REVIEW & INSPECTION STEPS
   if ((currentStep === 'review' || currentStep === 'inspection') && activeShift) {
-    // ... same review/inspection logic ...
     const totalPhotos = tasks.reduce((sum, t) => sum + t.photos.length, 0);
     const keyInBoxDone = keyInBoxPhotos.length >= 1;
     const boxClosedDone = boxClosedPhotos.length >= 1;
     
-    // ... (logic for inspection vs review) ...
-    // ... (Returning standard checkout view for brevity) ...
     return (
       <div className="space-y-10 animate-in fade-in duration-700 pb-32 max-w-2xl mx-auto text-left px-2 relative">
         <button onClick={() => setCurrentStep('active')} className="text-[10px] font-black text-black/30 hover:text-black uppercase tracking-widest flex items-center gap-2 mb-4"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>Back to Work</button>
