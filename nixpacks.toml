@@ -7,8 +7,8 @@ providers = []
 nixPkgs = ["nodejs_20", "npm", "python3", "make", "gcc", "g++"]
 
 [phases.install]
-# CRITICAL FIX: We remove the lockfile first to prevent conflicts, then install fresh.
-# This ignores any 'vite@7.3.1' vs 'vite@5.4' conflicts.
+# Force delete lockfile and use npm install. 
+# This ensures we generate a fresh lockfile based on package.json, avoiding conflicts.
 cmds = ["rm -f package-lock.json", "npm install"]
 
 [phases.build]
