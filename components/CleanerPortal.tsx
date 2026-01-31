@@ -56,6 +56,9 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   const [isLocationVerified, setIsLocationVerified] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
+  
+  // Geofence Debug State
+  const [currentDistance, setCurrentDistance] = useState<number | null>(null);
 
   // Checkout Key states
   const [keyInBoxPhotos, setKeyInBoxPhotos] = useState<AttributedPhoto[]>([]);
@@ -223,6 +226,8 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
           
           const distanceKm = calculateDistance(targetLat, targetLng, currentLat, currentLng);
           
+          setCurrentDistance(distanceKm);
+
           // 0.05 km = 50 meters
           if (distanceKm > 0.05) { 
             console.warn(`Geofence Breach Detected: ${distanceKm.toFixed(4)}km`);
@@ -705,9 +710,16 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                         <p className="text-[8px] font-black uppercase tracking-[0.4em] mb-1 opacity-60">Deployment Active</p>
                         <h3 className="text-xl font-serif-brand font-bold uppercase tracking-tight">{activeShift.propertyName}</h3>
                         {(activeProperty?.lat && activeProperty?.lng && !isManagement) && (
-                           <div className="mt-2 flex items-center gap-1.5 bg-black/10 w-fit px-2 py-1 rounded-lg">
-                              <span className="w-1.5 h-1.5 rounded-full bg-black animate-pulse"></span>
-                              <span className="text-[7px] font-black uppercase tracking-widest">GPS LOCK ACTIVE (50m Radius)</span>
+                           <div className="mt-2 flex flex-col gap-1">
+                              <div className="flex items-center gap-1.5 bg-black/10 w-fit px-2 py-1 rounded-lg">
+                                <span className="w-1.5 h-1.5 rounded-full bg-black animate-pulse"></span>
+                                <span className="text-[7px] font-black uppercase tracking-widest">GPS LOCK ACTIVE (50m Radius)</span>
+                              </div>
+                              {currentDistance !== null && (
+                                <p className="text-[7px] font-black uppercase tracking-widest opacity-60">
+                                  Current Dist: {(currentDistance * 1000).toFixed(0)}m / 50m Limit
+                                </p>
+                              )}
                            </div>
                         )}
                     </div>
