@@ -1,15 +1,12 @@
 
-# Explicitly use the Node provider but override the install phase
+# Explicitly use the Node provider
 providers = ["node"]
 
 [phases.setup]
-# Install system dependencies required for better-sqlite3 and other native modules
 nixPkgs = ["nodejs_20", "npm", "python3", "make", "gcc", "g++"]
 
 [phases.install]
-# CRITICAL: We use 'npm install' instead of 'npm ci'. 
-# 'npm ci' fails if package-lock.json doesn't match package.json (which happens when we edit package.json here).
-# 'npm install' updates the lockfile and proceeds.
+# CRITICAL: Force 'npm install' instead of 'npm ci' to ignore lockfile mismatches
 cmds = ["npm install"]
 
 [phases.build]
