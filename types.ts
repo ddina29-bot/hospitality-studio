@@ -362,7 +362,7 @@ export interface AppNotification {
   type: 'alert' | 'success' | 'warning' | 'info';
   title: string;
   message: string;
-  timestamp: number;
+  timestamp: number | string;
   linkTab?: TabType;
   linkId?: string;
 }

@@ -48,11 +48,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const todayStr = useMemo(() => new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase(), []);
   
-  // Determine if it is past 3 PM (15:00)
-  const isPast3PM = useMemo(() => new Date().getHours() >= 15, []);
-
   // --- LOGISTICS ALERTS (Driver didn't deliver/collect/return keys) ---
+  // Alerts only show after 3 PM (15:00) if the shift is today.
   const logisticsAlerts = useMemo(() => {
+    // Recalculate time inside memo to ensure it updates when shifts poll
+    const currentHour = new Date().getHours();
+    const isPast3PM = currentHour >= 15;
+
     return shifts.filter(s => {
        if (s.excludeLaundry) return false;
        const isLogisticsType = ['CHECK OUT / CHECK IN CLEANING', 'REFRESH', 'MID STAY CLEANING', 'BEDS ONLY', 'LINEN DROP / COLLECTION'].includes(s.serviceType);
@@ -65,9 +67,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
        if (s.date === todayStr) {
            if (!isPast3PM) return false;
        } else if (s.date > todayStr) {
-           return false;
+           return false; // Future dates don't show alerts
        }
-       // (Implicitly: s.date < todayStr is allowed)
+       // (Implicitly: s.date < todayStr (past) is allowed and will show alerts immediately)
 
        const missingDelivery = !s.isDelivered;
        const missingCollection = !s.isCollected;
@@ -101,7 +103,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             reason: s.keyLocationReason
         };
     });
-  }, [shifts, todayStr, users, isPast3PM]);
+  }, [shifts, todayStr, users]); // Removed static time dependency to allow re-evaluation on data refresh
 
   const shiftsWithIncidents = useMemo(() => {
     return shifts.filter(s => {
@@ -236,7 +238,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                     <div>
                         <h3 className="text-xs font-black text-orange-700 uppercase tracking-[0.3em]">LOGISTICS FAILURES</h3>
-                        <p className="text-[9px] text-orange-600 font-bold uppercase">{logisticsAlerts.length} Issues Requiring Attention</p>
+                        <p className="text-[9px] text-orange-600 font-bold uppercase">{logisticsAlerts.length} Issues Requiring Attention (Post-3PM)</p>
                     </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -498,8 +500,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
-      {/* ... (Rest of modal content remains same) ... */}
-      
       {/* Main Incident Management Modal */}
       {viewingIncidentShift && (
          <div className="fixed inset-0 bg-black/70 z-[400] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">

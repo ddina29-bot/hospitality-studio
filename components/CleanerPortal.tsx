@@ -632,18 +632,15 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     );
   }
 
-  // ... (Rest of existing content for 'overview' and 'active' steps remains unchanged) ...
-  // Please refer to previous file version for 'overview' and 'active' content blocks if needed.
+  // OVERVIEW
   if (currentStep === 'overview' && activeShift && activeProperty) {
       const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activeProperty.address)}`;
       return (
         <div className="space-y-8 animate-in fade-in duration-700 pb-32 max-w-2xl mx-auto text-left px-2 relative">
-            {/* ... Overview Content ... */}
             <button onClick={() => setCurrentStep('list')} className="text-[10px] font-black text-black/30 hover:text-black uppercase tracking-widest flex items-center gap-2 mb-4 transition-colors">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="15 18 9 12 15 6"/></svg> Back to List
             </button>
             <header className="space-y-4">
-                {/* ... Header Image ... */}
                 <div onClick={() => setZoomedImage(activeProperty.entrancePhoto || 'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=800&q=80')} className="relative h-64 w-full rounded-[40px] overflow-hidden shadow-2xl border border-gray-100 cursor-zoom-in group">
                     <img src={activeProperty.entrancePhoto || 'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=800&q=80'} className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-700" alt="Entrance reference" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
@@ -653,7 +650,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                     </div>
                 </div>
             </header>
-            {/* ... Rest of Overview ... */}
             <section className="space-y-6">
                 <div className="bg-white border border-gray-100 p-8 rounded-[40px] shadow-lg flex flex-col md:flex-row items-center justify-between gap-6">
                     <div className="text-left space-y-1">
@@ -727,12 +723,10 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
       );
   }
 
-  // Active step rendering logic here ... (omitted for brevity, assume unchanged unless specified)
+  // ACTIVE
   if (currentStep === 'active' && activeShift) {
-      // ... Active Step Content ...
       return (
         <div className="space-y-8 animate-in fade-in duration-700 pb-32 max-w-2xl mx-auto text-left px-2 relative">
-            {/* ... Header & Notifications ... */}
             {notification && (
                 <div className={`fixed top-6 left-1/2 transform -translate-x-1/2 z-[1000] px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 min-w-[300px] max-w-[90vw] animate-in slide-in-from-top-4 duration-300 ${notification.type === 'error' ? 'bg-red-600 text-white' : 'bg-green-600 text-white'}`}>
                     <p className="text-xs font-bold leading-tight">{notification.message}</p>
@@ -743,7 +737,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                     <div>
                         <p className="text-[8px] font-black uppercase tracking-[0.4em] mb-1 opacity-60">Deployment Active</p>
                         <h3 className="text-xl font-serif-brand font-bold uppercase tracking-tight">{activeShift.propertyName}</h3>
-                        {/* ... GPS Monitor ... */}
                     </div>
                     <div className="text-right flex flex-col items-end">
                         <p className="text-2xl font-bold font-mono tracking-tighter">{Math.floor(timer / 60)}:{(timer % 60).toString().padStart(2, '0')}</p>
@@ -753,7 +746,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                 </div>
             </header>
             
-            {/* Notes & Special Requests Section */}
             {(activeShift.notes || (activeProperty?.specialRequests && activeProperty.specialRequests.length > 0)) && (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-[32px] p-6 space-y-4 shadow-sm animate-in slide-in-from-top-2">
                     <div className="flex items-center gap-2">
@@ -784,7 +776,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                 </div>
             )}
 
-            {/* Checklist Loop */}
             <div className="space-y-4">
                 <p className="text-[8px] font-black text-black/30 uppercase tracking-[0.4em] px-1">Deployment Checklist</p>
                 {tasks.map(task => (
@@ -806,7 +797,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                 <input type="file" ref={cameraInputRef} className="hidden" accept="image/*" capture="environment" onChange={(e) => handleCapture(e, 'task')} />
             </div>
 
-            {/* Operational Actions */}
             <div className="space-y-4 pt-4">
                <p className="text-[8px] font-black text-black/30 uppercase tracking-[0.4em] px-1">Operational Actions</p>
                <div className="grid grid-cols-2 gap-3">
@@ -827,7 +817,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
 
             <button onClick={handleProceedToClockOut} className="w-full bg-black text-[#C5A059] font-black py-6 rounded-3xl uppercase tracking-[0.4em] text-sm shadow-xl active:scale-95 transition-all mt-10">Proceed to Clock Out</button>
             
-            {/* Modals ... */}
             {isManagement && (
                 <div className="mt-8 pt-8 border-t border-red-200">
                     <p className="text-[9px] font-black text-red-500 uppercase tracking-widest mb-2 text-center">Admin Emergency Zone</p>
@@ -844,7 +833,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                 </div>
             )}
 
-            {/* Include all existing modals (mess, report, supply) from previous code... ensuring they are rendered */}
             {showMessReport && (
                 <div className="fixed inset-0 bg-black/60 z-[500] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
                     <div className="bg-white border border-red-100 rounded-[48px] w-full max-w-lg p-8 md:p-12 space-y-8 shadow-2xl relative text-left my-auto animate-in zoom-in-95">
@@ -860,7 +848,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                 </div>
             )}
 
-            {/* General Reporting Modal */}
             {reportModalType && (
                 <div className="fixed inset-0 bg-black/60 z-[500] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
                     <div className="bg-white border border-[#D4B476]/30 rounded-[48px] w-full max-w-lg p-8 md:p-12 space-y-8 shadow-2xl relative text-left my-auto animate-in zoom-in-95">
@@ -899,7 +886,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                 </div>
             )}
 
-            {/* Supply Modal */}
             {showSupplyModal && (
                 <div className="fixed inset-0 bg-black/60 z-[500] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
                     <div className="bg-white border border-green-200 rounded-[48px] w-full max-w-lg p-8 md:p-12 space-y-8 shadow-2xl relative text-left my-auto animate-in zoom-in-95">
@@ -941,19 +927,19 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
         <button onClick={() => setCurrentStep('active')} className="text-[10px] font-black text-black/30 hover:text-black uppercase tracking-widest flex items-center gap-2 mb-4"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>Back to Work</button>
         <header className="space-y-2"><p className="text-[#C5A059] font-black uppercase tracking-[0.4em] text-[10px]">Submission Core</p><h2 className="text-3xl font-serif-brand font-bold text-black uppercase tracking-tight">Final Summary</h2></header>
         
-        {/* ADDED: Access Codes Display for Final Checkout */}
+        {/* ACCESS CODES DISPLAY - ENSURING VISIBILITY FOR CLEANER */}
         {activeProperty && (
-            <section className="bg-[#FDF8EE] p-6 rounded-[32px] border border-[#D4B476]/30 shadow-lg space-y-4">
+            <section className="bg-[#FDF8EE] p-6 rounded-[32px] border border-[#D4B476]/30 shadow-lg space-y-4 animate-in slide-in-from-bottom-1">
                 <div className="flex items-center gap-2">
                     <div className="w-2 h-2 bg-[#C5A059] rounded-full animate-pulse"></div>
-                    <h3 className="text-xs font-black text-[#8B6B2E] uppercase tracking-widest">Access Codes</h3>
+                    <h3 className="text-xs font-black text-[#8B6B2E] uppercase tracking-widest">Access Codes Reminder</h3>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
+                    <div className="space-y-1 p-3 bg-white/50 rounded-xl border border-[#D4B476]/10">
                         <p className="text-[8px] font-black text-black/40 uppercase tracking-widest">Entrance</p>
                         <p className="text-xl font-bold font-mono text-black tracking-tight">{activeProperty.mainEntranceCode || 'N/A'}</p>
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-1 p-3 bg-white/50 rounded-xl border border-[#D4B476]/10">
                         <p className="text-[8px] font-black text-black/40 uppercase tracking-widest">Keybox / Apt</p>
                         <p className="text-xl font-bold font-mono text-black tracking-tight">{activeProperty.keyboxCode}</p>
                     </div>
