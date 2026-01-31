@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { AuditReport, User, UserRole, SupplyRequest, Shift, LeaveRequest } from '../types';
 
@@ -12,6 +11,8 @@ interface ReportsPortalProps {
 }
 
 type ReportTab = 'audit' | 'activity' | 'employees' | 'incidents';
+type SortOrder = 'newest' | 'oldest' | 'type';
+type GroupMode = 'none' | 'property';
 
 const ReportsPortal: React.FC<ReportsPortalProps> = ({ 
   auditReports = [], 
@@ -21,7 +22,7 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
   leaveRequests = [],
   userRole 
 }) => {
-  const [activeTab, setActiveTab] = useState<ReportTab>('audit');
+  const [activeTab, setActiveTab] = useState<ReportTab>('incidents'); // Default to incidents for better visibility
   const [personnelSearch, setPersonnelSearch] = useState('');
   const [incidentSearch, setIncidentSearch] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -29,6 +30,10 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
   const [activitySearch, setActivitySearch] = useState('');
   const [selectedAuditShift, setSelectedAuditShift] = useState<Shift | null>(null);
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
+
+  // Sorting & Grouping State
+  const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
+  const [groupMode, setGroupMode] = useState<GroupMode>('none');
 
   const isHousekeeping = userRole === 'housekeeping';
 
@@ -122,6 +127,34 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
     printWindow.document.close();
   };
 
+  const handleExportCSV = () => {
+    if (activeTab !== 'incidents') return;
+    
+    const headers = ['Date', 'Property', 'Type', 'Status', 'Description', 'Assigned To'];
+    const rows = filteredIncidents.map(inc => [
+      inc.date,
+      inc.propertyName,
+      inc.type,
+      inc.resolved ? 'Resolved' : 'Open',
+      `"${inc.description.replace(/"/g, '""')}"`, // Escape quotes
+      users.find(u => u.id === inc.assignedTo)?.name || 'Unassigned'
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(r => r.join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `Incidents_Export_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const parseDate = (dateStr: string) => {
     if (!dateStr) return null;
     const currentYear = new Date().getFullYear();
@@ -182,8 +215,7 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
 
   // --- CLEANER ACTIVITY HISTORY ---
   const activityHistory = useMemo(() => {
-    // Show ALL completed shifts (approved, rejected, or pending audit) to show "what is done"
-    return shifts.filter(s => s.status === 'completed' && s.serviceType !== 'TO CHECK APARTMENT') // Exclude supervisor audits themselves
+    return shifts.filter(s => s.status === 'completed' && s.serviceType !== 'TO CHECK APARTMENT') 
       .filter(s => !activitySearch || s.propertyName?.toLowerCase().includes(activitySearch.toLowerCase()) || s.userIds.some(uid => users.find(u => u.id === uid)?.name.toLowerCase().includes(activitySearch.toLowerCase())))
       .sort((a, b) => (parseDate(b.date)?.getTime() || 0) - (parseDate(a.date)?.getTime() || 0));
   }, [shifts, activitySearch, users]);
@@ -196,18 +228,42 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
     shifts.forEach(s => {
        const date = s.date;
        const prop = s.propertyName || 'Unknown';
-       s.maintenanceReports?.forEach(r => all.push({ ...r, type: 'Maintenance', date, propertyName: prop, shiftId: s.id }));
-       s.damageReports?.forEach(r => all.push({ ...r, type: 'Damage', date, propertyName: prop, shiftId: s.id }));
-       s.missingReports?.forEach(r => all.push({ ...r, type: 'Missing Item', date, propertyName: prop, shiftId: s.id }));
+       s.maintenanceReports?.forEach(r => all.push({ ...r, type: 'Maintenance', date, propertyName: prop, shiftId: s.id, resolved: r.status === 'resolved', assignedTo: r.assignedTo }));
+       s.damageReports?.forEach(r => all.push({ ...r, type: 'Damage', date, propertyName: prop, shiftId: s.id, resolved: r.status === 'resolved', assignedTo: r.assignedTo }));
+       s.missingReports?.forEach(r => all.push({ ...r, type: 'Missing Item', date, propertyName: prop, shiftId: s.id, resolved: r.status === 'resolved', assignedTo: r.assignedTo }));
     });
-    return all.sort((a, b) => b.timestamp - a.timestamp);
+    return all;
   }, [shifts]);
 
   const filteredIncidents = useMemo(() => {
-      if (!incidentSearch) return incidentReports;
-      const q = incidentSearch.toLowerCase();
-      return incidentReports.filter(i => i.propertyName.toLowerCase().includes(q) || i.description.toLowerCase().includes(q));
-  }, [incidentReports, incidentSearch]);
+      let list = incidentReports;
+      if (incidentSearch) {
+        const q = incidentSearch.toLowerCase();
+        list = list.filter(i => i.propertyName.toLowerCase().includes(q) || i.description.toLowerCase().includes(q));
+      }
+      
+      // Sorting Logic
+      list = list.sort((a, b) => {
+         if (sortOrder === 'newest') return b.timestamp - a.timestamp;
+         if (sortOrder === 'oldest') return a.timestamp - b.timestamp;
+         if (sortOrder === 'type') return a.type.localeCompare(b.type);
+         return 0;
+      });
+
+      return list;
+  }, [incidentReports, incidentSearch, sortOrder]);
+
+  const groupedIncidents = useMemo(() => {
+     if (groupMode === 'none') return null;
+     
+     const groups: Record<string, typeof filteredIncidents> = {};
+     filteredIncidents.forEach(inc => {
+        const key = groupMode === 'property' ? inc.propertyName : 'All';
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(inc);
+     });
+     return groups;
+  }, [filteredIncidents, groupMode]);
 
   const filteredPersonnel = useMemo(() => {
     if (!personnelSearch) return users;
@@ -265,10 +321,10 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
         <nav className="p-1 bg-white rounded-2xl border border-gray-100 shadow-sm">
           <div className="flex gap-2 flex-wrap">
             {[
+              { id: 'incidents', label: 'Incidents' },
               { id: 'audit', label: 'Quality Audits' },
               { id: 'activity', label: 'Cleaner Logs' },
               { id: 'employees', label: 'Personnel' },
-              { id: 'incidents', label: 'Incidents' }
             ].map((t) => (
               <button 
                 key={t.id} 
@@ -281,6 +337,95 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
           </div>
         </nav>
       </header>
+
+      {/* --- INCIDENTS TAB (Enhanced) --- */}
+      {activeTab === 'incidents' && (
+         <div className="space-y-8 animate-in slide-in-from-right-4">
+            <div className="flex flex-col md:flex-row gap-4 items-stretch">
+                <div className="relative flex-1">
+                    <input type="text" placeholder="SEARCH INCIDENTS..." className={`${inputStyle} w-full pl-12 h-11`} value={incidentSearch} onChange={(e) => setIncidentSearch(e.target.value)} />
+                    <div className="absolute left-4 top-3.5 text-black/20"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+                </div>
+                
+                <div className="flex gap-2">
+                    <select 
+                        value={sortOrder} 
+                        onChange={(e) => setSortOrder(e.target.value as SortOrder)}
+                        className="bg-white border border-gray-200 rounded-xl px-4 text-[9px] font-bold uppercase tracking-widest outline-none focus:border-[#C5A059] h-11"
+                    >
+                        <option value="newest">Sort: Newest First</option>
+                        <option value="oldest">Sort: Oldest First</option>
+                        <option value="type">Sort: By Type</option>
+                    </select>
+
+                    <button 
+                        onClick={() => setGroupMode(groupMode === 'none' ? 'property' : 'none')}
+                        className={`px-6 h-11 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${groupMode === 'property' ? 'bg-[#C5A059] text-black border-[#C5A059]' : 'bg-white text-black/40 border-gray-200 hover:text-black'}`}
+                    >
+                        {groupMode === 'property' ? 'Grouped by Unit' : 'Flat List'}
+                    </button>
+
+                    <button 
+                        onClick={handleExportCSV}
+                        className="bg-black text-[#C5A059] h-11 px-6 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all flex items-center gap-2"
+                    >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Export CSV
+                    </button>
+                </div>
+            </div>
+
+            <div className="space-y-4">
+               {filteredIncidents.length === 0 ? (
+                  <div className="py-20 text-center border-2 border-dashed border-black/5 rounded-[40px] opacity-10 italic text-[10px] uppercase font-black tracking-[0.4em]">Log Clear.</div>
+               ) : (
+                  <>
+                    {groupMode === 'none' ? (
+                        filteredIncidents.map((inc, i) => (
+                            <div key={`${inc.id}-${i}`} className={`p-6 rounded-[32px] border flex flex-col md:flex-row items-center justify-between gap-6 shadow-md transition-all ${inc.resolved ? 'bg-gray-50 border-gray-200 opacity-70' : 'bg-white border-red-100 hover:border-red-300'}`}>
+                                <div className="flex items-center gap-6 w-full md:w-auto">
+                                <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white text-lg shadow-lg ${inc.type === 'Maintenance' ? 'bg-blue-500' : inc.type === 'Damage' ? 'bg-orange-500' : 'bg-purple-500'}`}>{inc.type.charAt(0)}</div>
+                                <div className="space-y-1">
+                                    <h4 className="text-sm font-bold text-black uppercase tracking-tight">{inc.propertyName}</h4>
+                                    <p className="text-[9px] text-black/40 font-black uppercase tracking-widest">{inc.date} • {inc.type}</p>
+                                    <p className="text-[10px] text-black/80 italic line-clamp-1">"{inc.description}"</p>
+                                </div>
+                                </div>
+                                <div className="flex items-center gap-4 w-full md:w-auto justify-end">
+                                <span className={`px-4 py-1.5 rounded-full text-[8px] font-black uppercase tracking-widest border ${inc.resolved ? 'bg-green-100 text-green-700 border-green-200' : 'bg-red-100 text-red-600 border-red-200'}`}>{inc.resolved ? 'RESOLVED' : 'OPEN TICKET'}</span>
+                                {inc.photos.length > 0 && (
+                                    <button onClick={() => setZoomedImage(inc.photos[0])} className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-black/40 hover:bg-gray-200 hover:text-black transition-all"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M20.4 14.5L16 10 4 20"/></svg></button>
+                                )}
+                                </div>
+                            </div>
+                        ))
+                    ) : (
+                        Object.entries(groupedIncidents || {}).map(([propName, items]: [string, any[]]) => (
+                            <div key={propName} className="space-y-4">
+                                <div className="flex items-center gap-3">
+                                    <h3 className="text-sm font-black text-black/80 uppercase tracking-widest bg-gray-100 px-4 py-2 rounded-xl">{propName}</h3>
+                                    <div className="h-px flex-1 bg-gray-200"></div>
+                                </div>
+                                {items.map((inc, i) => (
+                                    <div key={`${inc.id}-${i}`} className={`p-5 rounded-[24px] border flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm ml-4 ${inc.resolved ? 'bg-gray-50 border-gray-100' : 'bg-white border-red-50'}`}>
+                                        <div className="flex items-center gap-4">
+                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold ${inc.type === 'Maintenance' ? 'bg-blue-500' : inc.type === 'Damage' ? 'bg-orange-500' : 'bg-purple-500'}`}>{inc.type.charAt(0)}</div>
+                                            <div>
+                                                <p className="text-[9px] font-black text-black uppercase">{inc.date} • {inc.type}</p>
+                                                <p className="text-[10px] text-black/60 italic">"{inc.description}"</p>
+                                            </div>
+                                        </div>
+                                        <span className={`px-3 py-1 rounded text-[7px] font-black uppercase tracking-widest ${inc.resolved ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'}`}>{inc.resolved ? 'RESOLVED' : 'OPEN'}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        ))
+                    )}
+                  </>
+               )}
+            </div>
+         </div>
+      )}
 
       {/* --- AUDIT TAB --- */}
       {activeTab === 'audit' && (
@@ -409,40 +554,6 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
               )}
            </div>
         </div>
-      )}
-
-      {/* --- INCIDENTS TAB --- */}
-      {activeTab === 'incidents' && (
-         <div className="space-y-8 animate-in slide-in-from-right-4">
-            <div className="relative w-full">
-              <input type="text" placeholder="SEARCH INCIDENTS..." className={`${inputStyle} w-full pl-12`} value={incidentSearch} onChange={(e) => setIncidentSearch(e.target.value)} />
-              <div className="absolute left-4 top-3 text-black/20"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
-            </div>
-            <div className="space-y-4">
-               {filteredIncidents.length === 0 ? (
-                  <div className="py-20 text-center border-2 border-dashed border-black/5 rounded-[40px] opacity-10 italic text-[10px] uppercase font-black tracking-[0.4em]">Log Clear.</div>
-               ) : (
-                  filteredIncidents.map((inc, i) => (
-                     <div key={`${inc.id}-${i}`} className={`p-6 rounded-[32px] border flex flex-col md:flex-row items-center justify-between gap-6 shadow-md transition-all ${inc.resolved ? 'bg-gray-50 border-gray-200 opacity-70' : 'bg-white border-red-100 hover:border-red-300'}`}>
-                        <div className="flex items-center gap-6 w-full md:w-auto">
-                           <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white text-lg shadow-lg ${inc.type === 'Maintenance' ? 'bg-blue-500' : inc.type === 'Damage' ? 'bg-orange-500' : 'bg-purple-500'}`}>{inc.type.charAt(0)}</div>
-                           <div className="space-y-1">
-                              <h4 className="text-sm font-bold text-black uppercase tracking-tight">{inc.propertyName}</h4>
-                              <p className="text-[9px] text-black/40 font-black uppercase tracking-widest">{inc.date} • {inc.type}</p>
-                              <p className="text-[10px] text-black/80 italic line-clamp-1">"{inc.description}"</p>
-                           </div>
-                        </div>
-                        <div className="flex items-center gap-4 w-full md:w-auto justify-end">
-                           <span className={`px-4 py-1.5 rounded-full text-[8px] font-black uppercase tracking-widest border ${inc.resolved ? 'bg-green-100 text-green-700 border-green-200' : 'bg-red-100 text-red-600 border-red-200'}`}>{inc.resolved ? 'RESOLVED' : 'OPEN TICKET'}</span>
-                           {inc.photos.length > 0 && (
-                              <button onClick={() => setZoomedImage(inc.photos[0])} className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-black/40 hover:bg-gray-200 hover:text-black transition-all"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M20.4 14.5L16 10 4 20"/></svg></button>
-                           )}
-                        </div>
-                     </div>
-                  ))
-               )}
-            </div>
-         </div>
       )}
       
       {/* --- EMPLOYEES TAB --- */}

@@ -1,12 +1,13 @@
 
-providers = ["node"]
+# 1. Disable default providers to stop auto-detection of 'npm ci'
+providers = []
 
 [phases.setup]
-nixPkgs = ["nodejs_22", "npm", "python3", "make", "gcc", "g++"]
+# 2. Install Node.js 20 and build tools
+nixPkgs = ["nodejs_20", "npm", "python3", "make", "gcc", "g++"]
 
 [phases.install]
-# CRITICAL FIX: We use 'npm install' instead of 'npm ci'. 
-# 'npm ci' fails if the lockfile isn't perfect. 'npm install' fixes it automatically.
+# 3. CRITICAL: Use 'npm install' to ignore lockfile conflicts
 cmds = ["npm install"]
 
 [phases.build]
