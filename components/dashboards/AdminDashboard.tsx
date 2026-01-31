@@ -18,11 +18,13 @@ interface AdminDashboardProps {
   setManualTasks?: React.Dispatch<React.SetStateAction<ManualTask[]>>;
   onResolveLogistics?: (shiftId: string, field: 'isDelivered' | 'isCollected' | 'keysAtOffice', reason?: string) => void;
   onToggleLaundryPrepared?: (shiftId: string) => void;
+  authorizedLaundryUserIds?: string[];
+  onToggleLaundryAuthority?: (userId: string) => void;
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
   user, setActiveTab, shifts = [], setShifts, users = [], supplyRequests = [], leaveRequests = [], onAuditDeepLink, onOpenManualTask,
-  onResolveLogistics, onToggleLaundryPrepared
+  onResolveLogistics, onToggleLaundryPrepared, authorizedLaundryUserIds = [], onToggleLaundryAuthority
 }) => {
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
   const [viewingIncidentShift, setViewingIncidentShift] = useState<Shift | null>(null);
@@ -33,6 +35,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [resolvingReport, setResolvingReport] = useState<{ shiftId: string, report: SpecialReport, type: 'maintenance' | 'damage' | 'missing' } | null>(null);
   const [resolutionPhotos, setResolutionPhotos] = useState<string[]>([]);
   const resolutionFileRef = useRef<HTMLInputElement>(null);
+
+  // Laundry Access Modal
+  const [showLaundryAccessModal, setShowLaundryAccessModal] = useState(false);
 
   const reviewQueue = useMemo(() => shifts.filter(s => s.status === 'completed' && s.approvalStatus === 'pending'), [shifts]);
   const rejectedQueue = useMemo(() => shifts.filter(s => s.approvalStatus === 'rejected' && s.correctionStatus !== 'fixing'), [shifts]);
@@ -121,6 +126,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         });
   }, [users]);
 
+  // List of staff eligible for Laundry access (Supervisors and Drivers)
+  const laundryEligibleStaff = useMemo(() => {
+    return users.filter(u => ['supervisor', 'driver'].includes(u.role) && u.status === 'active');
+  }, [users]);
+
   const getMissingItemsBreakdown = (reports: SpecialReport[]) => {
       const laundry = reports.filter(r => r.category === 'laundry' || r.description.includes('[FOR LAUNDRY]'));
       const apartment = reports.filter(r => r.category !== 'laundry' && !r.description.includes('[FOR LAUNDRY]'));
@@ -130,6 +140,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   return (
     <div className="space-y-6 animate-in fade-in duration-700 text-left pb-24">
       <div className="flex flex-col gap-4">
+        {/* LAUNDRY ACCESS CONTROL BUTTON (New Requirement) */}
+        <section className="bg-white border border-gray-200 p-4 rounded-[28px] shadow-sm flex items-center justify-between gap-6 animate-in slide-in-from-top-4">
+            <div className="flex items-center gap-4">
+                <div className="w-10 h-10 bg-[#C5A059]/10 rounded-full flex items-center justify-center text-[#C5A059]">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                </div>
+                <div>
+                    <p className="text-[10px] font-black text-black uppercase tracking-[0.2em]">Laundry Delegation</p>
+                    <p className="text-[9px] text-black/40 font-bold uppercase mt-0.5">Authorize Supervisors & Drivers</p>
+                </div>
+            </div>
+            <button 
+                onClick={() => setShowLaundryAccessModal(true)}
+                className="bg-[#C5A059] text-black font-black px-6 py-2.5 rounded-xl text-[9px] uppercase tracking-widest shadow-lg active:scale-95 transition-all hover:bg-[#d4b476]"
+            >
+                MANAGE ACCESS
+            </button>
+        </section>
+
         {hasUnpublishedShifts && (
           <section className="bg-[#FDF8EE] border-2 border-red-500 p-6 rounded-[32px] shadow-2xl flex flex-col md:flex-row items-center justify-between gap-6 animate-in slide-in-from-top-4">
             <div className="flex items-center gap-6">
@@ -305,6 +334,48 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
          )}
       </section>
+
+      {/* Laundry Access Modal (New) */}
+      {showLaundryAccessModal && (
+        <div className="fixed inset-0 bg-black/80 z-[500] flex items-center justify-center p-4 backdrop-blur-sm animate-in zoom-in-95">
+           <div className="bg-[#FDF8EE] border border-[#C5A059]/40 rounded-[40px] w-full max-w-lg p-10 space-y-8 shadow-2xl relative text-left">
+              <button onClick={() => setShowLaundryAccessModal(false)} className="absolute top-10 right-10 text-black/20 hover:text-black transition-colors"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+              
+              <div className="space-y-1">
+                 <h2 className="text-2xl font-serif-brand font-bold uppercase text-black">Laundry Access</h2>
+                 <p className="text-[8px] font-black text-[#C5A059] uppercase tracking-[0.4em]">Delegate Authority</p>
+              </div>
+
+              <div className="space-y-4 max-h-[300px] overflow-y-auto custom-scrollbar">
+                 {laundryEligibleStaff.length === 0 ? (
+                    <p className="text-center text-black/30 italic text-[9px] font-black uppercase py-4">No Supervisors or Drivers found.</p>
+                 ) : laundryEligibleStaff.map(staff => {
+                    const isAuthorized = authorizedLaundryUserIds.includes(staff.id);
+                    return (
+                        <label key={staff.id} className={`flex items-center justify-between p-4 rounded-xl border cursor-pointer transition-all ${isAuthorized ? 'bg-white border-[#C5A059] shadow-md' : 'bg-gray-50 border-gray-200 hover:bg-white'}`}>
+                            <div className="flex items-center gap-4">
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${isAuthorized ? 'bg-[#C5A059] text-black' : 'bg-gray-200 text-gray-500'}`}>
+                                    {staff.name.charAt(0)}
+                                </div>
+                                <div>
+                                    <p className="text-[10px] font-bold text-black uppercase">{staff.name}</p>
+                                    <p className="text-[7px] text-black/40 font-black uppercase tracking-widest">{staff.role}</p>
+                                </div>
+                            </div>
+                            <input 
+                                type="checkbox" 
+                                className="w-5 h-5 accent-[#C5A059] cursor-pointer"
+                                checked={isAuthorized}
+                                onChange={() => onToggleLaundryAuthority?.(staff.id)}
+                            />
+                        </label>
+                    );
+                 })}
+              </div>
+              <button onClick={() => setShowLaundryAccessModal(false)} className="w-full bg-black text-[#C5A059] font-black py-4 rounded-2xl uppercase text-[9px] tracking-widest shadow-xl">Done</button>
+           </div>
+        </div>
+      )}
 
       {/* Main Incident Management Modal */}
       {viewingIncidentShift && (

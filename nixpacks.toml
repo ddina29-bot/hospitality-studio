@@ -2,11 +2,11 @@
 providers = ["node"]
 
 [phases.setup]
-nixPkgs = ["nodejs", "npm", "python3", "gcc", "gnumake"]
+nixPkgs = ["nodejs", "npm", "python3", "make", "gcc", "g++"]
 
 [phases.install]
-# Force a clean install to avoid lockfile conflicts (fixing the npm ci error)
-cmds = ["rm -rf node_modules", "npm install"]
+# Explicitly use install --no-package-lock to prevent npm ci usage and ignore lockfile mismatches
+cmds = ["npm install --no-package-lock"]
 
 [phases.build]
 cmds = ["npm run build"]
