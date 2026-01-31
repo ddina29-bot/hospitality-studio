@@ -59,6 +59,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   
   // Geofence Debug State
   const [currentDistance, setCurrentDistance] = useState<number | null>(null);
+  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
 
   // Checkout Key states
   const [keyInBoxPhotos, setKeyInBoxPhotos] = useState<AttributedPhoto[]>([]);
@@ -223,13 +224,16 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
         (position) => {
           const currentLat = position.coords.latitude;
           const currentLng = position.coords.longitude;
+          const accuracy = position.coords.accuracy;
           
+          setGpsAccuracy(accuracy);
+
           const distanceKm = calculateDistance(targetLat, targetLng, currentLat, currentLng);
-          
           setCurrentDistance(distanceKm);
 
           // 0.05 km = 50 meters
-          if (distanceKm > 0.05) { 
+          // Only enforce if accuracy is reasonable (<100m) to prevent GPS jumps
+          if (distanceKm > 0.05 && accuracy < 100) { 
             console.warn(`Geofence Breach Detected: ${distanceKm.toFixed(4)}km`);
             handleForceClockOut();
           }
@@ -712,12 +716,12 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                         {(activeProperty?.lat && activeProperty?.lng && !isManagement) && (
                            <div className="mt-2 flex flex-col gap-1">
                               <div className="flex items-center gap-1.5 bg-black/10 w-fit px-2 py-1 rounded-lg">
-                                <span className="w-1.5 h-1.5 rounded-full bg-black animate-pulse"></span>
-                                <span className="text-[7px] font-black uppercase tracking-widest">GPS LOCK ACTIVE (50m Radius)</span>
+                                <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${currentDistance !== null && currentDistance > 0.05 ? 'bg-red-600' : 'bg-black'}`}></span>
+                                <span className="text-[7px] font-black uppercase tracking-widest">GPS MONITOR ACTIVE</span>
                               </div>
                               {currentDistance !== null && (
-                                <p className="text-[7px] font-black uppercase tracking-widest opacity-60">
-                                  Current Dist: {(currentDistance * 1000).toFixed(0)}m / 50m Limit
+                                <p className={`text-[7px] font-black uppercase tracking-widest opacity-80 ${currentDistance > 0.05 ? 'text-red-900' : ''}`}>
+                                  Dist: {(currentDistance * 1000).toFixed(0)}m {gpsAccuracy ? `(±${gpsAccuracy.toFixed(0)}m)` : ''}
                                 </p>
                               )}
                            </div>

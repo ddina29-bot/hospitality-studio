@@ -6,9 +6,9 @@ providers = ["node"]
 nixPkgs = ["nodejs_20", "npm", "python3", "make", "gcc", "g++"]
 
 [phases.install]
-# CRITICAL FIX: Delete conflicting lockfiles and modules to force a clean slate.
-# We use 'npm install' (not ci) to generate a fresh, valid lockfile during build.
-cmds = ["rm -rf package-lock.json node_modules && npm install"]
+# CRITICAL: Delete lockfile and use legacy-peer-deps to ignore version conflicts.
+# This prevents the 'exit code 1' error during deployment.
+cmds = ["rm -rf package-lock.json node_modules", "npm install --legacy-peer-deps"]
 
 [phases.build]
 cmds = ["npm run build"]
