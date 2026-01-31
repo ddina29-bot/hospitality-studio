@@ -5,8 +5,8 @@ providers = ["node"]
 nixPkgs = ["nodejs_22", "npm", "python3", "make", "gcc", "g++"]
 
 [phases.install]
-# CRITICAL: Do not use npm ci. Use npm install with legacy peer deps to fix cloudinary conflict.
-cmds = ["rm -rf package-lock.json node_modules", "npm install --legacy-peer-deps"]
+# Force remove lockfile to prevent 'npm ci' mismatch errors and ensure a clean install
+cmds = ["rm -f package-lock.json", "npm install"]
 
 [phases.build]
 cmds = ["npm run build"]
