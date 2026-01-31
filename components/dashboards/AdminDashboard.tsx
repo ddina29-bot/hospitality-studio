@@ -140,8 +140,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setAssignmentNote('');
   };
 
-  const handleForceStop = (shiftId: string) => {
-    if (!window.confirm("Are you sure you want to FORCE CLOCK OUT this user? This will mark the shift as completed pending review.")) return;
+  const handleForceStop = (e: React.MouseEvent, shiftId: string) => {
+    e.stopPropagation();
+    if (!window.confirm("Are you sure you want to FORCE CHECK OUT this user? This will mark the shift as completed pending review.")) return;
+    
     setShifts(prev => prev.map(s => {
         if (s.id === shiftId) {
             return {
@@ -330,10 +332,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <span className="text-[9px] font-mono font-bold text-green-700 bg-green-100 px-2 py-1 rounded">{durationMins}m</span>
                                 {user.role === 'admin' && (
                                     <button 
-                                        onClick={() => handleForceStop(shift.id)}
+                                        onClick={(e) => handleForceStop(e, shift.id)}
                                         className="bg-red-600 text-white px-2 py-1 rounded text-[6px] font-black uppercase tracking-widest hover:bg-red-700 transition-all shadow-md z-10"
                                     >
-                                        FORCE STOP
+                                        FORCE CHECK OUT
                                     </button>
                                 )}
                               </div>
@@ -605,7 +607,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <button onClick={() => { setAssigningReport(null); setAssignmentNote(''); }} className="absolute top-6 right-6 text-black/20 hover:text-black"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
               <div>
                  <h3 className="text-xl font-serif-brand font-bold uppercase text-black">Assign {assigningReport.type}</h3>
-                 <p className="text-[8px] font-black text-[#C5A059] uppercase tracking-[0.4em]">Select Personnel / Vendor</p>
+                 <p className="text-[8px] font-black text-[#C5A059] uppercase tracking-[0.4em]">Select Personnel for Resolution</p>
               </div>
               
               <div>
@@ -619,24 +621,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               <div className="space-y-2 max-h-[250px] overflow-y-auto custom-scrollbar">
-                 {assignableStaff.map(u => {
-                   const isExternal = u.role === 'outsourced_maintenance';
-                   return (
-                     <button 
-                       key={u.id}
-                       onClick={() => handleAssignIncident(u.id)}
-                       className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all group ${isExternal ? 'bg-blue-50 border-blue-200 hover:border-blue-400' : 'bg-white border-gray-200 hover:border-[#C5A059]'}`}
-                     >
-                        <div className="text-left">
-                           <p className="text-[10px] font-bold text-black uppercase">{u.name}</p>
-                           <p className={`text-[7px] font-black uppercase tracking-widest ${isExternal ? 'text-blue-600' : 'text-black/40'}`}>
-                             {isExternal ? 'EXTERNAL VENDOR' : u.role.replace('_', ' ')}
-                           </p>
-                        </div>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className={`text-black/10 ${isExternal ? 'group-hover:text-blue-500' : 'group-hover:text-[#C5A059]'}`}><polyline points="9 18 15 12 9 6"/></svg>
-                     </button>
-                   );
-                 })}
+                 {assignableStaff.map(u => (
+                   <button 
+                     key={u.id}
+                     onClick={() => handleAssignIncident(u.id)}
+                     className="w-full flex items-center justify-between p-4 bg-white border border-gray-200 rounded-xl hover:border-[#C5A059] hover:shadow-md transition-all group"
+                   >
+                      <div className="text-left">
+                         <p className="text-[10px] font-bold text-black uppercase">{u.name}</p>
+                         <p className="text-[7px] text-black/40 font-black uppercase tracking-widest">{u.role}</p>
+                      </div>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="text-black/10 group-hover:text-[#C5A059]"><polyline points="9 18 15 12 9 6"/></svg>
+                   </button>
+                 ))}
               </div>
            </div>
         </div>

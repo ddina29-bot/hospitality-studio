@@ -193,7 +193,9 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
   };
 
   const toggleTaskField = (shiftId: string, field: keyof Shift, reason?: string) => {
-    if (!canInteract || !routeActive) return;
+    // Allow toggle if driver/admin is viewing today, regardless of route timer
+    if (!canInteract) return;
+    
     setShifts?.(prev => prev.map(s => {
       if (s.id === shiftId) {
         const updated = { ...s, [field]: !s[field] };
@@ -208,7 +210,7 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
   };
 
   const toggleManualTaskDone = (taskId: string) => {
-    if (!canInteract || !routeActive) return;
+    if (!canInteract) return;
     setManualTasks?.(prev => prev.map(t => t.id === taskId ? { ...t, status: t.status === 'completed' ? 'pending' : 'completed' } : t));
   };
 
@@ -399,7 +401,7 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
 
               <div className="flex flex-col gap-4">
                 <div className="flex flex-col sm:flex-row gap-4">
-                    {canInteract && routeActive ? (
+                    {canInteract ? (
                     <>
                         <button onClick={() => toggleTaskField(task.id, 'isDelivered')} className={`flex-1 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all shadow-sm ${task.isDelivered ? 'bg-green-600 text-white' : 'bg-white border border-gray-200 text-black/40 hover:bg-gray-50'}`}>DELIVERED</button>
                         <button onClick={() => toggleTaskField(task.id, 'isCollected')} className={`flex-1 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all shadow-sm ${task.isCollected ? 'bg-[#C5A059] text-white' : 'bg-white border border-gray-200 text-black/40 hover:bg-gray-50'}`}>COLLECTED</button>
@@ -430,7 +432,7 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
                              <button onClick={() => handleSaveKeyNote(task.id)} className="px-4 bg-orange-200 text-orange-700 font-bold rounded-lg text-[9px] hover:bg-orange-300">SAVE</button>
                           </div>
                        </div>
-                       {canInteract && routeActive ? (
+                       {canInteract ? (
                           <button onClick={() => toggleTaskField(task.id, 'keysAtOffice', reasons[task.id])} className={`w-full sm:w-auto px-8 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest transition-all shadow-sm ${task.keysAtOffice ? 'bg-orange-600 text-white' : 'bg-white border border-orange-300 text-orange-500 hover:bg-orange-50'}`}>
                              {task.keysAtOffice ? 'RETURNED' : 'MARK RETURNED'}
                           </button>
