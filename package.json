@@ -1,10 +1,10 @@
 
 {
   "name": "reset-hospitality-studio",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "type": "module",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "scripts": {
     "dev": "vite",
@@ -12,23 +12,23 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
+    "express": "^4.19.2",
     "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
+    "dotenv": "^16.4.5",
     "@google/genai": "^1.37.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "vite": "*",
-    "@vitejs/plugin-react": "^4.0.0",
-    "typescript": "^5.0.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "vite": "^5.4.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "typescript": "^5.5.0",
     "multer": "^1.4.5-lts.1",
-    "cloudinary": "*",
-    "multer-storage-cloudinary": "*",
-    "better-sqlite3": "*",
-    "nodemailer": "*"
+    "cloudinary": "^2.2.0",
+    "multer-storage-cloudinary": "^4.0.0",
+    "better-sqlite3": "^11.0.0",
+    "nodemailer": "^6.9.13"
   },
   "devDependencies": {
-    "@types/react": "^18.2.15",
-    "@types/react-dom": "^18.2.7"
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0"
   }
 }
