@@ -200,9 +200,34 @@ const App: React.FC = () => {
           .then(serverOrg => {
              if(serverOrg.error) return;
              
-             // Merge updates for dynamic data
-             // NOTE: We DO NOT poll settings here to prevent reverting local edits while typing.
-             setShifts(prev => smartMerge(prev, serverOrg.shifts));
+             // SPECIAL MERGE FOR SHIFTS TO PREVENT 'COMPLETED' -> 'ACTIVE' REVERSION
+             // If local has 'completed' (from Force Stop) and server has 'active' (stale), ignore server status for that item.
+             setShifts(prev => {
+                 const serverShifts = (serverOrg.shifts || []) as Shift[];
+                 const serverMap = new Map(serverShifts.map((s) => [s.id, s]));
+                 
+                 const merged: Shift[] = prev.map(localS => {
+                     const serverS = serverMap.get(localS.id);
+                     if (!serverS) return localS; // Keep local optimistic if not on server yet
+                     
+                     // PROTECTION: Keep local 'completed' status against stale server 'active' status
+                     // Enhanced check: If local has actualEndTime set, it is completed, regardless of server.
+                     const isLocallyCompleted = localS.status === 'completed' || !!localS.actualEndTime;
+                     
+                     if (isLocallyCompleted && serverS.status === 'active') {
+                         return localS; 
+                     }
+                     return serverS;
+                 });
+
+                 // Add completely new items from server
+                 serverShifts.forEach((s) => {
+                     if (!prev.find(p => p.id === s.id)) merged.push(s);
+                 });
+                 
+                 return merged;
+             });
+
              setSupplyRequests(prev => smartMerge(prev, serverOrg.supplyRequests));
              setLeaveRequests(prev => smartMerge(prev, serverOrg.leaveRequests));
              setManualTasks(prev => smartMerge(prev, serverOrg.manualTasks));

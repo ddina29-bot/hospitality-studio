@@ -755,6 +755,37 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                 </div>
             </header>
             
+            {/* Notes & Special Requests Section */}
+            {(activeShift.notes || (activeProperty?.specialRequests && activeProperty.specialRequests.length > 0)) && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-[32px] p-6 space-y-4 shadow-sm animate-in slide-in-from-top-2">
+                    <div className="flex items-center gap-2">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-yellow-600"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        <h3 className="text-xs font-black text-yellow-700 uppercase tracking-widest">Important Instructions</h3>
+                    </div>
+                    
+                    {activeShift.notes && (
+                        <div className="space-y-1">
+                            <p className="text-[9px] font-bold text-black/40 uppercase tracking-widest">Shift Note</p>
+                            <p className="text-sm font-medium text-black italic">"{activeShift.notes}"</p>
+                        </div>
+                    )}
+
+                    {activeProperty?.specialRequests && activeProperty.specialRequests.length > 0 && (
+                        <div className="space-y-2">
+                            <p className="text-[9px] font-bold text-black/40 uppercase tracking-widest">Property Special Requests</p>
+                            <ul className="space-y-2">
+                                {activeProperty.specialRequests.map((req, i) => (
+                                    <li key={i} className="flex gap-3 items-start bg-white p-3 rounded-xl border border-yellow-100">
+                                        <span className="text-yellow-500 font-bold">•</span>
+                                        <span className="text-xs font-bold text-black uppercase">{req}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+                </div>
+            )}
+
             <div className="space-y-4">
                 <p className="text-[8px] font-black text-black/30 uppercase tracking-[0.4em] px-1">Deployment Checklist</p>
                 {tasks.map(task => (

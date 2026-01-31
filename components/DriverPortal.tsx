@@ -193,7 +193,7 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
   };
 
   const toggleTaskField = (shiftId: string, field: keyof Shift, reason?: string) => {
-    // Allow toggle if driver/admin is viewing today, regardless of route timer
+    // UPDATED: Removed isViewingToday check to allow drivers to update past statuses
     if (!canInteract) return;
     
     setShifts?.(prev => prev.map(s => {
@@ -246,7 +246,10 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
   }, [realTodayISO]);
 
   const driverList = useMemo(() => users.filter(u => u.role === 'driver' && u.status === 'active' && u.id !== currentUser.id), [users, currentUser.id]);
-  const canInteract = (currentUser.role === 'driver' || isAdmin) && isViewingToday;
+  
+  // UPDATED: Interaction allowed for driver role, regardless of date, to enable retroactive fixes
+  const canInteract = (currentUser.role === 'driver' || isAdmin);
+  
   const labelStyle = "text-[7px] font-black text-[#A68342] uppercase tracking-[0.4em] mb-1 opacity-60";
 
   return (
