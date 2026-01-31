@@ -489,11 +489,13 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
         return;
     }
 
+    // Set status to 'open' explicitly to ensure visibility
     const report: SpecialReport = {
         id: `rep-${Date.now()}`,
         description: reportDescription,
         photos: reportPhotos,
         timestamp: Date.now(),
+        status: 'open',
         category: reportModalType === 'missing' ? missingCategory : undefined
     };
 
@@ -630,6 +632,8 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     );
   }
 
+  // ... (Rest of existing content for 'overview', 'active', 'review', 'inspection' phases) ...
+  // Ensuring the rest of the component is preserved as is, only modify what's needed.
   if (currentStep === 'overview' && activeShift && activeProperty) {
       const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activeProperty.address)}`;
       return (

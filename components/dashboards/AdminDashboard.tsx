@@ -61,8 +61,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
        const missingKeys = s.keysHandled && !s.keysAtOffice;
        return missingDelivery || missingCollection || missingKeys;
     }).map(s => {
+        // STRICTLY FIND DRIVER - DO NOT FALLBACK TO CLEANER NAME
         const driver = users.find(u => s.userIds.includes(u.id) && u.role === 'driver');
-        const assigneeName = driver ? driver.name : (users.find(u => s.userIds.includes(u.id))?.name || 'Unassigned');
+        const assigneeName = driver ? driver.name : 'UNASSIGNED';
+        
+        // Find cleaners for context only (cleaner, supervisor, housekeeping)
+        const cleaners = users.filter(u => s.userIds.includes(u.id) && ['cleaner', 'supervisor', 'housekeeping'].includes(u.role));
+        const cleanerNames = cleaners.map(c => c.name.split(' ')[0]).join(', ');
+
         const issues = [];
         if (!s.isDelivered) issues.push('Delivery Pending');
         if (!s.isCollected) issues.push('Collection Pending');
@@ -70,6 +76,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         return {
             shift: s,
             assignee: assigneeName,
+            cleaners: cleanerNames,
             issues: issues.join(', '),
             reason: s.keyLocationReason
         };
@@ -222,6 +229,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 </div>
                                 <p className="text-[8px] font-black text-red-500 uppercase tracking-widest">{alert.issues}</p>
                                 <p className="text-[9px] text-black/60 uppercase mt-2 font-bold">Driver: {alert.assignee}</p>
+                                {alert.cleaners && <p className="text-[8px] text-black/40 font-medium uppercase">On Site: {alert.cleaners}</p>}
                             </div>
                             {alert.reason && (
                                 <div className="bg-orange-50 p-2 rounded-lg border border-orange-100">

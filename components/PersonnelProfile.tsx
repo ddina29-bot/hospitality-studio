@@ -318,6 +318,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+        {/* ... (User details view remains unchanged) ... */}
         <div className="space-y-10">
           <section className="bg-[#FDF8EE] border border-[#D4B476]/30 rounded-[40px] p-8 md:p-12 shadow-2xl relative overflow-hidden">
             <div className="relative z-10 space-y-10">
@@ -474,8 +475,11 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                     <button onClick={() => setViewingDoc(null)} className="text-[9px] font-black text-[#A68342] uppercase tracking-[0.4em] flex items-center gap-2 mb-4 no-print">Back to Menu</button>
                     
                     <div ref={printContentRef} className="bg-white border border-[#D4B476]/20 p-8 rounded-[32px] shadow-xl mx-auto max-w-3xl text-[#1A1A1A]">
+                       {/* FS3 and Payslip views remain unchanged from original logic */}
+                       {/* ... (View logic for FS3/Payslip/Worksheet stays same) ... */}
                        {viewingDoc === 'fs3' ? (
                          <div className="space-y-6 text-black">
+                            {/* ... FS3 Content ... */}
                             <div className="flex justify-between items-start border-b-2 border-black pb-4">
                                <div>
                                   <h1 className="text-2xl font-serif-brand font-bold uppercase tracking-tight">FS3</h1>
@@ -490,8 +494,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                                   <button onClick={handlePrint} className="bg-black text-white px-3 py-1.5 rounded-lg text-[7px] font-black uppercase tracking-widest">Print</button>
                                </div>
                             </div>
-
-                            {/* FS3 Body */}
+                            {/* ... FS3 Body details ... */}
                             <div className="grid grid-cols-2 gap-6">
                                 <div className="border border-black p-3 space-y-2">
                                   <p className="text-[9px] font-bold uppercase bg-gray-100 px-1">A. Payer Information</p>
@@ -505,7 +508,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                                   <p className="text-xs font-mono">NI: {user.niNumber || '---'}</p>
                                 </div>
                             </div>
-
                             <div className="grid grid-cols-2 gap-6">
                                <div className="border border-black p-3 space-y-2">
                                   <p className="text-[9px] font-bold uppercase bg-gray-100 px-1">C. Gross Emoluments</p>
@@ -519,7 +521,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                                   <div className="flex justify-between text-sm font-bold pt-2 border-t"><span>D3. Total</span><span>€{fs3Data.tax.toFixed(2)}</span></div>
                                </div>
                             </div>
-
                             <div className="border border-black p-3 space-y-3">
                                <p className="text-[9px] font-bold uppercase bg-gray-100 px-1">E. SSC & Maternity</p>
                                <div className="grid grid-cols-4 gap-4 text-[9px] font-bold text-center">
@@ -664,7 +665,8 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                   </header>
                   <div className="grid grid-cols-2 gap-6">
                       <div className="space-y-2">
-                        {['MAR 2026', 'FEB 2026', 'JAN 2026', 'DEC 2025'].map(p => (
+                        {/* UPDATED: REMOVED DEC 2025 and JAN 2026 */}
+                        {['MAR 2026', 'FEB 2026'].map(p => (
                           <div key={p} className="flex justify-between items-center p-3 bg-gray-50 rounded-xl">
                               <span className="text-[9px] font-bold uppercase">{p}</span>
                               <div className="flex gap-2">

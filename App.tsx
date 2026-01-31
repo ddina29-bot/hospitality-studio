@@ -210,13 +210,19 @@ const App: React.FC = () => {
                      const serverS = serverMap.get(localS.id);
                      if (!serverS) return localS; // Keep local optimistic if not on server yet
                      
-                     // PROTECTION: Keep local 'completed' status against stale server 'active' status
+                     // PROTECTION 1: Keep local 'completed' status against stale server 'active' status
                      // Enhanced check: If local has actualEndTime set, it is completed, regardless of server.
                      const isLocallyCompleted = localS.status === 'completed' || !!localS.actualEndTime;
                      
                      if (isLocallyCompleted && serverS.status === 'active') {
                          return localS; 
                      }
+
+                     // PROTECTION 2: Keep local 'paid' status against stale server 'unpaid' status
+                     if (localS.paid && !serverS.paid) {
+                         return { ...serverS, paid: true, payoutDate: localS.payoutDate || serverS.payoutDate };
+                     }
+
                      return serverS;
                  });
 
