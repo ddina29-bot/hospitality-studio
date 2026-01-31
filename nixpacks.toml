@@ -1,18 +1,11 @@
-
-# 1. Define the environment with necessary build tools for SQLite and native modules
 [phases.setup]
 nixPkgs = ["nodejs_20", "npm", "python3", "make", "gcc", "g++"]
 
-# 2. Install dependencies
-# We use 'npm install' to ensure a successful install even if package-lock.json is out of sync
-# This fixes the 'npm ci' exit code 1 error during deployment
 [phases.install]
 cmds = ["npm install"]
 
-# 3. Build the frontend
 [phases.build]
 cmds = ["npm run build"]
 
-# 4. Start the server
 [start]
 cmd = "npm start"
