@@ -2,11 +2,11 @@
 providers = ["node"]
 
 [phases.setup]
-nixPkgs = ["nodejs", "npm"]
+nixPkgs = ["nodejs", "npm", "python3", "gcc", "gnumake"]
 
 [phases.install]
-# CRITICAL FIX: Remove existing lockfile to prevent EUSAGE/EINVALID errors during build
-cmds = ["rm -rf package-lock.json node_modules", "npm install"]
+# Force a clean install to avoid lockfile conflicts (fixing the npm ci error)
+cmds = ["rm -rf node_modules", "npm install"]
 
 [phases.build]
 cmds = ["npm run build"]

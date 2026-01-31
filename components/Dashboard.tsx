@@ -305,6 +305,10 @@ const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </div>
       )}
+      
+      <div className="text-center py-4 opacity-30 text-[8px] font-black uppercase tracking-[0.5em] text-black">
+         SYSTEM STATUS: ONLINE
+      </div>
     </div>
   );
 };

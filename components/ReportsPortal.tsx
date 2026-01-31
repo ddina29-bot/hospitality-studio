@@ -123,7 +123,7 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
 
   // Improved Date Parser for Safari/Mobile Compatibility
   const parseDate = (dateStr: string) => {
-    if (!dateStr) return new Date();
+    if (!dateStr) return null; // Return null instead of Today to avoid misgrouping
     const currentYear = new Date().getFullYear();
     
     // Handle standard YYYY-MM-DD
@@ -143,8 +143,9 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
         }
     }
     
-    // Fallback
-    return new Date(`${dateStr} ${currentYear}`);
+    // Fallback: Try standard constructor, but validate result
+    const d = new Date(`${dateStr} ${currentYear}`);
+    return isNaN(d.getTime()) ? null : d;
   };
 
   // --- AUDIT LOGIC ---
@@ -159,7 +160,7 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
          // Safe locale string generation
          let monthName = '';
          try {
-            monthName = dateObj.toLocaleString('en-GB', { month: 'long', year: 'numeric' }).toLowerCase();
+            if (dateObj) monthName = dateObj.toLocaleString('en-GB', { month: 'long', year: 'numeric' }).toLowerCase();
          } catch (e) { monthName = ''; }
          
          return s.propertyName?.toLowerCase().includes(q) || 
@@ -168,9 +169,9 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
                 monthName.includes(q);
       })
       .sort((a, b) => {
-         const dA = parseDate(a.date).getTime();
-         const dB = parseDate(b.date).getTime();
-         return (isNaN(dB) ? 0 : dB) - (isNaN(dA) ? 0 : dA);
+         const dA = parseDate(a.date)?.getTime() || 0;
+         const dB = parseDate(b.date)?.getTime() || 0;
+         return dB - dA; // Descending
       });
   }, [shifts, auditSearch]);
 
@@ -193,13 +194,14 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
     }[] = [];
 
     auditHistory.forEach(shift => {
-        const d = parseDate(shift.date);
+        let d = parseDate(shift.date);
         
-        // Handle invalid dates by grouping them under "Unknown Date" or similar if necessary, 
-        // but robust parseDate should prevent this.
-        if (isNaN(d.getTime())) return; 
+        // If date is invalid, group into "Unknown Date" to avoid "Today" confusion
+        if (!d) {
+            d = new Date(0); // Epoch
+        }
 
-        const monthLabel = d.toLocaleString('en-GB', { month: 'long', year: 'numeric' }).toUpperCase();
+        const monthLabel = d.getTime() === 0 ? "ARCHIVED / UNDATED" : d.toLocaleString('en-GB', { month: 'long', year: 'numeric' }).toUpperCase();
         const year = d.getFullYear();
         const monthIndex = d.getMonth();
         
