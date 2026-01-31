@@ -87,7 +87,7 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
               <div class="flex flex-col gap-2">
                  <div class="flex items-center gap-4">
                     <span class="text-[10px] font-black uppercase tracking-widest text-gray-400 w-16">DATE</span>
-                    <span class="text-xl font-bold text-black uppercase tracking-widest">${date}</span>
+                    <span class="text-2xl font-bold text-black uppercase tracking-widest bg-gray-50 px-2 rounded">${date}</span>
                  </div>
                  <div class="flex items-center gap-4">
                     <span class="text-[10px] font-black uppercase tracking-widest text-gray-400 w-16">TIME</span>
@@ -100,7 +100,7 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
               </div>
            </div>
            <div class="text-right">
-              <span class="bg-[#C5A059] text-black px-6 py-3 rounded-lg text-xs font-black uppercase tracking-widest">
+              <span class="bg-[#C5A059] text-black px-6 py-3 rounded-lg text-xs font-black uppercase tracking-widest border border-black">
                 ${shift.approvalStatus === 'approved' ? 'VERIFIED' : shift.status === 'completed' ? 'COMPLETED' : 'IN PROGRESS'}
               </span>
            </div>

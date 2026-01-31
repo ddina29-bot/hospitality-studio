@@ -6,7 +6,8 @@ providers = ["node"]
 nixPkgs = ["nodejs_20", "npm", "python3", "make", "gcc", "g++"]
 
 [phases.install]
-# CRITICAL: Force 'npm install' instead of 'npm ci' to ignore lockfile mismatches
+# CRITICAL: We utilize 'npm install' instead of 'npm ci' to bypass lockfile mismatch errors.
+# This ensures the build proceeds even if package-lock.json is slightly out of sync.
 cmds = ["npm install"]
 
 [phases.build]

@@ -315,6 +315,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                {activeCleaners.map(shift => {
                   const staffMembers = shift.userIds.map(uid => users.find(u => u.id === uid)).filter(Boolean) as User[];
                   const durationMins = shift.actualStartTime ? Math.floor((Date.now() - shift.actualStartTime) / 60000) : 0;
+                  
+                  // LIVE PHOTOS: Collect recent photos from tasks
                   const allPhotos = shift.tasks?.flatMap(t => t.photos) || [];
                   const recentPhotos = allPhotos.slice(-4).reverse();
 
@@ -350,6 +352,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                            </div>
                            <p className="text-[8px] text-[#C5A059] font-black uppercase tracking-[0.2em]">{shift.serviceType}</p>
                            
+                           {/* LIVE PHOTO FEED */}
                            {recentPhotos.length > 0 && (
                              <div className="pt-2 border-t border-green-500/10">
                                 <p className="text-[7px] font-black text-green-700/50 uppercase tracking-widest mb-2">Live Activity Feed</p>

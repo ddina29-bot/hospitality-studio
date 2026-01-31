@@ -17,12 +17,12 @@ const getLocalISO = (d: Date) => {
 };
 
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-  const R = 6371; 
+  const R = 6371; // Radius of the earth in km
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
   const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c; 
+  return R * c; // Distance in km
 };
 
 interface CleanerPortalProps {
@@ -181,7 +181,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
 
   const handleForceClockOut = useCallback(() => {
     if (!selectedShiftId) return;
-    if (isManagement) return;
+    if (isManagement) return; // Admins don't get auto-kicked
 
     setShifts(prev => prev.map(s => s.id === selectedShiftId ? ({ 
       ...s, 
@@ -193,38 +193,47 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
       tasks: tasks 
     } as Shift) : s));
 
+    // Clear local storage
     localStorage.removeItem(`shared_protocol_v8_${selectedShiftId}`);
     localStorage.removeItem(`shared_special_reqs_v1_${selectedShiftId}`);
     localStorage.removeItem(`shared_checkout_keys_v1_${selectedShiftId}`);
     
+    // Kick user back to list
     setSelectedShiftId(null);
     setCurrentStep('list');
-    showNotification("⚠️ SECURITY ALERT: You left the property perimeter. Shift terminated.", 'error');
+    
+    // Show alert
+    alert("⚠️ SECURITY ALERT: You left the property perimeter (>50m). Shift terminated automatically.");
   }, [selectedShiftId, setShifts, tasks, isManagement]);
 
-  // GPS Monitor
+  // GPS Monitor - Strict 50m Geofence Logic
   useEffect(() => {
     let watchId: number | null = null;
-    // Check if property has coordinates before enabling strict monitoring
+    
+    // Only run if shift is active, property has coordinates, and user is NOT admin/management
     if (currentStep === 'active' && activeProperty?.lat && activeProperty?.lng && !isManagement) {
+      
+      const targetLat = activeProperty.lat;
+      const targetLng = activeProperty.lng;
+
       watchId = navigator.geolocation.watchPosition(
         (position) => {
-          const distance = calculateDistance(
-            activeProperty.lat!, 
-            activeProperty.lng!, 
-            position.coords.latitude, 
-            position.coords.longitude
-          );
-          // 50m radius (0.05 km)
-          if (distance > 0.05) { 
-            console.warn(`Geofence Breach: ${distance.toFixed(4)}km`);
+          const currentLat = position.coords.latitude;
+          const currentLng = position.coords.longitude;
+          
+          const distanceKm = calculateDistance(targetLat, targetLng, currentLat, currentLng);
+          
+          // 0.05 km = 50 meters
+          if (distanceKm > 0.05) { 
+            console.warn(`Geofence Breach Detected: ${distanceKm.toFixed(4)}km`);
             handleForceClockOut();
           }
         },
         (error) => console.warn("Geolocation watch error:", error),
-        { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 5000 }
       );
     }
+    
     return () => {
       if (watchId !== null) navigator.geolocation.clearWatch(watchId);
     };
@@ -247,6 +256,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     }
   }, [initialSelectedShiftId, shifts, onConsumedDeepLink, canPerformAudit]);
 
+  // Load Saved Tasks
   useEffect(() => {
     if (selectedShiftId && currentStep === 'active' && activeProperty) {
       const storageKey = `shared_protocol_v8_${selectedShiftId}`;
@@ -275,6 +285,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     }
   }, [selectedShiftId, currentStep, activeProperty, activeShift?.serviceType]);
 
+  // Persist Tasks
   useEffect(() => {
     if (selectedShiftId && tasks.length > 0) {
       try { localStorage.setItem(`shared_protocol_v8_${selectedShiftId}`, JSON.stringify(tasks)); } catch (e) { console.warn(e); }
@@ -287,6 +298,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     }
   }, [tasks, completedSpecialRequests, keyInBoxPhotos, boxClosedPhotos, selectedShiftId]);
 
+  // Timer
   useEffect(() => {
     let interval: any;
     if ((currentStep === 'active' || currentStep === 'review' || currentStep === 'inspection') && activeShift?.actualStartTime) {
@@ -300,7 +312,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
 
   const verifyLocation = () => {
     if (!activeProperty || !activeProperty.lat || !activeProperty.lng) {
-        // Fallback if properties don't have coords yet - allow entry for now but warn
         showNotification("Property coordinates missing. Proceeding with caution.", 'success');
         setIsLocationVerified(true);
         return;
@@ -316,12 +327,12 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                 position.coords.longitude
             );
             
-            // Strict 100m Geofence for check-in
+            // Check-in allowed within 100m
             if (distance <= 0.1) {
                 setIsLocationVerified(true);
                 showNotification("Location Verified Successfully", 'success');
             } else {
-                showNotification(`Location Error: You are ${distance.toFixed(2)}km away. Must be within 100m.`, 'error');
+                showNotification(`Location Error: You are ${distance.toFixed(2)}km away. Must be within 100m to start.`, 'error');
             }
             setIsVerifying(false);
         },
@@ -440,7 +451,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   const handleReportSubmit = () => {
     if (!selectedShiftId || !reportModalType) return;
     
-    // Validation
     if (!reportDescription.trim()) {
         showNotification("Please describe the issue.", 'error');
         return;
@@ -555,7 +565,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                          {isToFix && <span className="w-fit text-[7px] bg-orange-600 text-white px-2.5 py-1 rounded font-black uppercase shadow-sm">REMEDIAL ACTION REQ.</span>}
                          {isThisShiftActive && <span className="w-fit text-[7px] bg-[#C5A059] text-black px-2.5 py-1 rounded font-black uppercase shadow-sm border border-[#C5A059]/30">ACTIVE</span>}
                          
-                         {/* Pending Review Label (Blue) */}
                          {isPendingReview && <span className="w-fit text-[7px] bg-blue-600 text-white px-2.5 py-1 rounded font-black uppercase shadow-sm border border-blue-700">SUBMITTED - PENDING REVIEW</span>}
                          
                          {isApproved && <span className="w-fit text-[7px] text-green-600 font-black uppercase tracking-widest">QUALITY APPROVED</span>}
@@ -574,7 +583,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                        </div>
                      </div>
                   </div>
-                  {/* Icon State */}
                   {!canEnter && isPendingReview ? (
                      <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
@@ -696,10 +704,10 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                     <div>
                         <p className="text-[8px] font-black uppercase tracking-[0.4em] mb-1 opacity-60">Deployment Active</p>
                         <h3 className="text-xl font-serif-brand font-bold uppercase tracking-tight">{activeShift.propertyName}</h3>
-                        {(activeProperty?.lat && activeProperty?.lng) && (
+                        {(activeProperty?.lat && activeProperty?.lng && !isManagement) && (
                            <div className="mt-2 flex items-center gap-1.5 bg-black/10 w-fit px-2 py-1 rounded-lg">
                               <span className="w-1.5 h-1.5 rounded-full bg-black animate-pulse"></span>
-                              <span className="text-[7px] font-black uppercase tracking-widest">GPS LOCK ACTIVE</span>
+                              <span className="text-[7px] font-black uppercase tracking-widest">GPS LOCK ACTIVE (50m Radius)</span>
                            </div>
                         )}
                     </div>
