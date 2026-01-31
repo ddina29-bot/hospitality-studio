@@ -83,8 +83,11 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
            <div>
               <p class="text-[10px] font-black text-[#C5A059] uppercase tracking-[0.4em] mb-2">RESET HOSPITALITY STUDIO</p>
               <h1 class="text-3xl brand-font font-bold uppercase tracking-tight">${shift.propertyName}</h1>
-              <p class="text-xs font-bold text-gray-500 uppercase tracking-widest mt-2">${date} • ${shift.serviceType}</p>
-              <p class="text-[10px] font-black text-black/40 uppercase tracking-widest mt-1">Duration: ${timeRange}</p>
+              <div class="mt-4 flex flex-col gap-1">
+                 <p class="text-lg font-bold text-black uppercase tracking-widest">DATE: ${date}</p>
+                 <p class="text-sm font-bold text-gray-500 uppercase tracking-widest">SERVICE: ${shift.serviceType}</p>
+                 <p class="text-sm font-bold text-black uppercase tracking-widest">TIME: ${timeRange}</p>
+              </div>
            </div>
            <div class="text-right">
               <span class="bg-[#C5A059] text-black px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest">

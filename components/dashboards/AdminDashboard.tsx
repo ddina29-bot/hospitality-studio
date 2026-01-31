@@ -156,6 +156,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setAssignmentNote('');
   };
 
+  const handleForceStop = (shiftId: string) => {
+    if (!window.confirm("Are you sure you want to FORCE CLOCK OUT this user? This will mark the shift as completed pending review.")) return;
+    setShifts(prev => prev.map(s => {
+        if (s.id === shiftId) {
+            return {
+                ...s,
+                status: 'completed',
+                actualEndTime: Date.now(),
+                approvalStatus: 'pending',
+                approvalComment: 'ADMIN FORCED CLOCK OUT'
+            };
+        }
+        return s;
+    }));
+  };
+
   const assignableStaff = useMemo(() => {
     return users.filter(u => ['maintenance', 'outsourced_maintenance', 'driver', 'housekeeping', 'supervisor', 'admin'].includes(u.role) && u.status === 'active')
         .sort((a, b) => {
@@ -342,7 +358,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <div className="space-y-4">
                            <div className="flex justify-between items-start">
                               <h4 className="text-sm font-bold text-black uppercase tracking-tight">{shift.propertyName}</h4>
-                              <span className="text-[9px] font-mono font-bold text-green-700 bg-green-100 px-2 py-1 rounded">{durationMins}m</span>
+                              <div className="flex flex-col items-end gap-1">
+                                <span className="text-[9px] font-mono font-bold text-green-700 bg-green-100 px-2 py-1 rounded">{durationMins}m</span>
+                                {user.role === 'admin' && (
+                                    <button 
+                                        onClick={() => handleForceStop(shift.id)}
+                                        className="bg-red-600 text-white px-2 py-1 rounded text-[6px] font-black uppercase tracking-widest hover:bg-red-700 transition-all shadow-md z-10"
+                                    >
+                                        FORCE STOP
+                                    </button>
+                                )}
+                              </div>
                            </div>
                            <div className="flex items-center gap-3">
                               <div className="flex -space-x-2 overflow-hidden">
