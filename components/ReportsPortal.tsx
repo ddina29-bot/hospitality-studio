@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { AuditReport, User, UserRole, SupplyRequest, Shift, LeaveRequest } from '../types';
 
@@ -22,7 +23,7 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
   leaveRequests = [],
   userRole 
 }) => {
-  const [activeTab, setActiveTab] = useState<ReportTab>('incidents'); // Default to incidents for better visibility
+  const [activeTab, setActiveTab] = useState<ReportTab>('incidents');
   const [personnelSearch, setPersonnelSearch] = useState('');
   const [incidentSearch, setIncidentSearch] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -382,7 +383,7 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
                   <>
                     {groupMode === 'none' ? (
                         filteredIncidents.map((inc, i) => (
-                            <div key={`${inc.id}-${i}`} className={`p-6 rounded-[32px] border flex flex-col md:flex-row items-center justify-between gap-6 shadow-md transition-all ${inc.resolved ? 'bg-gray-50 border-gray-200 opacity-70' : 'bg-white border-red-100 hover:border-red-300'}`}>
+                            <div key={`${inc.shiftId}-${i}`} className={`p-6 rounded-[32px] border flex flex-col md:flex-row items-center justify-between gap-6 shadow-md transition-all ${inc.resolved ? 'bg-gray-50 border-gray-200 opacity-70' : 'bg-white border-red-100 hover:border-red-300'}`}>
                                 <div className="flex items-center gap-6 w-full md:w-auto">
                                 <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white text-lg shadow-lg ${inc.type === 'Maintenance' ? 'bg-blue-500' : inc.type === 'Damage' ? 'bg-orange-500' : 'bg-purple-500'}`}>{inc.type.charAt(0)}</div>
                                 <div className="space-y-1">
@@ -407,7 +408,7 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
                                     <div className="h-px flex-1 bg-gray-200"></div>
                                 </div>
                                 {items.map((inc, i) => (
-                                    <div key={`${inc.id}-${i}`} className={`p-5 rounded-[24px] border flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm ml-4 ${inc.resolved ? 'bg-gray-50 border-gray-100' : 'bg-white border-red-50'}`}>
+                                    <div key={`${inc.shiftId}-${i}`} className={`p-5 rounded-[24px] border flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm ml-4 ${inc.resolved ? 'bg-gray-50 border-gray-100' : 'bg-white border-red-50'}`}>
                                         <div className="flex items-center gap-4">
                                             <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold ${inc.type === 'Maintenance' ? 'bg-blue-500' : inc.type === 'Damage' ? 'bg-orange-500' : 'bg-purple-500'}`}>{inc.type.charAt(0)}</div>
                                             <div>
