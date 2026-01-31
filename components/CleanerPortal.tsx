@@ -441,6 +441,26 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     else { setCurrentStep('list'); setSelectedShiftId(null); }
   };
 
+  const handleForceFinish = () => {
+    if (!selectedShiftId) return;
+    setShifts(prev => prev.map(s => s.id === selectedShiftId ? ({ 
+        ...s, 
+        status: 'completed', 
+        actualEndTime: Date.now(), 
+        approvalStatus: 'pending', 
+        approvalComment: 'ADMIN FORCE CHECKOUT',
+        tasks: tasks,
+        checkoutPhotos: { keyInBox: keyInBoxPhotos, boxClosed: boxClosedPhotos }
+    } as Shift) : s));
+    
+    localStorage.removeItem(`shared_protocol_v8_${selectedShiftId}`);
+    localStorage.removeItem(`shared_special_reqs_v1_${selectedShiftId}`);
+    localStorage.removeItem(`shared_checkout_keys_v1_${selectedShiftId}`);
+    
+    if (isManagement && onClosePortal) onClosePortal();
+    else { setCurrentStep('list'); setSelectedShiftId(null); }
+  };
+
   const handleSubmitMessReport = () => {
     if (!selectedShiftId) return;
     setShifts(prev => prev.map(s => s.id === selectedShiftId ? {
@@ -776,6 +796,22 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
 
             <button onClick={handleProceedToClockOut} className="w-full bg-black text-[#C5A059] font-black py-6 rounded-3xl uppercase tracking-[0.4em] text-sm shadow-xl active:scale-95 transition-all mt-10">Proceed to Clock Out</button>
             
+            {isManagement && (
+                <div className="mt-8 pt-8 border-t border-red-200">
+                    <p className="text-[9px] font-black text-red-500 uppercase tracking-widest mb-2 text-center">Admin Emergency Zone</p>
+                    <button 
+                        onClick={() => {
+                            if(confirm("FORCE CHECK OUT: This will bypass all photo/geofence requirements. Are you sure?")) {
+                                handleForceFinish();
+                            }
+                        }}
+                        className="w-full bg-red-600 text-white font-black py-4 rounded-2xl uppercase tracking-[0.3em] text-[10px] shadow-xl active:scale-95 transition-all"
+                    >
+                        ⚠️ FORCE CHECK OUT (ADMIN ONLY)
+                    </button>
+                </div>
+            )}
+
             {showMessReport && (
                 <div className="fixed inset-0 bg-black/60 z-[500] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
                     <div className="bg-white border border-red-100 rounded-[48px] w-full max-w-lg p-8 md:p-12 space-y-8 shadow-2xl relative text-left my-auto animate-in zoom-in-95">
