@@ -1,12 +1,14 @@
 
-# 1. Disable auto-detection to stop the default 'npm ci' command
+# 1. Disable auto-detection to prevent the server from choosing 'npm ci'
 providers = []
 
 # 2. Define the environment
 [phases.setup]
 nixPkgs = ["nodejs_20", "npm", "python3", "make", "gcc", "g++"]
 
-# 3. OVERRIDE INSTALL: Delete the lockfile and node_modules, then fresh install
+# 3. OVERRIDE INSTALL: 
+# Explicitly delete the lockfile causing the error.
+# Run 'npm install' to generate a fresh, correct one.
 [phases.install]
 cmds = ["rm -rf package-lock.json node_modules", "npm install"]
 
