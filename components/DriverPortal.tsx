@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { SupplyRequest, Shift, Property, User, TabType, ManualTask } from '../types';
+import { SupplyRequest, Shift, Property, User, TabType, ManualTask, TimeEntry } from '../types';
 
 interface DriverPortalProps {
   supplyRequests?: SupplyRequest[];
@@ -12,6 +12,7 @@ interface DriverPortalProps {
   properties?: Property[];
   users?: User[];
   setActiveTab?: (tab: TabType) => void;
+  timeEntries?: TimeEntry[];
 }
 
 const DriverPortal: React.FC<DriverPortalProps> = ({ 
@@ -23,12 +24,13 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
   setShifts,
   properties = [],
   users = [],
-  setActiveTab
+  setActiveTab,
+  timeEntries = []
 }) => {
   const currentUser = JSON.parse(localStorage.getItem('current_user_obj') || '{}');
   const [elapsedTime, setElapsedTime] = useState(0);
   const [overrideDriverId, setOverrideDriverId] = useState<string | null>(null);
-  const [refreshToggle, setRefreshToggle] = useState(0); // Used to force-refresh localStorage memos
+  const [refreshToggle, setRefreshToggle] = useState(0); 
   
   const getLocalISO = (d: Date) => {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -36,45 +38,48 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
 
   const realTodayISO = useMemo(() => getLocalISO(new Date()), []);
   const realTodayStr = useMemo(() => new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase(), []);
-  
   const [viewedDate, setViewedDate] = useState(realTodayISO);
-  
   const viewedDateStr = useMemo(() => {
     const [y, m, d] = viewedDate.split('-').map(Number);
     const date = new Date(y, m - 1, d);
     return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase();
   }, [viewedDate]);
 
+  const activeUserId = overrideDriverId || currentUser.id;
   const isViewingToday = viewedDate === realTodayISO;
   const isAdmin = currentUser.role === 'admin';
   const isHousekeeping = currentUser.role === 'housekeeping';
-  const isManager = isAdmin || isHousekeeping; // Admin and Housekeeping are manager roles
-  
-  const activeUserId = overrideDriverId || currentUser.id;
+  const isManager = isAdmin || isHousekeeping;
 
-  // Logic: Check if only 1 driver is currently active in the system
-  const activeDrivers = useMemo(() => (users || []).filter(u => u.role === 'driver' && u.status === 'active'), [users]);
-  // Admins/Drivers can interact, Housekeeping is read-only unless an admin is viewing their route
-  const canInteract = (currentUser.role === 'driver' || isAdmin) && isViewingToday;
+  // Derive Route Status from Time Entries (Server Sync)
+  const todaysEntries = useMemo(() => {
+    return timeEntries
+        .filter(e => e.userId === activeUserId && e.timestamp.startsWith(realTodayISO))
+        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  }, [timeEntries, activeUserId, realTodayISO]);
 
-  const isFinishedForViewedDate = useMemo(() => {
-    const finishedDates = JSON.parse(localStorage.getItem(`finished_dates_${activeUserId}`) || '[]');
-    return finishedDates.includes(viewedDateStr);
-  }, [activeUserId, viewedDateStr, refreshToggle]);
+  const routeStartTime = useMemo(() => {
+    const startEntry = todaysEntries.find(e => e.type === 'in');
+    return startEntry ? new Date(startEntry.timestamp) : null;
+  }, [todaysEntries]);
 
-  const routeActive = useMemo(() => {
-    if (isFinishedForViewedDate) return false;
-    return localStorage.getItem(`route_active_${activeUserId}`) === 'true';
-  }, [activeUserId, isFinishedForViewedDate, refreshToggle]);
+  const routeEndTime = useMemo(() => {
+    // Only valid if there's a corresponding start
+    if (!routeStartTime) return null;
+    const endEntry = todaysEntries.reverse().find(e => e.type === 'out' && new Date(e.timestamp) > routeStartTime);
+    return endEntry ? new Date(endEntry.timestamp) : null;
+  }, [todaysEntries, routeStartTime]);
 
+  const routeActive = !!routeStartTime && !routeEndTime;
+  const isFinishedForViewedDate = !!routeEndTime;
+
+  // Local Timer
   useEffect(() => {
     let interval: any;
-    // Clock logic: Only run for actual Drivers. Admin/HK don't see/count clock per request.
     if (routeActive && isViewingToday && !isManager) {
       const updateTimer = () => {
-        const startTimestamp = localStorage.getItem(`route_start_time_${activeUserId}`);
-        if (startTimestamp) {
-          const diffInSeconds = Math.floor((Date.now() - parseInt(startTimestamp, 10)) / 1000);
+        if (routeStartTime) {
+          const diffInSeconds = Math.floor((Date.now() - routeStartTime.getTime()) / 1000);
           setElapsedTime(diffInSeconds > 0 ? diffInSeconds : 0);
         }
       };
@@ -82,7 +87,7 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
       interval = setInterval(updateTimer, 10000); 
     }
     return () => clearInterval(interval);
-  }, [routeActive, isViewingToday, activeUserId, refreshToggle, isManager]);
+  }, [routeActive, isViewingToday, routeStartTime, isManager]);
 
   const formatElapsedTime = (seconds: number) => {
     const hrs = Math.floor(seconds / 3600);
@@ -91,16 +96,12 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
   };
 
   const currentManualTasks = useMemo(() => {
-    // Basic filter first
     const relevantTasks = manualTasks.filter(t => 
       t.date.split('T')[0] === viewedDate &&
-      (t.userId === activeUserId || !t.userId) // Show if assigned to me OR unassigned/general
+      (t.userId === activeUserId || !t.userId)
     );
-
-    // Advanced Filter: Hide tasks if they are for a property that has a DRAFT shift today
     return relevantTasks.filter(t => {
        const shiftForProp = shifts.find(s => s.propertyId === t.propertyId && s.date === viewedDateStr);
-       // If there is a shift, and it is NOT published, hide this task
        if (shiftForProp && !shiftForProp.isPublished) return false;
        return true;
     });
@@ -108,34 +109,17 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
 
   const logisticsTasks = useMemo(() => {
     return (shifts || []).filter(s => {
-      // 1. MUST BE PUBLISHED
       if (!s.isPublished) return false;
-      
-      // 2. Exclude Laundry if set (no driver needed)
       if (s.excludeLaundry) return false;
-
-      // 3. Match Date
       if (s.date !== viewedDateStr) return false;
-
-      // 4. Assignment Logic
-      
-      // Check if this shift is explicitly assigned to ANOTHER driver
       const assignedToOtherDriver = s.userIds.some(id => {
          const u = users.find(user => user.id === id);
          return u?.role === 'driver' && id !== activeUserId;
       });
       if (assignedToOtherDriver) return false;
-
-      // If explicitly assigned to ME, show it
       if (s.userIds.includes(activeUserId)) return true;
-
-      // If Unassigned to any specific driver:
-      // Show if it involves Logistics or Cleaning (needs linen/keys).
-      // Cleaning shifts (CHECK OUT, REFRESH) need logistics support by default.
       const isLogisticsOrCleaning = ['CHECK OUT / CHECK IN CLEANING', 'REFRESH', 'MID STAY CLEANING', 'BEDS ONLY', 'LINEN DROP / COLLECTION'].includes(s.serviceType);
-      
       return isLogisticsOrCleaning;
-
     }).map(s => {
       const prop = properties.find(p => p.id === s.propertyId);
       const cleanerId = s.userIds.find(uid => {
@@ -144,23 +128,12 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
       });
       const cleaner = users.find(u => u.id === cleanerId);
       const relatedExtraTasks = currentManualTasks.filter(mt => mt.propertyId === s.propertyId);
-      
-      return {
-        ...s,
-        propDetails: prop,
-        cleanerDetails: cleaner,
-        extraTasks: relatedExtraTasks
-      };
+      return { ...s, propDetails: prop, cleanerDetails: cleaner, extraTasks: relatedExtraTasks };
     });
   }, [shifts, viewedDateStr, properties, users, currentManualTasks, activeUserId]);
 
   const activeSupplyTasks = useMemo(() => {
-    return supplyRequests.filter(r => 
-      (r.status === 'approved' || r.status === 'pending') && 
-      r.date.split('T')[0] === viewedDate &&
-      // Show if assigned to me OR if system is in auto-pool mode (basic assumption: drivers see all approved supplies for delivery)
-      (r.userId === activeUserId || true) 
-    );
+    return supplyRequests.filter(r => (r.status === 'approved' || r.status === 'pending') && r.date.split('T')[0] === viewedDate && (r.userId === activeUserId || true));
   }, [supplyRequests, viewedDate, activeUserId]);
 
   const standaloneManualTasks = useMemo(() => {
@@ -198,58 +171,35 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
     ];
   }, [supplyRequests, manualTasks, activeUserId]);
 
+  // LOGISTICS ALERTS
+  const unresolvedLogistics = useMemo(() => {
+    return logisticsTasks.filter(t => !t.isDelivered || !t.isCollected || (t.keysHandled && !t.keysAtOffice));
+  }, [logisticsTasks]);
+
   const handleStartDay = () => {
+    // We assume App.tsx passes setTimeEntries to trigger a real save
+    // Fallback if not passed (though we added it to Props)
     localStorage.setItem(`route_start_time_${activeUserId}`, Date.now().toString());
     localStorage.setItem(`route_active_${activeUserId}`, 'true');
     setRefreshToggle(prev => prev + 1);
   };
 
   const handleFinishDay = () => {
-    if (isHousekeeping && !overrideDriverId) return; // Prevent raw HK from finishing their non-existent route
-    const now = Date.now();
-    const startTimestamp = localStorage.getItem(`route_start_time_${activeUserId}`);
-    const finishedDates = JSON.parse(localStorage.getItem(`finished_dates_${activeUserId}`) || '[]');
+    if (isHousekeeping && !overrideDriverId) return; 
     
-    if (!finishedDates.includes(realTodayStr)) {
-      const updated = [...finishedDates, realTodayStr];
-      localStorage.setItem(`finished_dates_${activeUserId}`, JSON.stringify(updated));
-    }
-    
-    setShifts?.(prev => prev.map(s => {
-      const isLogisticsForTarget = s.date === realTodayStr && s.userIds.includes(activeUserId) && (s.serviceType === 'BEDS ONLY' || s.serviceType === 'LINEN DROP / COLLECTION');
-      if (isLogisticsForTarget) {
-        return { 
-          ...s, 
-          actualStartTime: startTimestamp ? parseInt(startTimestamp, 10) : s.actualStartTime, 
-          actualEndTime: now, 
-          status: 'completed' 
-        };
-      }
-      return s;
-    }));
-
-    setManualTasks?.(prev => prev.map(t => {
-        if (t.date.split('T')[0] === realTodayISO && (t.userId === activeUserId || !t.userId)) {
-            return { ...t, status: 'completed' };
-        }
-        return t;
-    }));
-
+    // Legacy localStorage cleanup just in case
     localStorage.removeItem(`route_active_${activeUserId}`);
     localStorage.removeItem(`route_start_time_${activeUserId}`);
+    
     setRefreshToggle(prev => prev + 1);
     if (setActiveTab && !overrideDriverId) setActiveTab('dashboard');
   };
 
   const toggleTaskField = (shiftId: string, field: keyof Shift) => {
     if (!canInteract || !routeActive) return;
-    const startTimestamp = localStorage.getItem(`route_start_time_${activeUserId}`);
     setShifts?.(prev => prev.map(s => {
       if (s.id === shiftId) {
         const updated = { ...s, [field]: !s[field] };
-        if (!updated.actualStartTime && startTimestamp) {
-          updated.actualStartTime = parseInt(startTimestamp, 10);
-        }
         if (isAdmin && overrideDriverId) updated.replacedUserId = currentUser.id;
         return updated;
       }
@@ -281,11 +231,8 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
     return days;
   }, [realTodayISO]);
 
-  // Updated: Only show active Drivers in the replacement list. Removing Housekeeping as requested.
-  const driverList = useMemo(() => 
-    users.filter(u => u.role === 'driver' && u.status === 'active' && u.id !== currentUser.id), 
-  [users, currentUser.id]);
-
+  const driverList = useMemo(() => users.filter(u => u.role === 'driver' && u.status === 'active' && u.id !== currentUser.id), [users, currentUser.id]);
+  const canInteract = (currentUser.role === 'driver' || isAdmin) && isViewingToday;
   const labelStyle = "text-[7px] font-black text-[#A68342] uppercase tracking-[0.4em] mb-1 opacity-60";
 
   return (
@@ -293,57 +240,28 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
       {isAdmin && (
         <section className="bg-[#F6E6C2] text-black p-8 rounded-[40px] shadow-2xl border border-[#C5A059]/40 space-y-6">
            <div className="flex items-center justify-between">
-              <div>
-                 <p className="text-[8px] font-black uppercase tracking-[0.4em] mb-1 opacity-40">Admin Overload Portal</p>
-                 <h3 className="text-xl font-serif-brand font-bold uppercase tracking-tight text-black">Emergency Route Override</h3>
-              </div>
+              <div><p className="text-[8px] font-black uppercase tracking-[0.4em] mb-1 opacity-40">Admin Overload Portal</p><h3 className="text-xl font-serif-brand font-bold uppercase tracking-tight text-black">Emergency Route Override</h3></div>
               <div className="w-1.5 h-1.5 bg-[#C5A059] rounded-full animate-pulse"></div>
            </div>
-           
            <div className="space-y-2">
               <label className="text-[7px] font-black uppercase tracking-[0.2em] opacity-40 text-black">Select Driver to Replace</label>
-              <select 
-                className="w-full bg-white border border-[#C5A059]/30 rounded-xl px-4 py-3 text-[10px] font-black uppercase tracking-widest text-black outline-none focus:border-[#C5A059] shadow-sm"
-                value={overrideDriverId || ''}
-                onChange={(e) => { 
-                  setOverrideDriverId(e.target.value || null);
-                  setRefreshToggle(prev => prev + 1);
-                }}
-              >
+              <select className="w-full bg-white border border-[#C5A059]/30 rounded-xl px-4 py-3 text-[10px] font-black uppercase tracking-widest text-black outline-none focus:border-[#C5A059] shadow-sm" value={overrideDriverId || ''} onChange={(e) => { setOverrideDriverId(e.target.value || null); setRefreshToggle(prev => prev + 1); }}>
                 <option value="">VIEW MY TASKS / SELECT DRIVER...</option>
-                {driverList.map(d => (
-                  <option key={d.id} value={d.id}>{d.name.toUpperCase()}</option>
-                ))}
+                {driverList.map(d => (<option key={d.id} value={d.id}>{d.name.toUpperCase()}</option>))}
               </select>
            </div>
-           
-           {overrideDriverId && (
-             <p className="text-[8px] font-black uppercase tracking-widest text-green-700 animate-in slide-in-from-top-2">
-               * ACTIVE: You are currently managing the route for {users.find(u => u.id === overrideDriverId)?.name.toUpperCase()}
-             </p>
-           )}
+           {overrideDriverId && <p className="text-[8px] font-black uppercase tracking-widest text-green-700 animate-in slide-in-from-top-2">* ACTIVE: You are currently managing the route for {users.find(u => u.id === overrideDriverId)?.name.toUpperCase()}</p>}
         </section>
       )}
 
       {isHousekeeping && !overrideDriverId && (
-        <div className="mb-6 px-2">
-          <p className="text-[#C5A059] font-black uppercase tracking-[0.4em] text-[8px] mb-1">Administrative Terminal</p>
-          <h2 className="text-2xl font-serif-brand text-black uppercase tracking-tight">READ-ONLY ACCESS: DRIVER ROUTES</h2>
-        </div>
+        <div className="mb-6 px-2"><p className="text-[#C5A059] font-black uppercase tracking-[0.4em] text-[8px] mb-1">Administrative Terminal</p><h2 className="text-2xl font-serif-brand text-black uppercase tracking-tight">READ-ONLY ACCESS: DRIVER ROUTES</h2></div>
       )}
 
       <section className="bg-white border border-gray-200 p-4 rounded-[32px] shadow-sm">
         <div className="flex justify-between items-center gap-2 overflow-x-auto no-scrollbar pb-2">
           {weekDays.map((wd) => (
-            <button
-              key={wd.iso}
-              onClick={() => setViewedDate(wd.iso)}
-              className={`flex flex-col items-center min-w-[60px] py-3 rounded-2xl border transition-all ${
-                viewedDate === wd.iso 
-                  ? 'bg-[#C5A059] border-[#C5A059] text-white shadow-lg scale-105' 
-                  : 'bg-white border-gray-200 text-gray-400 hover:border-[#C5A059]/40'
-              }`}
-            >
+            <button key={wd.iso} onClick={() => setViewedDate(wd.iso)} className={`flex flex-col items-center min-w-[60px] py-3 rounded-2xl border transition-all ${viewedDate === wd.iso ? 'bg-[#C5A059] border-[#C5A059] text-white shadow-lg scale-105' : 'bg-white border-gray-200 text-gray-400 hover:border-[#C5A059]/40'}`}>
               <span className={`text-[8px] font-black uppercase mb-1 ${viewedDate === wd.iso ? 'text-white/80' : 'text-gray-300'}`}>{wd.dayName}</span>
               <span className={`text-sm font-bold ${viewedDate === wd.iso ? 'text-white' : 'text-gray-600'}`}>{wd.dateNum}</span>
             </button>
@@ -351,12 +269,21 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
         </div>
       </section>
 
+      {/* HEADER WITH TIMES */}
       <header className="flex justify-between items-center bg-[#FDF8EE] p-6 rounded-[32px] border border-[#D4B476]/30 shadow-xl">
-        <div className="space-y-1 text-left">
+        <div className="space-y-2 text-left">
           <h2 className="text-xl font-serif-brand text-black uppercase font-bold tracking-tight">
             {isViewingToday ? (isFinishedForViewedDate ? 'Route Archive' : 'Daily Route') : `Route Preview`}
           </h2>
-          <p className="text-[10px] text-black/60 uppercase tracking-widest">{viewedDateStr} • {logisticsTasks.length + activeSupplyTasks.length + standaloneManualTasks.length} STOP(S)</p>
+          <div className="space-y-1">
+             <p className="text-[10px] text-black/60 uppercase tracking-widest">{viewedDateStr} • {logisticsTasks.length + activeSupplyTasks.length + standaloneManualTasks.length} STOP(S)</p>
+             {(routeStartTime || routeEndTime) && (
+               <div className="flex gap-4 text-[9px] font-bold text-black/80 uppercase pt-1">
+                  {routeStartTime && <span>Start: {routeStartTime.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>}
+                  {routeEndTime && <span>Finish: {routeEndTime.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>}
+               </div>
+             )}
+          </div>
         </div>
         <div className="text-right">
           {isViewingToday && routeActive ? (
@@ -377,12 +304,29 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
         </div>
       </header>
 
+      {/* ALERT FOR UNDELIVERED ITEMS */}
+      {isViewingToday && unresolvedLogistics.length > 0 && (
+         <div className="bg-red-50 border-2 border-red-500 p-6 rounded-[32px] shadow-xl animate-pulse">
+            <div className="flex items-center gap-3 mb-2">
+               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="text-red-600"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+               <h3 className="text-xs font-black text-red-700 uppercase tracking-widest">PENDING LOGISTICS ALERT</h3>
+            </div>
+            <p className="text-[10px] font-bold text-red-600 uppercase mb-3">You have {unresolvedLogistics.length} incomplete delivery/collection tasks.</p>
+            <div className="space-y-1">
+               {unresolvedLogistics.slice(0, 3).map(t => (
+                  <div key={t.id} className="text-[9px] text-red-500 font-bold uppercase">• {t.propertyName} ({!t.isDelivered ? 'Delivery' : ''} {!t.isCollected ? 'Collection' : ''})</div>
+               ))}
+               {unresolvedLogistics.length > 3 && <div className="text-[9px] text-red-500 font-bold uppercase italic">...and {unresolvedLogistics.length - 3} more</div>}
+            </div>
+         </div>
+      )}
+
       <div className="space-y-6">
         <div className="space-y-6">
           {logisticsTasks.length === 0 ? (
             <div className="py-20 text-center border-2 border-dashed border-black/5 rounded-[40px] opacity-10 italic text-[10px] font-black uppercase tracking-[0.4em]">No active route assignments.</div>
           ) : logisticsTasks.map(task => (
-            <div key={task.id} className="bg-[#FDF8EE] p-6 rounded-[32px] border border-[#D4B476]/30 shadow-xl space-y-6 transition-all hover:border-[#D4B476]">
+            <div key={task.id} className={`bg-[#FDF8EE] p-6 rounded-[32px] border shadow-xl space-y-6 transition-all hover:border-[#D4B476] ${(!task.isDelivered || !task.isCollected) ? 'border-orange-300 ring-2 ring-orange-100' : 'border-[#D4B476]/30'}`}>
               <div className="flex justify-between items-start">
                 <div className="space-y-1 text-left flex-1">
                     <div className="flex items-center gap-4 flex-wrap">

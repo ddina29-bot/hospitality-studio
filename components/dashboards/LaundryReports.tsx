@@ -105,7 +105,7 @@ const LaundryReports: React.FC<LaundryReportsProps> = ({ shifts, properties, use
   };
 
   const handleResetCount = (item: string) => {
-    if (!window.confirm(`Clear damage count for ${item}?`)) return;
+    if (!window.confirm(`Clear damage count for ${item}? This confirms you have restocked or disposed of the items.`)) return;
     const newCounts = { ...damageCounts };
     delete newCounts[item];
     saveCounts(newCounts);
@@ -114,11 +114,14 @@ const LaundryReports: React.FC<LaundryReportsProps> = ({ shifts, properties, use
   const labelStyle = "text-[7px] font-black text-[#8B6B2E] uppercase tracking-[0.4em] opacity-80 mb-1.5 block px-1";
   const inputStyle = "w-full bg-white border border-gray-300 rounded-lg px-3 py-2.5 text-black text-[10px] font-bold uppercase tracking-widest outline-none focus:border-[#C5A059] transition-all placeholder:text-black/20";
 
-  const showAdminAlert = userRole === 'admin' && criticalItems.length > 0;
+  // LOGIC: Admin sees alerts, Laundry/Staff sees input button
   const isAdmin = userRole === 'admin';
+  const showAdminAlert = isAdmin && criticalItems.length > 0;
+  const canReportDamage = ['laundry', 'supervisor', 'driver'].includes(userRole || '');
 
   return (
     <div className="space-y-10 animate-in fade-in duration-700 text-left pb-32">
+      {/* Alert only visible to Admin when thresholds are met */}
       {showAdminAlert && (
         <section className="bg-red-50 border-2 border-red-600 p-8 rounded-[40px] shadow-2xl flex flex-col md:flex-row items-center justify-between gap-8 animate-in slide-in-from-top-4 duration-500">
            <div className="flex items-center gap-6 text-left flex-1">
@@ -141,7 +144,17 @@ const LaundryReports: React.FC<LaundryReportsProps> = ({ shifts, properties, use
                  </div>
               </div>
            </div>
-           <button className="w-full md:w-auto bg-red-600 text-white font-black px-8 py-4 rounded-2xl uppercase tracking-[0.2em] text-[9px] shadow-xl hover:bg-red-700 transition-all active:scale-95 shrink-0">PROCURE STOCK</button>
+           {/* Action for admin to acknowledge restock */}
+           <div className="w-full md:w-auto text-center md:text-right">
+              <p className="text-[8px] text-red-600 font-black uppercase tracking-widest mb-2">RESTOCK & CLEAR</p>
+              <div className="flex gap-2 justify-center md:justify-end">
+                 {criticalItems.map(item => (
+                    <button key={item.name} onClick={() => handleResetCount(item.name)} className="bg-white border border-red-200 text-red-600 px-3 py-2 rounded-lg text-[7px] font-black uppercase hover:bg-red-50">
+                       Reset {item.name}
+                    </button>
+                 ))}
+              </div>
+           </div>
         </section>
       )}
 
@@ -151,6 +164,7 @@ const LaundryReports: React.FC<LaundryReportsProps> = ({ shifts, properties, use
         <p className="text-[9px] text-black/30 font-black uppercase tracking-widest mt-1 italic">Active Circulation & Fabric Quality Monitor</p>
       </header>
 
+      {/* Circulation Stats */}
       <section className="bg-[#FDF8EE] text-black p-10 rounded-[48px] border border-[#D4B476]/40 shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none">
           <svg width="200" height="200" viewBox="0 0 24 24" fill="currentColor"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
@@ -182,12 +196,15 @@ const LaundryReports: React.FC<LaundryReportsProps> = ({ shifts, properties, use
         </div>
       </section>
 
-      {!isAdmin && (
+      {/* DAMAGE REPORTING SECTION - HIDDEN FROM ADMIN (Visible only to Laundry/Staff) */}
+      {canReportDamage && (
         <div className="space-y-6">
           <section className="bg-orange-50 border border-orange-200 p-8 rounded-[40px] shadow-sm flex flex-col md:flex-row items-center justify-between gap-8">
             <div className="text-left space-y-2">
                 <h4 className="text-sm font-black text-orange-800 uppercase tracking-widest">Damaged Laundry Hub</h4>
-                <p className="text-[10px] text-orange-700/60 italic leading-relaxed">"Record damaged items here to maintain Studio fabric quality standards. Total decommissioned count: <span className="font-bold text-orange-800">{totalDamaged}</span>"</p>
+                <p className="text-[10px] text-orange-700/60 italic leading-relaxed">
+                  "Record damaged items here to maintain Studio fabric quality standards. Total decommissioned count: <span className="font-bold text-orange-800">{totalDamaged}</span>"
+                </p>
             </div>
             <button 
               onClick={() => setShowDamageModal(true)}
@@ -199,6 +216,7 @@ const LaundryReports: React.FC<LaundryReportsProps> = ({ shifts, properties, use
         </div>
       )}
 
+      {/* INVENTORY TRACKER - VISIBLE TO ALL */}
       {totalCriticalUnits > 0 && (
         <section className="bg-white border border-gray-100 p-8 rounded-[40px] shadow-sm space-y-6">
           <div className="flex items-center gap-4 px-1">
@@ -215,10 +233,11 @@ const LaundryReports: React.FC<LaundryReportsProps> = ({ shifts, properties, use
                 </div>
                 <div className="flex items-center gap-4">
                   <span className="text-xl font-serif-brand font-bold text-red-600">{item.count}</span>
-                  {userRole === 'admin' && (
+                  {isAdmin && (
                     <button 
                       onClick={() => handleResetCount(item.name)}
                       className="opacity-0 group-hover:opacity-100 p-2 text-black/20 hover:text-red-500 transition-all"
+                      title="Reset Count (Restocked)"
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                     </button>
@@ -232,6 +251,7 @@ const LaundryReports: React.FC<LaundryReportsProps> = ({ shifts, properties, use
       
       <p className="text-[9px] text-center text-black/10 uppercase font-black tracking-[0.4em] pt-10 italic">TELEMETRY ACTIVE. COUNTS REFLECT CUMULATIVE DAMAGE REPORTS ACROSS STUDIO ASSETS.</p>
 
+      {/* DAMAGE LOGGING MODAL */}
       {showDamageModal && (
         <div className="fixed inset-0 bg-black/60 z-[500] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
           <div className="bg-white border border-orange-200 rounded-[48px] w-full max-w-lg p-8 md:p-12 space-y-8 shadow-2xl relative text-left my-auto animate-in zoom-in-95">

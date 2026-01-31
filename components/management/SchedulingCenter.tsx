@@ -1,10 +1,10 @@
 
-// ... existing imports ...
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Shift, Property, User, SpecialReport, AttributedPhoto, AuditReport, LeaveRequest, TabType } from '../../types';
+import { Shift, Property, User, AuditReport, LeaveRequest, TabType } from '../../types';
 import { SERVICE_TYPES } from '../../constants';
 
-// ... (helper functions convertTo12h, convertTo24h, toLocalDateString, parseShiftDate, parseTimeToMinutes, getShiftAttributedPhotos, CustomTimePicker, CustomDatePicker remain identical) ...
+// --- HELPER FUNCTIONS ---
+
 const convertTo12h = (time24h: string) => {
   if (!time24h) return "10:00 AM";
   let [hours, minutes] = time24h.split(':');
@@ -60,7 +60,7 @@ const getShiftAttributedPhotos = (shift: Shift): { url: string }[] => {
   if (shift.maintenanceReports) shift.maintenanceReports.forEach(r => r.photos?.forEach(url => allPhotos.push({ url })));
   if (shift.damageReports) shift.damageReports.forEach(r => r.photos?.forEach(url => allPhotos.push({ url })));
   if (shift.missingReports) shift.missingReports.forEach(r => r.photos?.forEach(url => allPhotos.push({ url })));
-  if (shift.inspectionPhotos) shift.inspectionPhotos.forEach(url => allPhotos.push({ url }));
+  if (shift.inspectionPhotos) shift.inspectionPhotos.forEach(url => allPhotos.push({ url })));
   return allPhotos;
 };
 
@@ -169,7 +169,7 @@ const CustomDatePicker: React.FC<{ value: string; onChange: (v: string) => void;
 };
 
 interface SchedulingCenterProps {
-  shifts?: Shift[];
+  shifts: Shift[];
   setShifts: React.Dispatch<React.SetStateAction<Shift[]>>;
   properties: Property[];
   users: User[];
@@ -181,7 +181,18 @@ interface SchedulingCenterProps {
   setActiveTab?: (tab: TabType) => void;
 }
 
-const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShifts, properties, users, showToast, setAuditReports, leaveRequests = [], initialSelectedShiftId, onConsumedDeepLink, setActiveTab }) => {
+const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ 
+  shifts = [], 
+  setShifts, 
+  properties, 
+  users, 
+  showToast, 
+  setAuditReports, 
+  leaveRequests = [], 
+  initialSelectedShiftId, 
+  onConsumedDeepLink, 
+  setActiveTab 
+}) => {
   const currentUser = JSON.parse(localStorage.getItem('current_user_obj') || '{}');
   const [showShiftModal, setShowShiftModal] = useState(false);
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
@@ -198,6 +209,10 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
   const [driverSearch, setDriverSearch] = useState('');
   const [serviceTypeSearch, setServiceTypeSearch] = useState('');
   
+  // State for Shift Form
+  const [shiftForm, setShiftForm] = useState<Partial<Shift>>({});
+  const [isReactivating, setIsReactivating] = useState(false);
+
   const [availableServiceTypes, setAvailableServiceTypes] = useState<string[]>(() => {
     const saved = localStorage.getItem('studio_custom_service_types');
     return saved ? JSON.parse(saved) : SERVICE_TYPES;
@@ -229,7 +244,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
   }, []);
 
   useEffect(() => {
-    if (initialSelectedShiftId) {
+    if (initialSelectedShiftId && shifts.length > 0) {
       const shift = shifts.find(s => s.id === initialSelectedShiftId);
       if (shift) {
         if (shift.approvalStatus === 'rejected') {
@@ -240,7 +255,21 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
         if (onConsumedDeepLink) onConsumedDeepLink();
       }
     }
-  }, [initialSelectedShiftId]);
+  }, [initialSelectedShiftId, shifts]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+        if (propertyPickerRef.current && !propertyPickerRef.current.contains(e.target as Node)) setShowPropertyDropdown(false);
+        if (personnelPickerRef.current && !personnelPickerRef.current.contains(e.target as Node)) setShowPersonnelPicker(false);
+        if (driverPickerRef.current && !driverPickerRef.current.contains(e.target as Node)) setShowDriverPicker(false);
+        if (serviceTypePickerRef.current && !serviceTypePickerRef.current.contains(e.target as Node)) setShowServiceTypePicker(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Helper to handle property dropdown state since we had a naming mismatch in useEffect above
+  const setShowPropertyDropdown = (val: boolean) => setShowPropertyPicker(val);
 
   const activeManagedProperties = useMemo(() => properties.filter(p => p.status !== 'disabled'), [properties]);
 
@@ -254,12 +283,44 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
     return availableServiceTypes.filter(t => t.toLowerCase().includes(query));
   }, [availableServiceTypes, serviceTypeSearch]);
 
+  const filteredCleaners = useMemo(() => {
+    const query = staffSearch.toLowerCase();
+    return users.filter(u => 
+      ['cleaner', 'supervisor'].includes(u.role) && 
+      u.status === 'active' && 
+      u.name.toLowerCase().includes(query)
+    );
+  }, [users, staffSearch]);
+
   const [currentWeekStart, setCurrentWeekStart] = useState(() => {
     const d = new Date();
     const day = d.getDay();
     const diff = d.getDate() - day + (day === 0 ? -6 : 1);
     return new Date(d.setDate(diff));
   });
+
+  const weekDates = useMemo(() => {
+    const dates = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(currentWeekStart);
+      d.setDate(currentWeekStart.getDate() + i);
+      dates.push(d);
+    }
+    return dates;
+  }, [currentWeekStart]);
+
+  const navigateWeek = (direction: number) => {
+    setCurrentWeekStart(prev => {
+      const d = new Date(prev);
+      d.setDate(prev.getDate() + (direction * 7));
+      return d;
+    });
+  };
+
+  const hasUnpublishedShifts = useMemo(() => {
+    const weekDateStrs = weekDates.map(d => d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase());
+    return shifts.some(s => !s.isPublished && weekDateStrs.includes(s.date));
+  }, [shifts, weekDates]);
 
   const getEmptyShift = () => ({
     propertyId: '', userIds: [], date: toLocalDateString(new Date()),
@@ -268,198 +329,52 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
     excludeLaundry: false
   });
 
-  const [shiftForm, setShiftForm] = useState<Partial<Shift>>(getEmptyShift());
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (propertyPickerRef.current && !propertyPickerRef.current.contains(e.target as Node)) {
-        setShowPropertyPicker(false);
-        setPropertySearch('');
-      }
-      if (personnelPickerRef.current && !personnelPickerRef.current.contains(e.target as Node)) {
-        setShowPersonnelPicker(false);
-        setStaffSearch('');
-      }
-      if (driverPickerRef.current && !driverPickerRef.current.contains(e.target as Node)) {
-        setShowDriverPicker(false);
-        setDriverSearch('');
-      }
-      if (serviceTypePickerRef.current && !serviceTypePickerRef.current.contains(e.target as Node)) {
-        setShowServiceTypePicker(false);
-        setServiceTypeSearch('');
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const isReactivating = selectedShift?.approvalStatus === 'rejected' || selectedShift?.serviceType === 'TO CHECK APARTMENT';
-  
-  const activeDrivers = useMemo(() => (users || []).filter(u => u.role === 'driver' && u.status === 'active'), [users]);
-  
-  const cleaners = useMemo(() => {
-    let list = (users || []).filter(u => u && u.status === 'active');
-    if (isSupervisorOnlyPicker) {
-      return list.filter(u => ['supervisor', 'admin', 'housekeeping'].includes(u.role));
-    }
-    return list.filter(u => ['cleaner', 'supervisor'].includes(u.role));
-  }, [users, isSupervisorOnlyPicker]);
-  
-  const filteredCleaners = useMemo(() => {
-    if (!staffSearch) return cleaners;
-    return cleaners.filter(u => u.name.toLowerCase().includes(staffSearch.toLowerCase()));
-  }, [cleaners, staffSearch]);
-
-  const filteredDrivers = useMemo(() => {
-    if (!driverSearch) return activeDrivers;
-    return activeDrivers.filter(u => u.name.toLowerCase().includes(driverSearch.toLowerCase()));
-  }, [activeDrivers, driverSearch]);
-
-  const weekDates = useMemo(() => Array.from({ length: 7 }, (_, i) => { const d = new Date(currentWeekStart); d.setDate(d.getDate() + i); return d; }), [currentWeekStart]);
-
-  const hasUnpublishedShifts = useMemo(() => {
-    const weekDateStrings = weekDates.map(d => d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase());
-    return (shifts || []).some(s => weekDateStrings.includes(s.date) && !s.isPublished);
-  }, [shifts, weekDates]);
-
-  const navigateWeek = (weeks: number) => {
-    const newStart = new Date(currentWeekStart);
-    newStart.setDate(newStart.getDate() + (weeks * 7));
-    setCurrentWeekStart(newStart);
-  };
-
-  const publishCurrentWeek = () => {
-    const weekDateStrings = weekDates.map(d => d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase());
-    setShifts(prev => prev.map(s => weekDateStrings.includes(s.date) ? { ...s, isPublished: true } : s));
-    if (showToast) showToast(`CURRENT WEEK PUBLISHED`, 'success');
-  };
-
   const handleOpenNewShift = (userId?: string, dateStr?: string) => {
-    setIsFieldLocked(false);
-    setIsSupervisorOnlyPicker(false);
-    setOriginalCleanerIds(null);
     setShiftForm({
       ...getEmptyShift(),
       userIds: userId ? [userId] : [],
-      date: dateStr || toLocalDateString(new Date())
+      date: dateStr || parseShiftDate(new Date().toISOString())
     });
+    setIsReactivating(false);
     setSelectedShift(null);
     setShowShiftModal(true);
     setPropertySearch('');
     setStaffSearch('');
     setDriverSearch('');
     setServiceTypeSearch('');
+    setIsFieldLocked(false);
+    setIsSupervisorOnlyPicker(false);
   };
 
   const handleEditShift = (shift: Shift) => {
-    setIsFieldLocked(false);
-    setIsSupervisorOnlyPicker(shift.serviceType === 'TO CHECK APARTMENT');
-    setOriginalCleanerIds(null);
-    setShiftForm({
-      ...shift,
-      startTime: convertTo24h(shift.startTime),
-      endTime: convertTo24h(shift.endTime || '14:00'),
-      date: parseShiftDate(shift.date)
-    });
+    setShiftForm({ ...shift });
     setSelectedShift(shift);
+    setIsReactivating(false);
     setShowShiftModal(true);
     setPropertySearch('');
     setStaffSearch('');
     setDriverSearch('');
     setServiceTypeSearch('');
-  };
-
-  const handleDeleteShift = (id: string) => {
-    if (!id) return;
-    setShifts(prev => prev.filter(s => s.id !== id));
-    setShowShiftModal(false);
-    setReviewShift(null);
-    setSelectedShift(null);
-    if (showToast) showToast(`SHIFT REMOVED`, 'info');
-  };
-
-  const handleRescheduleFix = (originalShift: Shift) => {
-    setIsFieldLocked(true);
+    setIsFieldLocked(false);
     setIsSupervisorOnlyPicker(false);
-    
-    let targetUserIds = originalShift.userIds;
-    const originalCleanerPhotos: string[] = [];
-
-    const cleanerShift = shifts
-        .filter(s => s.propertyId === originalShift.propertyId && s.serviceType !== 'TO CHECK APARTMENT' && s.status === 'completed')
-        .sort((a, b) => (b.actualEndTime || 0) - (a.actualEndTime || 0))[0];
-    
-    if (originalShift.serviceType === 'TO CHECK APARTMENT' && cleanerShift) {
-        targetUserIds = cleanerShift.userIds;
-    }
-
-    if (cleanerShift) {
-      cleanerShift.tasks?.forEach(t => t.photos?.forEach(p => originalCleanerPhotos.push(p.url)));
-    }
-
-    setOriginalCleanerIds(targetUserIds);
-
-    setShiftForm({
-      ...getEmptyShift(),
-      propertyId: originalShift.propertyId,
-      userIds: targetUserIds,
-      serviceType: 'TO FIX',
-      notes: `[REMEDIAL] Fix required for ${originalShift.propertyName}. Findings: ${originalShift.approvalComment}`,
-      approvalComment: originalShift.approvalComment,
-      inspectionPhotos: originalShift.inspectionPhotos,
-      originalCleaningPhotos: originalCleanerPhotos,
-      date: parseShiftDate(originalShift.date),
-      isPublished: true,
-      excludeLaundry: originalShift.excludeLaundry || false
-    });
-    
-    setSelectedShift(originalShift); 
-    setReviewShift(null);
-    setShowShiftModal(true);
-    setPropertySearch('');
-    setStaffSearch('');
-    setDriverSearch('');
-    setServiceTypeSearch('');
   };
 
-  const handleSendSupervisor = (originalShift: Shift) => {
-    setIsFieldLocked(true);
-    setIsSupervisorOnlyPicker(true);
-    setOriginalCleanerIds(null);
-    setShiftForm({
-      ...getEmptyShift(),
-      propertyId: originalShift.propertyId,
-      userIds: [], 
-      serviceType: 'TO CHECK APARTMENT',
-      notes: `[SUPERVISOR AUDIT] Independent check required for ${originalShift.propertyName}.`,
-      date: parseShiftDate(originalShift.date),
-      isPublished: true,
-      excludeLaundry: originalShift.excludeLaundry || false
-    });
-    setSelectedShift(null);
-    setReviewShift(null);
-    setShowShiftModal(true);
-    setPropertySearch('');
-    setStaffSearch('');
-    setDriverSearch('');
-    setServiceTypeSearch('');
-  };
-
-  // Helper function to check leave conflict (Includes Pending for Visibility)
-  const getUserLeaveStatus = (userId: string, date: Date) => {
-    const targetDateStr = toLocalDateString(date);
-    return leaveRequests.find(l => {
-      // Ignore rejected leaves (they are free to work)
-      if (l.userId !== userId || l.status === 'rejected') return false;
-      return targetDateStr >= l.startDate && targetDateStr <= l.endDate;
-    });
+  const publishCurrentWeek = () => {
+    const weekDateStrs = weekDates.map(d => d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase());
+    setShifts(prev => prev.map(s => {
+      if (weekDateStrs.includes(s.date) && !s.isPublished) {
+        return { ...s, isPublished: true };
+      }
+      return s;
+    }));
+    if (showToast) showToast('WEEK PUBLISHED', 'success');
   };
 
   const handleSaveShift = (e: React.FormEvent | null, publishScope: 'draft' | 'day' | 'week' | boolean = 'draft') => {
     e?.preventDefault?.();
     if (!shiftForm.propertyId || !shiftForm.userIds?.length || !shiftForm.date || !shiftForm.serviceType) return;
     
-    // Check for Leave Conflict (Only Approved Blocks Scheduling)
+    // Check for Leave Conflict
     const dateObj = new Date(shiftForm.date as string);
     const conflictingLeave = shiftForm.userIds
       .map(uid => ({ uid, leave: getUserLeaveStatus(uid, dateObj) }))
@@ -568,17 +483,82 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
     setSelectedShift(null);
   };
 
-  const hasConflict = (shift: Shift) => {
-    const start = parseTimeToMinutes(shift.startTime);
-    const end = parseTimeToMinutes(shift.endTime || '14:00');
-    return (shifts || []).some(other => {
-      if (other.id === shift.id || other.date !== shift.date) return false;
-      const hasSharedUser = shift.userIds.some(uid => other.userIds.includes(uid));
-      if (!hasSharedUser) return false;
-      const otherStart = parseTimeToMinutes(other.startTime);
-      const otherEnd = parseTimeToMinutes(other.endTime || '14:00');
-      return (start < otherEnd && end > otherStart);
+  const handleRescheduleFix = (originalShift: Shift) => {
+    setIsFieldLocked(true);
+    setIsSupervisorOnlyPicker(false);
+    setIsReactivating(true);
+    
+    let targetUserIds = originalShift.userIds;
+    const originalCleanerPhotos: string[] = [];
+
+    const cleanerShift = shifts
+        .filter(s => s.propertyId === originalShift.propertyId && s.serviceType !== 'TO CHECK APARTMENT' && s.status === 'completed')
+        .sort((a, b) => (b.actualEndTime || 0) - (a.actualEndTime || 0))[0];
+    
+    if (originalShift.serviceType === 'TO CHECK APARTMENT' && cleanerShift) {
+        targetUserIds = cleanerShift.userIds;
+    }
+
+    if (cleanerShift) {
+      cleanerShift.tasks?.forEach(t => t.photos?.forEach(p => originalCleanerPhotos.push(p.url)));
+    }
+
+    setOriginalCleanerIds(targetUserIds);
+
+    setShiftForm({
+      ...getEmptyShift(),
+      propertyId: originalShift.propertyId,
+      userIds: targetUserIds,
+      serviceType: 'TO FIX',
+      notes: `[REMEDIAL] Fix required for ${originalShift.propertyName}. Findings: ${originalShift.approvalComment}`,
+      approvalComment: originalShift.approvalComment,
+      inspectionPhotos: originalShift.inspectionPhotos,
+      originalCleaningPhotos: originalCleanerPhotos,
+      date: parseShiftDate(originalShift.date),
+      isPublished: true,
+      excludeLaundry: originalShift.excludeLaundry || false
     });
+    
+    setSelectedShift(originalShift); 
+    setReviewShift(null);
+    setShowShiftModal(true);
+    setPropertySearch('');
+    setStaffSearch('');
+    setDriverSearch('');
+    setServiceTypeSearch('');
+  };
+
+  const handleSendSupervisor = (originalShift: Shift) => {
+    setIsFieldLocked(true);
+    setIsSupervisorOnlyPicker(true);
+    setIsReactivating(false);
+    setOriginalCleanerIds(null);
+    setShiftForm({
+      ...getEmptyShift(),
+      propertyId: originalShift.propertyId,
+      userIds: [], 
+      serviceType: 'TO CHECK APARTMENT',
+      notes: `[SUPERVISOR AUDIT] Independent check required for ${originalShift.propertyName}.`,
+      date: parseShiftDate(originalShift.date),
+      isPublished: true,
+      excludeLaundry: originalShift.excludeLaundry || false
+    });
+    setSelectedShift(null);
+    setReviewShift(null);
+    setShowShiftModal(true);
+    setPropertySearch('');
+    setStaffSearch('');
+    setDriverSearch('');
+    setServiceTypeSearch('');
+  };
+
+  const handleDeleteShift = (id: string) => {
+    if (!id) return;
+    setShifts(prev => prev.filter(s => s.id !== id));
+    setShowShiftModal(false);
+    setReviewShift(null);
+    setSelectedShift(null);
+    if (showToast) showToast(`SHIFT REMOVED`, 'info');
   };
 
   const handleReviewDecision = (status: 'approved' | 'rejected') => {
@@ -637,6 +617,31 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
     setRejectionReason('');
   };
 
+  const getUserLeaveStatus = (userId: string, date: Date) => {
+    const targetDateStr = toLocalDateString(date);
+    return leaveRequests.find(l => {
+      if (l.userId !== userId || l.status === 'rejected') return false;
+      return targetDateStr >= l.startDate && targetDateStr <= l.endDate;
+    });
+  };
+
+  const hasConflict = (shift: Shift) => {
+    const start = parseTimeToMinutes(shift.startTime);
+    const end = parseTimeToMinutes(shift.endTime || '14:00');
+    return (shifts || []).some(other => {
+      if (other.id === shift.id || other.date !== shift.date) return false;
+      const hasSharedUser = shift.userIds.some(uid => other.userIds.includes(uid));
+      if (!hasSharedUser) return false;
+      const otherStart = parseTimeToMinutes(other.startTime);
+      const otherEnd = parseTimeToMinutes(other.endTime || '14:00');
+      return (start < otherEnd && end > otherStart);
+    });
+  };
+
+  const isUserActiveNow = (userId: string) => {
+    return shifts.some(s => s.userIds.includes(userId) && s.status === 'active');
+  };
+
   const getShiftsForUserAndDay = (userId: string, dayDate: Date) => {
     const isoStr = toLocalDateString(dayDate);
     const shortStr = dayDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase();
@@ -649,9 +654,6 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
     const query = search.toLowerCase();
     return (shifts || []).filter(s => (s.date === shortStr || s.date === isoStr) && (!query || s.propertyName?.toLowerCase().includes(query) || s.userIds?.some(id => users.find(u => u.id === id)?.name.toLowerCase().includes(query))));
   };
-
-  const labelStyle = "text-[7px] font-black text-[#C5A059] uppercase tracking-[0.4em] opacity-80 mb-0.5 block px-1";
-  const inputStyle = "w-full bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-[#1A1A1A] text-[9px] font-bold uppercase tracking-widest outline-none focus:border-[#C5A059] h-10 transition-all";
 
   const handleCloseMonitor = () => {
     setReviewShift(null);
@@ -689,13 +691,11 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
     ].filter(g => g.members.length > 0);
   }, [users, search, shifts]);
 
-  const isUserActiveNow = (userId: string) => {
-    return shifts.some(s => s.userIds.includes(userId) && s.status === 'active');
-  };
+  const labelStyle = "text-[7px] font-black text-[#C5A059] uppercase tracking-[0.4em] opacity-80 mb-0.5 block px-1";
+  const inputStyle = "w-full bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-[#1A1A1A] text-[9px] font-bold uppercase tracking-widest outline-none focus:border-[#C5A059] h-10 transition-all";
 
   return (
     <div className="space-y-6 animate-in fade-in duration-700 text-left pb-24 max-w-full overflow-hidden">
-      {/* ... header and view mode toggles ... */}
       <header className="space-y-4 px-1">
         <h2 className="text-2xl font-serif-brand text-[#1A1A1A] uppercase font-bold tracking-tight">SCHEDULE</h2>
         <div className="flex flex-col lg:flex-row lg:items-center gap-4">
@@ -729,7 +729,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
         </div>
       </header>
 
-      {/* Grid View Logic with Leave Visuals */}
+      {/* Grid View */}
       {viewMode === 'grid' ? (
         <div className="bg-white rounded-[32px] border border-gray-300 overflow-hidden shadow-2xl mt-2 relative">
           <div className="overflow-x-auto custom-scrollbar">
@@ -831,8 +831,8 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
           </div>
         </div>
       ) : (
+        // List View Logic
         <div className="space-y-6 pb-20 mt-2">
-          {/* List View Logic (Unchanged, omitted for brevity) */}
           {weekDates.map((date, idx) => {
             const dayShifts = getShiftsForDay(date);
             if (dayShifts.length === 0) return null;
@@ -889,12 +889,10 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
         </div>
       )}
 
-      {/* ... (Shift Modal and Review Modal logic remain unchanged) ... */}
-      {/* ... (Full modal implementation included in source) ... */}
+      {/* Shift Modal */}
       {showShiftModal && (
         <div className="fixed inset-0 bg-black/80 z-[500] flex items-center justify-center p-4 backdrop-blur-sm animate-in zoom-in-95 overflow-y-auto">
-           {/* ... modal content ... */}
-           {/* Modal Body Remains Similar - Using Existing Structure */}
+           {/* ... (Shift Modal Content same as before) ... */}
            <div className="bg-[#FDF8EE] border border-[#D4B476]/30 rounded-[48px] w-full max-w-lg p-10 space-y-8 shadow-2xl relative text-left my-auto">
               <button onClick={() => setShowShiftModal(false)} className="absolute top-10 right-10 text-black/20 hover:text-black transition-colors"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
               
@@ -921,9 +919,9 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
                                 onChange={(e) => { 
                                     setPropertySearch(e.target.value); 
                                     setShiftForm({...shiftForm, propertyId: ''});
-                                    setShowPropertyPicker(true); 
+                                    setShowPropertyDropdown(true); 
                                 }}
-                                onFocus={() => setShowPropertyPicker(true)}
+                                onFocus={() => setShowPropertyDropdown(true)}
                             />
                             {showPropertyPicker && (
                                 <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-xl z-[100] max-h-48 overflow-y-auto custom-scrollbar p-2 space-y-1">
@@ -931,7 +929,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
                                         <button 
                                             key={p.id} 
                                             type="button" 
-                                            onClick={() => { setShiftForm({...shiftForm, propertyId: p.id}); setShowPropertyPicker(false); }}
+                                            onClick={() => { setShiftForm({...shiftForm, propertyId: p.id}); setShowPropertyDropdown(false); }}
                                             className="w-full text-left px-4 py-2 rounded-lg hover:bg-gray-50 text-[9px] font-bold uppercase"
                                         >
                                             {p.name}
@@ -1110,6 +1108,74 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({ shifts = [], setShi
                  )}
               </form>
            </div>
+        </div>
+      )}
+
+      {/* Review Modal (Audit) */}
+      {reviewShift && (
+        <div className="fixed inset-0 bg-black/70 z-[500] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in" onClick={handleCloseMonitor}>
+           <div className="bg-[#FDF8EE] border border-[#C5A059]/40 rounded-[40px] w-full max-w-4xl p-8 md:p-10 space-y-8 shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar" onClick={e => e.stopPropagation()}>
+              <button onClick={handleCloseMonitor} className="absolute top-8 right-8 text-black/20 hover:text-black transition-colors"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+              
+              <div className="space-y-1">
+                 <h2 className="text-2xl font-serif-brand font-bold uppercase text-black">{reviewShift.propertyName}</h2>
+                 <p className="text-[9px] font-black text-[#C5A059] uppercase tracking-[0.4em]">Review & Verify • {reviewShift.date}</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                 <div className="space-y-6">
+                    {/* Checklist Summary */}
+                    <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm space-y-4">
+                       <p className="text-[8px] font-black text-black/30 uppercase tracking-[0.4em]">Completed Checklist</p>
+                       <div className="grid grid-cols-3 gap-2">
+                          {getShiftAttributedPhotos(reviewShift).map((p, i) => (
+                             <img key={i} src={p.url} onClick={() => setZoomedImage(p.url)} className="aspect-square rounded-xl object-cover border border-gray-100 cursor-zoom-in hover:opacity-80 transition-opacity" />
+                          ))}
+                          {getShiftAttributedPhotos(reviewShift).length === 0 && (
+                             <p className="col-span-3 text-[9px] italic text-center py-4 opacity-30">No photos provided.</p>
+                          )}
+                       </div>
+                    </div>
+                 </div>
+
+                 <div className="space-y-6">
+                    <div>
+                       <label className="text-[8px] font-black text-[#C5A059] uppercase tracking-[0.4em] mb-1.5 block px-1 opacity-80">Feedback / Reason</label>
+                       <textarea 
+                         value={rejectionReason} 
+                         onChange={(e) => setRejectionReason(e.target.value)}
+                         className="w-full bg-white border border-[#C5A059]/20 rounded-xl p-4 text-[10px] font-medium outline-none focus:border-[#C5A059] h-32 placeholder:text-black/20 italic"
+                         placeholder="Required for rejection. Optional for approval."
+                       />
+                    </div>
+                    <div className="flex flex-col gap-3">
+                       <div className="flex gap-3">
+                          <button onClick={() => handleReviewDecision('approved')} className="flex-1 bg-green-600 text-white font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-xl active:scale-95 transition-all">
+                             APPROVE CLEAN
+                          </button>
+                          <button onClick={() => handleReviewDecision('rejected')} className="flex-1 bg-red-600 text-white font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-xl active:scale-95 transition-all">
+                             REJECT CLEAN
+                          </button>
+                       </div>
+                       
+                       <div className="flex gap-3">
+                           <button onClick={() => { if (!rejectionReason) { alert("Reason required for fix schedule"); return; } handleReviewDecision('rejected'); handleRescheduleFix(reviewShift); }} className="flex-1 bg-black text-[#C5A059] font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-xl active:scale-95 transition-all border border-[#C5A059]/30 hover:bg-zinc-900">
+                              REJECT & SCHEDULE FIX
+                           </button>
+                           <button onClick={() => handleSendSupervisor(reviewShift)} className="flex-1 bg-white border border-[#C5A059]/30 text-black font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-sm active:scale-95 transition-all hover:bg-gray-50">
+                              SEND SUPERVISOR
+                           </button>
+                       </div>
+                    </div>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {zoomedImage && (
+        <div className="fixed inset-0 bg-black/90 z-[500] flex items-center justify-center p-4 cursor-pointer" onClick={() => setZoomedImage(null)}>
+          <img src={zoomedImage} className="max-w-full max-h-full object-contain rounded-3xl" alt="Preview" />
         </div>
       )}
     </div>

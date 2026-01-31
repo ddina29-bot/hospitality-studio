@@ -54,6 +54,16 @@ const HumanCapitalStudio: React.FC<HumanCapitalStudioProps> = ({
     setShouldOpenAddModal(true);
   };
 
+  // Helper to format date nicely
+  const formatDate = (dateStr: string) => {
+    try {
+        const date = new Date(dateStr);
+        return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase();
+    } catch {
+        return dateStr;
+    }
+  };
+
   return (
     <div className="space-y-10 animate-in fade-in duration-700 text-left pb-32">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
@@ -132,7 +142,10 @@ const HumanCapitalStudio: React.FC<HumanCapitalStudioProps> = ({
                              <p className="text-[10px] font-black text-black uppercase">{l.userName}</p>
                              <p className="text-[8px] text-[#C5A059] font-black uppercase tracking-widest">{l.type}</p>
                           </div>
-                          <span className="text-[8px] text-black/30 font-bold">{l.startDate}</span>
+                          <div className="text-right">
+                             <span className="text-[8px] text-black/40 font-black uppercase block">{formatDate(l.startDate)}</span>
+                             <span className="text-[7px] text-black/20 font-bold uppercase block">TO {formatDate(l.endDate)}</span>
+                          </div>
                        </div>
                        <div className="flex gap-2">
                           <button onClick={() => onUpdateLeaveStatus?.(l.id, 'approved')} className="flex-1 bg-green-600 text-white py-1.5 rounded-lg text-[8px] font-black uppercase">Approve</button>

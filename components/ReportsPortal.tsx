@@ -11,7 +11,7 @@ interface ReportsPortalProps {
   userRole: UserRole;
 }
 
-type ReportTab = 'audit' | 'employees' | 'logistics' | 'incidents';
+type ReportTab = 'audit' | 'activity' | 'employees' | 'incidents';
 
 const ReportsPortal: React.FC<ReportsPortalProps> = ({ 
   auditReports = [], 
@@ -26,6 +26,7 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
   const [incidentSearch, setIncidentSearch] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [auditSearch, setAuditSearch] = useState('');
+  const [activitySearch, setActivitySearch] = useState('');
   const [selectedAuditShift, setSelectedAuditShift] = useState<Shift | null>(null);
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
 
@@ -34,7 +35,7 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
   // --- PDF GENERATOR ENGINE ---
   const handleGeneratePDF = (shift: Shift) => {
     const cleanerNames = shift.userIds.map(id => users.find(u => u.id === id)?.name || 'Unknown').join(', ');
-    const inspectorName = shift.decidedBy || 'Admin';
+    const inspectorName = shift.decidedBy || 'System/Admin';
     const date = shift.date;
     const allPhotos = [
         ...(shift.tasks?.flatMap(t => t.photos) || []),
@@ -52,7 +53,7 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Audit Report - ${shift.propertyName}</title>
+        <title>Report - ${shift.propertyName}</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Libre+Baskerville:wght@700&display=swap" rel="stylesheet">
         <style>
@@ -73,25 +74,25 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
            </div>
            <div class="text-right">
               <span class="bg-[#C5A059] text-black px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest">
-                ${shift.approvalStatus === 'approved' ? 'QUALITY VERIFIED' : 'ATTENTION REQUIRED'}
+                ${shift.approvalStatus === 'approved' ? 'VERIFIED' : shift.status === 'completed' ? 'COMPLETED' : 'IN PROGRESS'}
               </span>
            </div>
         </div>
 
         <div class="grid grid-cols-2 gap-8 mb-10">
            <div class="bg-gray-50 p-6 rounded-2xl border border-gray-100">
-              <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Housekeeping Team</p>
+              <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Staff</p>
               <p class="text-sm font-bold uppercase">${cleanerNames}</p>
            </div>
            <div class="bg-gray-50 p-6 rounded-2xl border border-gray-100">
-              <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Verified By</p>
+              <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Signed Off By</p>
               <p class="text-sm font-bold uppercase">${inspectorName}</p>
            </div>
         </div>
 
         ${shift.approvalComment ? `
         <div class="mb-10">
-           <h3 class="text-sm font-black uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">Inspector Notes</h3>
+           <h3 class="text-sm font-black uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">Notes</h3>
            <p class="text-sm italic text-gray-600 bg-[#FDF8EE] p-6 rounded-2xl border border-[#D4B476]/30">"${shift.approvalComment}"</p>
         </div>` : ''}
 
@@ -121,59 +122,55 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
     printWindow.document.close();
   };
 
-  // Improved Date Parser for Safari/Mobile Compatibility
   const parseDate = (dateStr: string) => {
-    if (!dateStr) return null; // Return null instead of Today to avoid misgrouping
+    if (!dateStr) return null;
     const currentYear = new Date().getFullYear();
-    
-    // Handle standard YYYY-MM-DD
     if (dateStr.includes('-')) return new Date(dateStr);
-    
-    // Handle "DD MMM" (e.g., "25 OCT") - Manual Parse for robustness
     const parts = dateStr.trim().split(' ');
     if (parts.length === 2) {
         const day = parseInt(parts[0], 10);
         const monthStr = parts[1].toLowerCase();
-        const months: {[key: string]: number} = {
-            jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
-            jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11
-        };
-        if (months[monthStr] !== undefined && !isNaN(day)) {
-            return new Date(currentYear, months[monthStr], day);
-        }
+        const months: {[key: string]: number} = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+        if (months[monthStr] !== undefined && !isNaN(day)) return new Date(currentYear, months[monthStr], day);
     }
-    
-    // Fallback: Try standard constructor, but validate result
     const d = new Date(`${dateStr} ${currentYear}`);
     return isNaN(d.getTime()) ? null : d;
   };
 
-  // --- AUDIT LOGIC ---
+  const groupShiftsByMonthDay = (shiftList: Shift[]) => {
+    const groups: { monthLabel: string; year: number; monthIndex: number; days: { date: string; shifts: Shift[] }[] }[] = [];
+    shiftList.forEach(shift => {
+        let d = parseDate(shift.date);
+        if (!d) d = new Date(0);
+        const monthLabel = d.getTime() === 0 ? "ARCHIVED / UNDATED" : d.toLocaleString('en-GB', { month: 'long', year: 'numeric' }).toUpperCase();
+        const year = d.getFullYear();
+        const monthIndex = d.getMonth();
+        let mGroup = groups.find(g => g.monthLabel === monthLabel);
+        if (!mGroup) {
+            mGroup = { monthLabel, year, monthIndex, days: [] };
+            groups.push(mGroup);
+        }
+        let dGroup = mGroup.days.find(day => day.date === shift.date);
+        if (!dGroup) {
+            dGroup = { date: shift.date, shifts: [] };
+            mGroup.days.push(dGroup);
+        }
+        dGroup.shifts.push(shift);
+    });
+    return groups.sort((a, b) => {
+        if (a.year !== b.year) return b.year - a.year;
+        return b.monthIndex - a.monthIndex;
+    });
+  };
+
+  // --- AUDIT HISTORY ---
   const auditHistory = useMemo(() => {
-    return shifts
-      .filter(s => s.status === 'completed' && (s.approvalStatus === 'approved' || s.approvalStatus === 'rejected'))
-      .filter(s => {
-         if (!auditSearch) return true;
-         const q = auditSearch.toLowerCase();
-         const dateObj = parseDate(s.date);
-         
-         // Safe locale string generation
-         let monthName = '';
-         try {
-            if (dateObj) monthName = dateObj.toLocaleString('en-GB', { month: 'long', year: 'numeric' }).toLowerCase();
-         } catch (e) { monthName = ''; }
-         
-         return s.propertyName?.toLowerCase().includes(q) || 
-                s.decidedBy?.toLowerCase().includes(q) ||
-                s.date.toLowerCase().includes(q) ||
-                monthName.includes(q);
-      })
-      .sort((a, b) => {
-         const dA = parseDate(a.date)?.getTime() || 0;
-         const dB = parseDate(b.date)?.getTime() || 0;
-         return dB - dA; // Descending
-      });
+    return shifts.filter(s => s.status === 'completed' && (s.approvalStatus === 'approved' || s.approvalStatus === 'rejected'))
+      .filter(s => !auditSearch || s.propertyName?.toLowerCase().includes(auditSearch.toLowerCase()))
+      .sort((a, b) => (parseDate(b.date)?.getTime() || 0) - (parseDate(a.date)?.getTime() || 0));
   }, [shifts, auditSearch]);
+
+  const auditMonthGroups = useMemo(() => groupShiftsByMonthDay(auditHistory), [auditHistory]);
 
   const auditStats = useMemo(() => {
     const total = auditHistory.length;
@@ -183,65 +180,17 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
     return { total, passed, failed, rate };
   }, [auditHistory]);
 
-  // HIERARCHICAL GROUPING: Month -> Day
-  const monthGroups = useMemo(() => {
-    const groups: { 
-        monthLabel: string; 
-        year: number; 
-        monthIndex: number;
-        days: { date: string; shifts: Shift[] }[];
-        stats: { total: number; passed: number; rate: number }
-    }[] = [];
+  // --- CLEANER ACTIVITY HISTORY ---
+  const activityHistory = useMemo(() => {
+    // Show ALL completed shifts (approved, rejected, or pending audit) to show "what is done"
+    return shifts.filter(s => s.status === 'completed' && s.serviceType !== 'TO CHECK APARTMENT') // Exclude supervisor audits themselves
+      .filter(s => !activitySearch || s.propertyName?.toLowerCase().includes(activitySearch.toLowerCase()) || s.userIds.some(uid => users.find(u => u.id === uid)?.name.toLowerCase().includes(activitySearch.toLowerCase())))
+      .sort((a, b) => (parseDate(b.date)?.getTime() || 0) - (parseDate(a.date)?.getTime() || 0));
+  }, [shifts, activitySearch, users]);
 
-    auditHistory.forEach(shift => {
-        let d = parseDate(shift.date);
-        
-        // If date is invalid, group into "Unknown Date" to avoid "Today" confusion
-        if (!d) {
-            d = new Date(0); // Epoch
-        }
+  const activityMonthGroups = useMemo(() => groupShiftsByMonthDay(activityHistory), [activityHistory]);
 
-        const monthLabel = d.getTime() === 0 ? "ARCHIVED / UNDATED" : d.toLocaleString('en-GB', { month: 'long', year: 'numeric' }).toUpperCase();
-        const year = d.getFullYear();
-        const monthIndex = d.getMonth();
-        
-        let mGroup = groups.find(g => g.monthLabel === monthLabel);
-        if (!mGroup) {
-            mGroup = { 
-                monthLabel, 
-                year, 
-                monthIndex, 
-                days: [], 
-                stats: { total: 0, passed: 0, rate: 0 } 
-            };
-            groups.push(mGroup);
-        }
-
-        // Update Month Stats
-        mGroup.stats.total++;
-        if (shift.approvalStatus === 'approved') mGroup.stats.passed++;
-
-        // Find or Create Day Group
-        let dGroup = mGroup.days.find(day => day.date === shift.date);
-        if (!dGroup) {
-            dGroup = { date: shift.date, shifts: [] };
-            mGroup.days.push(dGroup);
-        }
-        dGroup.shifts.push(shift);
-    });
-
-    // Calculate Rate for each month
-    groups.forEach(g => {
-        g.stats.rate = g.stats.total > 0 ? Math.round((g.stats.passed / g.stats.total) * 100) : 0;
-    });
-
-    return groups.sort((a, b) => {
-        if (a.year !== b.year) return b.year - a.year;
-        return b.monthIndex - a.monthIndex;
-    });
-  }, [auditHistory]);
-
-  // --- INCIDENT LOGIC ---
+  // --- INCIDENTS & PERSONNEL ---
   const incidentReports = useMemo(() => {
     const all: any[] = [];
     shifts.forEach(s => {
@@ -260,7 +209,6 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
       return incidentReports.filter(i => i.propertyName.toLowerCase().includes(q) || i.description.toLowerCase().includes(q));
   }, [incidentReports, incidentSearch]);
 
-  // --- EMPLOYEE LOGIC ---
   const filteredPersonnel = useMemo(() => {
     if (!personnelSearch) return users;
     const s = personnelSearch.toLowerCase();
@@ -275,23 +223,11 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
     ].filter(g => g.members.length > 0);
   }, [filteredPersonnel]);
 
-  const calculateAttendanceGaps = (userId: string) => {
-    const gaps: { date: string, type: string, replacedBy?: string }[] = [];
-    shifts.forEach(s => {
-      if (s.userIds.includes(userId) && s.replacedUserId) {
-        gaps.push({ date: s.date, type: "REPLACED", replacedBy: users.find(u => u.id === s.replacedUserId)?.name || "ADMIN" });
-      }
-    });
-    return gaps;
-  };
-
-  const getUserLeaveHistory = (userId: string) => {
-    return leaveRequests.filter(l => l.userId === userId).sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
-  };
-
   const calculateUserMetrics = (userId: string) => {
     const userObj = users.find(u => u.id === userId);
-    if (!userObj || userObj.role === 'driver') return null;
+    // HIDE METRICS FOR NON-CLEANING ROLES
+    if (!userObj || ['admin', 'housekeeping', 'driver', 'hr', 'finance', 'client', 'maintenance', 'laundry', 'outsourced_maintenance'].includes(userObj.role)) return null;
+    
     const userShifts = shifts.filter(s => s.userIds?.includes(userId) && s.status === 'completed' && (s.approvalStatus === 'approved' || s.approvalStatus === 'rejected'));
     const approved = userShifts.filter(s => s.approvalStatus === 'approved').length;
     const total = userShifts.length;
@@ -300,6 +236,20 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
     let score = 5.0;
     if (total > 0) score = 1 + (approved / total) * 4;
     return { approved, rejected: total - approved, score: parseFloat(score.toFixed(1)), total, totalHours: totalHours.toFixed(1) };
+  };
+
+  const getUserLeaveHistory = (userId: string) => {
+    return leaveRequests.filter(l => l.userId === userId).sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+  };
+
+  const calculateAttendanceGaps = (userId: string) => {
+    const gaps: { date: string, type: string, replacedBy?: string }[] = [];
+    shifts.forEach(s => {
+      if (s.userIds.includes(userId) && s.replacedUserId) {
+        gaps.push({ date: s.date, type: "REPLACED", replacedBy: users.find(u => u.id === s.replacedUserId)?.name || "ADMIN" });
+      }
+    });
+    return gaps;
   };
 
   const subLabelStyle = "text-[7px] font-black text-[#8B6B2E] uppercase tracking-[0.4em] mb-1 opacity-60 block px-1";
@@ -313,11 +263,12 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
            <p className="text-[9px] font-black text-[#8B6B2E] uppercase tracking-[0.4em]">Operations Data Center</p>
         </div>
         <nav className="p-1 bg-white rounded-2xl border border-gray-100 shadow-sm">
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {[
-              { id: 'audit', label: 'Quality Audit' },
+              { id: 'audit', label: 'Quality Audits' },
+              { id: 'activity', label: 'Cleaner Logs' },
               { id: 'employees', label: 'Personnel' },
-              { id: 'incidents', label: 'Incident Logs' }
+              { id: 'incidents', label: 'Incidents' }
             ].map((t) => (
               <button 
                 key={t.id} 
@@ -331,10 +282,10 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
         </nav>
       </header>
 
-      {/* --- AUDIT TAB (Hierarchical: Month -> Day) --- */}
+      {/* --- AUDIT TAB --- */}
       {activeTab === 'audit' && (
         <div className="space-y-10 animate-in slide-in-from-right-4">
-           {/* Stats Header */}
+           {/* Audit Stats Header */}
            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-[#1A1A1A] p-6 rounded-[32px] text-white">
                  <p className="text-[8px] font-black uppercase tracking-[0.4em] opacity-40">Total Audits</p>
@@ -355,95 +306,43 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
            </div>
 
            <div className="relative w-full">
-              <input type="text" placeholder="SEARCH MONTH, APARTMENT OR STAFF..." className={`${inputStyle} w-full pl-12`} value={auditSearch} onChange={(e) => setAuditSearch(e.target.value)} />
+              <input type="text" placeholder="SEARCH AUDITS..." className={`${inputStyle} w-full pl-12`} value={auditSearch} onChange={(e) => setAuditSearch(e.target.value)} />
               <div className="absolute left-4 top-3 text-black/20"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
            </div>
 
            <div className="space-y-16">
-              {monthGroups.length === 0 ? (
+              {auditMonthGroups.length === 0 ? (
                  <div className="py-20 text-center border-2 border-dashed border-black/5 rounded-[40px] opacity-10 italic text-[10px] uppercase font-black tracking-[0.4em]">No audit records found.</div>
               ) : (
-                 monthGroups.map((monthGroup, mIdx) => (
+                 auditMonthGroups.map((monthGroup, mIdx) => (
                     <div key={mIdx} className="space-y-8">
-                       {/* MONTH HEADER CARD */}
                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-4">
-                             <h2 className="text-2xl font-serif-brand font-bold text-black uppercase tracking-tight">{monthGroup.monthLabel}</h2>
-                             <span className="bg-[#1A1A1A] text-white px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest">{monthGroup.stats.rate}% PASS RATE</span>
-                          </div>
+                          <h2 className="text-2xl font-serif-brand font-bold text-black uppercase tracking-tight">{monthGroup.monthLabel}</h2>
                           <div className="h-px flex-1 bg-black/5 mx-6"></div>
-                          <p className="text-[9px] font-black text-black/30 uppercase tracking-widest">{monthGroup.stats.passed} / {monthGroup.stats.total} AUDITS OK</p>
                        </div>
-
-                       {/* DAYS IN MONTH */}
                        <div className="space-y-12 pl-4 md:pl-8 border-l-2 border-black/5">
                           {monthGroup.days.map((dayGroup, dIdx) => (
                              <div key={dIdx} className="space-y-4">
                                 <div className="flex items-center gap-3">
-                                   <div className="bg-[#FDF8EE] border border-[#D4B476]/30 text-[#8B6B2E] px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-sm">
-                                      {dayGroup.date}
-                                   </div>
+                                   <div className="bg-[#FDF8EE] border border-[#D4B476]/30 text-[#8B6B2E] px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-sm">{dayGroup.date}</div>
                                    <div className="h-px w-12 bg-black/5"></div>
                                 </div>
-
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                    {dayGroup.shifts.map(shift => {
                                       const isApproved = shift.approvalStatus === 'approved';
-                                      const cleanerNames = shift.userIds.map(id => users.find(u => u.id === id)?.name.split(' ')[0] || 'Unknown').join(', ');
-                                      
                                       return (
                                          <div key={shift.id} className={`p-6 rounded-[32px] border shadow-xl flex flex-col justify-between gap-6 relative overflow-hidden transition-all group hover:scale-[1.02] ${isApproved ? 'bg-white border-green-500/20' : 'bg-red-50/50 border-red-200'}`}>
                                             <div className={`absolute top-0 left-0 w-1.5 h-full ${isApproved ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                                            
                                             <div className="space-y-4 pl-2">
-                                               <div className="flex justify-between items-start">
-                                                  <div>
-                                                     <h4 className="text-sm font-bold text-black uppercase tracking-tight leading-tight">{shift.propertyName}</h4>
-                                                     <p className="text-[8px] font-black text-[#C5A059] uppercase tracking-widest mt-1">{shift.serviceType}</p>
-                                                  </div>
-                                                  {isApproved ? (
-                                                     <span className="text-[10px] bg-green-100 text-green-700 p-2 rounded-full shadow-sm">
-                                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><polyline points="20 6 9 17 4 12"/></svg>
-                                                     </span>
-                                                  ) : (
-                                                     <span className="text-[10px] bg-red-100 text-red-700 p-2 rounded-full shadow-sm">
-                                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                                                     </span>
-                                                  )}
+                                               <div>
+                                                  <h4 className="text-sm font-bold text-black uppercase tracking-tight">{shift.propertyName}</h4>
+                                                  <p className="text-[8px] font-black text-[#C5A059] uppercase tracking-widest mt-1">{shift.serviceType}</p>
                                                </div>
-
-                                               <div className="space-y-2 bg-black/5 p-3 rounded-xl">
-                                                  <div className="flex justify-between text-[9px] uppercase font-bold text-black/60">
-                                                     <span>Staff</span>
-                                                     <span>{cleanerNames}</span>
-                                                  </div>
-                                                  <div className="flex justify-between text-[9px] uppercase font-bold text-black/60">
-                                                     <span>Inspector</span>
-                                                     <span>{shift.decidedBy || 'System'}</span>
-                                                  </div>
-                                               </div>
-
-                                               {shift.approvalComment && (
-                                                  <p className={`text-[10px] italic leading-relaxed line-clamp-2 ${isApproved ? 'text-black/60' : 'text-red-600 font-medium'}`}>
-                                                     "{shift.approvalComment}"
-                                                  </p>
-                                               )}
+                                               {shift.approvalComment && <p className={`text-[10px] italic leading-relaxed line-clamp-2 ${isApproved ? 'text-black/60' : 'text-red-600 font-medium'}`}>"{shift.approvalComment}"</p>}
                                             </div>
-
                                             <div className="pl-2 flex gap-3">
-                                               <button 
-                                                 onClick={() => handleGeneratePDF(shift)}
-                                                 className="flex-1 bg-black text-[#C5A059] py-3 rounded-xl text-[8px] font-black uppercase tracking-widest shadow-md hover:bg-zinc-800 transition-all flex items-center justify-center gap-2"
-                                               >
-                                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                                  Export PDF
-                                               </button>
-                                               <button 
-                                                 onClick={() => setSelectedAuditShift(shift)}
-                                                 className="flex-1 bg-white border border-gray-200 text-black/60 py-3 rounded-xl text-[8px] font-black uppercase tracking-widest hover:text-black hover:border-[#C5A059] transition-all"
-                                               >
-                                                  Details
-                                               </button>
+                                               <button onClick={() => handleGeneratePDF(shift)} className="flex-1 bg-black text-[#C5A059] py-3 rounded-xl text-[8px] font-black uppercase tracking-widest shadow-md hover:bg-zinc-800 transition-all flex items-center justify-center gap-2">PDF Report</button>
+                                               <button onClick={() => setSelectedAuditShift(shift)} className="flex-1 bg-white border border-gray-200 text-black/60 py-3 rounded-xl text-[8px] font-black uppercase tracking-widest hover:text-black hover:border-[#C5A059]">Details</button>
                                             </div>
                                          </div>
                                       );
@@ -459,14 +358,66 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
         </div>
       )}
 
-      {/* --- INCIDENT LOGS --- */}
+      {/* --- ACTIVITY LOGS (Cleaner Reports) --- */}
+      {activeTab === 'activity' && (
+        <div className="space-y-10 animate-in slide-in-from-right-4">
+           <div className="relative w-full">
+              <input type="text" placeholder="SEARCH COMPLETED JOBS..." className={`${inputStyle} w-full pl-12`} value={activitySearch} onChange={(e) => setActivitySearch(e.target.value)} />
+              <div className="absolute left-4 top-3 text-black/20"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+           </div>
+
+           <div className="space-y-16">
+              {activityMonthGroups.length === 0 ? (
+                 <div className="py-20 text-center border-2 border-dashed border-black/5 rounded-[40px] opacity-10 italic text-[10px] uppercase font-black tracking-[0.4em]">No activity logs found.</div>
+              ) : (
+                 activityMonthGroups.map((monthGroup, mIdx) => (
+                    <div key={mIdx} className="space-y-8">
+                       <div className="flex items-center justify-between">
+                          <h2 className="text-2xl font-serif-brand font-bold text-black uppercase tracking-tight">{monthGroup.monthLabel}</h2>
+                          <div className="h-px flex-1 bg-black/5 mx-6"></div>
+                       </div>
+                       <div className="space-y-12 pl-4 md:pl-8 border-l-2 border-black/5">
+                          {monthGroup.days.map((dayGroup, dIdx) => (
+                             <div key={dIdx} className="space-y-4">
+                                <div className="flex items-center gap-3">
+                                   <div className="bg-white border border-gray-200 text-black/60 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-sm">{dayGroup.date}</div>
+                                   <div className="h-px w-12 bg-black/5"></div>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                   {dayGroup.shifts.map(shift => {
+                                      const cleanerNames = shift.userIds.map(id => users.find(u => u.id === id)?.name.split(' ')[0] || 'Unknown').join(', ');
+                                      return (
+                                         <div key={shift.id} className="p-6 rounded-[32px] border border-gray-100 bg-white shadow-lg flex flex-col justify-between gap-6 hover:border-[#C5A059]/30 transition-all group">
+                                            <div className="space-y-2">
+                                               <div className="flex justify-between items-start">
+                                                  <h4 className="text-sm font-bold text-black uppercase tracking-tight">{shift.propertyName}</h4>
+                                                  <span className="text-[7px] bg-gray-100 text-black/60 px-2 py-1 rounded font-black uppercase">{shift.status}</span>
+                                               </div>
+                                               <p className="text-[8px] font-black text-[#C5A059] uppercase tracking-widest">{shift.serviceType}</p>
+                                               <p className="text-[9px] font-black text-black/40 uppercase tracking-widest mt-2">Done by: {cleanerNames}</p>
+                                            </div>
+                                            <button onClick={() => handleGeneratePDF(shift)} className="w-full bg-[#FDF8EE] text-[#8B6B2E] py-3 rounded-xl text-[8px] font-black uppercase tracking-widest shadow-sm hover:bg-[#C5A059] hover:text-black transition-all border border-[#C5A059]/10">Download Report</button>
+                                         </div>
+                                      );
+                                   })}
+                                </div>
+                             </div>
+                          ))}
+                       </div>
+                    </div>
+                 ))
+              )}
+           </div>
+        </div>
+      )}
+
+      {/* --- INCIDENTS TAB --- */}
       {activeTab === 'incidents' && (
          <div className="space-y-8 animate-in slide-in-from-right-4">
             <div className="relative w-full">
               <input type="text" placeholder="SEARCH INCIDENTS..." className={`${inputStyle} w-full pl-12`} value={incidentSearch} onChange={(e) => setIncidentSearch(e.target.value)} />
               <div className="absolute left-4 top-3 text-black/20"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
             </div>
-            
             <div className="space-y-4">
                {filteredIncidents.length === 0 ? (
                   <div className="py-20 text-center border-2 border-dashed border-black/5 rounded-[40px] opacity-10 italic text-[10px] uppercase font-black tracking-[0.4em]">Log Clear.</div>
@@ -474,9 +425,7 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
                   filteredIncidents.map((inc, i) => (
                      <div key={`${inc.id}-${i}`} className={`p-6 rounded-[32px] border flex flex-col md:flex-row items-center justify-between gap-6 shadow-md transition-all ${inc.resolved ? 'bg-gray-50 border-gray-200 opacity-70' : 'bg-white border-red-100 hover:border-red-300'}`}>
                         <div className="flex items-center gap-6 w-full md:w-auto">
-                           <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white text-lg shadow-lg ${inc.type === 'Maintenance' ? 'bg-blue-500' : inc.type === 'Damage' ? 'bg-orange-500' : 'bg-purple-500'}`}>
-                              {inc.type.charAt(0)}
-                           </div>
+                           <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white text-lg shadow-lg ${inc.type === 'Maintenance' ? 'bg-blue-500' : inc.type === 'Damage' ? 'bg-orange-500' : 'bg-purple-500'}`}>{inc.type.charAt(0)}</div>
                            <div className="space-y-1">
                               <h4 className="text-sm font-bold text-black uppercase tracking-tight">{inc.propertyName}</h4>
                               <p className="text-[9px] text-black/40 font-black uppercase tracking-widest">{inc.date} • {inc.type}</p>
@@ -484,13 +433,9 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
                            </div>
                         </div>
                         <div className="flex items-center gap-4 w-full md:w-auto justify-end">
-                           <span className={`px-4 py-1.5 rounded-full text-[8px] font-black uppercase tracking-widest border ${inc.resolved ? 'bg-green-100 text-green-700 border-green-200' : 'bg-red-100 text-red-600 border-red-200'}`}>
-                              {inc.resolved ? 'RESOLVED' : 'OPEN TICKET'}
-                           </span>
+                           <span className={`px-4 py-1.5 rounded-full text-[8px] font-black uppercase tracking-widest border ${inc.resolved ? 'bg-green-100 text-green-700 border-green-200' : 'bg-red-100 text-red-600 border-red-200'}`}>{inc.resolved ? 'RESOLVED' : 'OPEN TICKET'}</span>
                            {inc.photos.length > 0 && (
-                              <button onClick={() => setZoomedImage(inc.photos[0])} className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-black/40 hover:bg-gray-200 hover:text-black transition-all">
-                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M20.4 14.5L16 10 4 20"/></svg>
-                              </button>
+                              <button onClick={() => setZoomedImage(inc.photos[0])} className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-black/40 hover:bg-gray-200 hover:text-black transition-all"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M20.4 14.5L16 10 4 20"/></svg></button>
                            )}
                         </div>
                      </div>
@@ -500,16 +445,15 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
          </div>
       )}
       
-      {/* --- EMPLOYEES TAB (Grouped) --- */}
+      {/* --- EMPLOYEES TAB --- */}
       {activeTab === 'employees' && (
         <div className="space-y-10 animate-in slide-in-from-right-4">
           <div className="relative w-full md:w-96">
-            <input type="text" placeholder="Search employees by name..." className={`${inputStyle} w-full pl-12`} value={personnelSearch} onChange={(e) => setPersonnelSearch(e.target.value)} />
+            <input type="text" placeholder="Search employees..." className={`${inputStyle} w-full pl-12`} value={personnelSearch} onChange={(e) => setPersonnelSearch(e.target.value)} />
             <div className="absolute left-4 top-3 text-black/20"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
           </div>
-
           {personnelGroups.length === 0 ? (
-             <div className="py-20 text-center border-2 border-dashed border-black/5 rounded-[40px] opacity-10 italic text-[10px] uppercase font-black tracking-[0.4em]">No personnel records found.</div>
+             <div className="py-20 text-center border-2 border-dashed border-black/5 rounded-[40px] opacity-10 italic text-[10px] uppercase font-black tracking-[0.4em]">No records found.</div>
           ) : (
             personnelGroups.map((group, groupIdx) => (
               <div key={groupIdx} className="space-y-4">
@@ -532,7 +476,6 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
                                </div>
                             </div>
                           </div>
-                          
                           {metrics ? (
                             <div className="flex justify-between border-t border-black/5 pt-4">
                               <div><span className={subLabelStyle}>Rating</span><p className="text-lg font-serif-brand font-bold text-[#8B6B2E]">{metrics.score}</p></div>
@@ -540,14 +483,11 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
                               <div className="text-right"><span className={subLabelStyle}>Hours</span><p className="text-lg font-bold text-black">{metrics.totalHours}</p></div>
                             </div>
                           ) : (
-                            <div className="py-4 text-center text-[9px] text-black/20 italic font-medium">Metrics not applicable for role</div>
+                            <div className="py-4 text-center text-[9px] text-black/20 italic font-medium">Metrics not applicable</div>
                           )}
-
                           <div className="bg-white/40 p-4 rounded-xl border border-[#D4B476]/10 space-y-3 flex-1">
                             <p className={subLabelStyle}>Recent Leave Status</p>
-                            {leaveHistory.length === 0 ? (
-                              <p className="text-[8px] text-black/20 uppercase italic">No leave requests logged</p>
-                            ) : (
+                            {leaveHistory.length === 0 ? <p className="text-[8px] text-black/20 uppercase italic">No leave requests logged</p> : (
                               <div className="space-y-1.5 max-h-[100px] overflow-y-auto custom-scrollbar">
                                   {leaveHistory.slice(0, 3).map((l, i) => (
                                     <div key={i} className="flex justify-between text-[8px] font-black uppercase">
@@ -571,107 +511,38 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
         </div>
       )}
 
-      {/* --- SELECTED USER DOSSIER MODAL --- */}
-      {selectedUser && (
-        <div className="fixed inset-0 bg-black/40 z-[300] flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setSelectedUser(null)}>
-          <div className="bg-[#FDF8EE] border border-[#D4B476]/30 rounded-[40px] w-full max-w-2xl p-10 relative shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto custom-scrollbar" onClick={e => e.stopPropagation()}>
-             <button onClick={() => setSelectedUser(null)} className="absolute top-10 right-10 text-black/20 hover:text-black transition-colors"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-             <h2 className="text-3xl font-serif-brand font-bold text-black uppercase">{selectedUser.name}</h2>
-             <div className="mt-2 text-[10px] font-black text-[#8B6B2E] uppercase tracking-widest">{selectedUser.role} • {selectedUser.employmentType || 'Standard Contract'}</div>
-             
-             <div className="mt-10 space-y-8">
-                {/* Attendance Gaps Section */}
-                <div className="space-y-4">
-                    <div className="flex items-center gap-4"><h3 className="text-[10px] font-black text-black/30 uppercase tracking-[0.4em]">Service Interruptions</h3><div className="h-px flex-1 bg-black/5"></div></div>
-                    <div className="space-y-3 max-h-[30vh] overflow-y-auto custom-scrollbar pr-2">
-                       {calculateAttendanceGaps(selectedUser.id).map((gap, i) => (
-                         <div key={i} className="p-4 bg-white/60 rounded-2xl border border-[#D4B476]/10 flex justify-between items-center shadow-sm">
-                            <div>
-                              <p className="text-xs font-bold text-black uppercase">{gap.date}</p>
-                              <p className="text-[8px] text-[#8B6B2E] font-black uppercase mt-1">Status: {gap.type}</p>
-                            </div>
-                            {gap.replacedBy && <p className="text-[8px] text-black/40 font-black uppercase">By: {gap.replacedBy}</p>}
-                         </div>
-                       ))}
-                       {calculateAttendanceGaps(selectedUser.id).length === 0 && (
-                         <p className="text-center py-4 opacity-20 italic text-[10px] uppercase">No service gaps recorded.</p>
-                       )}
-                    </div>
-                </div>
-
-                {/* Leave Request History Section */}
-                <div className="space-y-4">
-                    <div className="flex items-center gap-4"><h3 className="text-[10px] font-black text-black/30 uppercase tracking-[0.4em]">Leave Request Log</h3><div className="h-px flex-1 bg-black/5"></div></div>
-                    <div className="space-y-3 max-h-[30vh] overflow-y-auto custom-scrollbar pr-2">
-                       {getUserLeaveHistory(selectedUser.id).map((req, i) => (
-                         <div key={req.id} className="p-4 bg-white rounded-2xl border border-gray-100 flex justify-between items-center shadow-sm">
-                            <div>
-                              <p className="text-[10px] font-bold text-black uppercase">{req.type}</p>
-                              <p className="text-[8px] text-black/40 font-black uppercase mt-0.5">{req.startDate} — {req.endDate}</p>
-                            </div>
-                            <span className={`text-[8px] font-black uppercase px-3 py-1 rounded-lg border ${
-                                req.status === 'approved' ? 'bg-green-50 text-green-700 border-green-100' : 
-                                req.status === 'rejected' ? 'bg-red-50 text-red-700 border-red-100' : 
-                                'bg-orange-50 text-orange-600 border-orange-100'
-                            }`}>
-                                {req.status}
-                            </span>
-                         </div>
-                       ))}
-                       {getUserLeaveHistory(selectedUser.id).length === 0 && (
-                         <p className="text-center py-4 opacity-20 italic text-[10px] uppercase">No leave history available.</p>
-                       )}
-                    </div>
-                </div>
-             </div>
-          </div>
-        </div>
-      )}
-
-      {/* --- AUDIT DETAIL MODAL --- */}
+      {/* --- AUDIT DETAIL MODAL (Already exists) --- */}
       {selectedAuditShift && (
          <div className="fixed inset-0 bg-black/90 z-[500] flex items-center justify-center p-4 backdrop-blur-sm animate-in zoom-in-95" onClick={() => setSelectedAuditShift(null)}>
             <div className="bg-[#FDF8EE] border border-[#C5A059]/40 rounded-[48px] w-full max-w-4xl p-8 md:p-12 space-y-8 shadow-2xl relative text-left overflow-y-auto max-h-[95vh] custom-scrollbar" onClick={e => e.stopPropagation()}>
                <button onClick={() => setSelectedAuditShift(null)} className="absolute top-10 right-10 text-black/20 hover:text-black transition-colors"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-               
                <header className="space-y-1">
                   <h2 className="text-2xl md:text-3xl font-serif-brand font-bold text-black uppercase tracking-tight">{selectedAuditShift.propertyName}</h2>
                   <p className="text-[9px] font-black text-[#C5A059] uppercase tracking-[0.4em]">{selectedAuditShift.date} • {selectedAuditShift.serviceType}</p>
                </header>
-
                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className="space-y-6">
                      <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm space-y-4">
-                        <p className="text-[8px] font-black text-black/30 uppercase tracking-[0.4em]">Audit Evidence</p>
+                        <p className="text-[8px] font-black text-black/30 uppercase tracking-[0.4em]">Evidence</p>
                         <div className="grid grid-cols-3 gap-2">
-                           {(selectedAuditShift.tasks?.flatMap(t => t.photos) || []).map((p, i) => (
-                              <img key={i} src={p.url} onClick={() => setZoomedImage(p.url)} className="aspect-square rounded-xl object-cover border border-gray-100 cursor-zoom-in hover:opacity-80 transition-opacity" />
-                           ))}
-                           {selectedAuditShift.checkoutPhotos?.keyInBox?.map((p, i) => (
-                              <img key={`k-${i}`} src={p.url} onClick={() => setZoomedImage(p.url)} className="aspect-square rounded-xl object-cover border border-gray-100 cursor-zoom-in hover:opacity-80 transition-opacity" />
-                           ))}
-                           {selectedAuditShift.checkoutPhotos?.boxClosed?.map((p, i) => (
-                              <img key={`b-${i}`} src={p.url} onClick={() => setZoomedImage(p.url)} className="aspect-square rounded-xl object-cover border border-gray-100 cursor-zoom-in hover:opacity-80 transition-opacity" />
-                           ))}
+                           {(selectedAuditShift.tasks?.flatMap(t => t.photos) || []).map((p, i) => (<img key={i} src={p.url} onClick={() => setZoomedImage(p.url)} className="aspect-square rounded-xl object-cover border border-gray-100 cursor-zoom-in hover:opacity-80 transition-opacity" />))}
+                           {selectedAuditShift.checkoutPhotos?.keyInBox?.map((p, i) => (<img key={`k-${i}`} src={p.url} onClick={() => setZoomedImage(p.url)} className="aspect-square rounded-xl object-cover border border-gray-100 cursor-zoom-in hover:opacity-80 transition-opacity" />))}
+                           {selectedAuditShift.checkoutPhotos?.boxClosed?.map((p, i) => (<img key={`b-${i}`} src={p.url} onClick={() => setZoomedImage(p.url)} className="aspect-square rounded-xl object-cover border border-gray-100 cursor-zoom-in hover:opacity-80 transition-opacity" />))}
                         </div>
                      </div>
                   </div>
                   <div className="space-y-6">
                      <div className="bg-[#1A1A1A] p-6 rounded-3xl text-white space-y-4">
-                        <p className="text-[8px] font-black text-white/40 uppercase tracking-[0.4em]">Inspector Verdict</p>
+                        <p className="text-[8px] font-black text-white/40 uppercase tracking-[0.4em]">Verdict</p>
                         <div className="flex items-center gap-3">
                            <div className={`w-3 h-3 rounded-full ${selectedAuditShift.approvalStatus === 'approved' ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                           <h3 className="text-lg font-bold uppercase">{selectedAuditShift.approvalStatus === 'approved' ? 'Passed Inspection' : 'Failed Inspection'}</h3>
+                           <h3 className="text-lg font-bold uppercase">{selectedAuditShift.approvalStatus === 'approved' ? 'Passed' : selectedAuditShift.status}</h3>
                         </div>
                         <p className="text-[10px] italic opacity-80 leading-relaxed">"{selectedAuditShift.approvalComment || 'No comment provided'}"</p>
-                        <p className="text-[8px] font-black uppercase tracking-widest text-[#C5A059] pt-2">Verified By: {selectedAuditShift.decidedBy}</p>
+                        <p className="text-[8px] font-black uppercase tracking-widest text-[#C5A059] pt-2">By: {selectedAuditShift.decidedBy || 'System'}</p>
                      </div>
-                     <button 
-                       onClick={() => handleGeneratePDF(selectedAuditShift)}
-                       className="w-full bg-[#C5A059] text-black font-black py-4 rounded-2xl uppercase tracking-[0.3em] text-[10px] shadow-xl hover:bg-[#d4b476] active:scale-95 transition-all flex items-center justify-center gap-3"
-                     >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        DOWNLOAD REPORT PDF
+                     <button onClick={() => handleGeneratePDF(selectedAuditShift)} className="w-full bg-[#C5A059] text-black font-black py-4 rounded-2xl uppercase tracking-[0.3em] text-[10px] shadow-xl hover:bg-[#d4b476] active:scale-95 transition-all flex items-center justify-center gap-3">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> DOWNLOAD REPORT
                      </button>
                   </div>
                </div>
@@ -679,11 +550,44 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
          </div>
       )}
 
-      {zoomedImage && (
-        <div className="fixed inset-0 bg-black/95 z-[600] flex items-center justify-center p-4 cursor-pointer" onClick={() => setZoomedImage(null)}>
-          <img src={zoomedImage} className="max-w-full max-h-full object-contain rounded-3xl shadow-2xl" alt="Preview" />
+      {/* Selected User Modal & Zoomed Image Modal remain as before */}
+      {selectedUser && (
+        <div className="fixed inset-0 bg-black/40 z-[300] flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setSelectedUser(null)}>
+          <div className="bg-[#FDF8EE] border border-[#D4B476]/30 rounded-[40px] w-full max-w-2xl p-10 relative shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto custom-scrollbar" onClick={e => e.stopPropagation()}>
+             <button onClick={() => setSelectedUser(null)} className="absolute top-10 right-10 text-black/20 hover:text-black transition-colors"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+             <h2 className="text-3xl font-serif-brand font-bold text-black uppercase">{selectedUser.name}</h2>
+             <div className="mt-2 text-[10px] font-black text-[#8B6B2E] uppercase tracking-widest">{selectedUser.role} • {selectedUser.employmentType || 'Standard Contract'}</div>
+             <div className="mt-10 space-y-8">
+                <div className="space-y-4">
+                    <div className="flex items-center gap-4"><h3 className="text-[10px] font-black text-black/30 uppercase tracking-[0.4em]">Service Interruptions</h3><div className="h-px flex-1 bg-black/5"></div></div>
+                    <div className="space-y-3 max-h-[30vh] overflow-y-auto custom-scrollbar pr-2">
+                       {calculateAttendanceGaps(selectedUser.id).map((gap, i) => (
+                         <div key={i} className="p-4 bg-white/60 rounded-2xl border border-[#D4B476]/10 flex justify-between items-center shadow-sm">
+                            <div><p className="text-xs font-bold text-black uppercase">{gap.date}</p><p className="text-[8px] text-[#8B6B2E] font-black uppercase mt-1">Status: {gap.type}</p></div>
+                            {gap.replacedBy && <p className="text-[8px] text-black/40 font-black uppercase">By: {gap.replacedBy}</p>}
+                         </div>
+                       ))}
+                       {calculateAttendanceGaps(selectedUser.id).length === 0 && <p className="text-center py-4 opacity-20 italic text-[10px] uppercase">No service gaps.</p>}
+                    </div>
+                </div>
+                <div className="space-y-4">
+                    <div className="flex items-center gap-4"><h3 className="text-[10px] font-black text-black/30 uppercase tracking-[0.4em]">Leave Request Log</h3><div className="h-px flex-1 bg-black/5"></div></div>
+                    <div className="space-y-3 max-h-[30vh] overflow-y-auto custom-scrollbar pr-2">
+                       {getUserLeaveHistory(selectedUser.id).map((req, i) => (
+                         <div key={req.id} className="p-4 bg-white rounded-2xl border border-gray-100 flex justify-between items-center shadow-sm">
+                            <div><p className="text-[10px] font-bold text-black uppercase">{req.type}</p><p className="text-[8px] text-black/40 font-black uppercase mt-0.5">{req.startDate} — {req.endDate}</p></div>
+                            <span className={`text-[8px] font-black uppercase px-3 py-1 rounded-lg border ${req.status === 'approved' ? 'bg-green-50 text-green-700 border-green-100' : req.status === 'rejected' ? 'bg-red-50 text-red-700 border-red-100' : 'bg-orange-50 text-orange-600 border-orange-100'}`}>{req.status}</span>
+                         </div>
+                       ))}
+                       {getUserLeaveHistory(selectedUser.id).length === 0 && <p className="text-center py-4 opacity-20 italic text-[10px] uppercase">No leave history.</p>}
+                    </div>
+                </div>
+             </div>
+          </div>
         </div>
       )}
+
+      {zoomedImage && <div className="fixed inset-0 bg-black/95 z-[600] flex items-center justify-center p-4 cursor-pointer" onClick={() => setZoomedImage(null)}><img src={zoomedImage} className="max-w-full max-h-full object-contain rounded-3xl shadow-2xl" alt="Preview" /></div>}
     </div>
   );
 };

@@ -25,6 +25,8 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({
   const isHousekeeping = user.role === 'housekeeping';
   const isManagement = isAdmin || isHousekeeping;
   
+  const [adminOverride, setAdminOverride] = useState(false);
+
   const todayStr = useMemo(() => new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase(), []);
   const currentHour = new Date().getHours();
   const isPastDeadline = currentHour >= 16; 
@@ -68,7 +70,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({
     : [];
 
   const handleToggleAuthority = (staffId: string) => {
-    if (!isAdmin && staffId !== user.id) return;
+    if ((!isAdmin && staffId !== user.id) || !adminOverride) return;
     setAuthorizedInspectorIds(prev => {
       if (prev.includes(staffId)) return prev.filter(id => id !== staffId);
       return [...prev, staffId];
@@ -92,12 +94,9 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({
     }
   };
 
-  // Logic: Management user is only "Authorized" if their ID is in the explicit permission list.
-  const isCurrentlyAuthorizedManagement = isManagement && !isActualSupervisor && authorizedInspectorIds.includes(user.id);
-
   return (
     <div className="space-y-10 animate-in fade-in duration-700 text-left pb-24">
-      <div className="flex justify-between items-start">
+      <div className="flex flex-col md:flex-row justify-between items-start gap-6">
         <div className="flex flex-col space-y-0.5">
           <p className="text-[#C5A059] font-black uppercase tracking-[0.4em] text-[8px]">
             {isActualSupervisor ? 'Supervisor Terminal' : 'Management View: Supervisor Portal'}
@@ -111,6 +110,16 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({
           <div className="flex gap-3">
             <button onClick={() => setActiveTab('shifts')} className="bg-gray-50 border border-gray-100 text-black/60 font-black px-4 py-2 rounded-xl text-[8px] uppercase tracking-widest hover:bg-gray-100 transition-all shadow-sm">MY SCHEDULE</button>
           </div>
+        )}
+
+        {isManagement && (
+            <button 
+                onClick={() => setAdminOverride(!adminOverride)}
+                className={`flex items-center gap-2 px-4 py-3 rounded-xl text-[8px] font-black uppercase tracking-widest border transition-all ${adminOverride ? 'bg-red-600 text-white border-red-600 shadow-lg' : 'bg-white text-black/40 border-gray-200'}`}
+            >
+                <div className={`w-2 h-2 rounded-full ${adminOverride ? 'bg-white animate-pulse' : 'bg-black/20'}`}></div>
+                {adminOverride ? 'ADMIN OVERRIDE ACTIVE' : 'READ-ONLY MODE'}
+            </button>
         )}
       </div>
 
@@ -141,12 +150,15 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({
         )}
 
         {isManagement && (
-          <section className="bg-gray-50/50 border border-gray-100 p-8 rounded-[40px] shadow-sm animate-in slide-in-from-top-4 duration-500">
-             <p className={labelStyle}>Inspection Permission Control</p>
+          <section className={`bg-gray-50/50 border border-gray-100 p-8 rounded-[40px] shadow-sm animate-in slide-in-from-top-4 duration-500 ${!adminOverride ? 'opacity-70' : ''}`}>
+             <div className="flex justify-between items-center mb-4">
+                <p className={labelStyle}>Inspection Permission Control</p>
+                {!adminOverride && <span className="text-[7px] font-black text-black/20 uppercase tracking-widest">LOCKED</span>}
+             </div>
              <div className="flex flex-wrap gap-x-12 gap-y-4 items-center">
                 {managementStaff.map(staff => {
                   const isStaffAuthorized = authorizedInspectorIds.includes(staff.id);
-                  const canClick = isAdmin || staff.id === user.id;
+                  const canClick = (isAdmin || staff.id === user.id) && adminOverride;
                   return (
                     <label 
                       key={staff.id} 
@@ -193,9 +205,6 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({
                 {isActualSupervisor ? 'Personal Inspection Queue' : 'Studio Global Inspection List'}
               </h3>
               <div className="flex items-center gap-2">
-                {isCurrentlyAuthorizedManagement && (
-                  <span className="text-[7px] font-black text-orange-600 bg-orange-50 px-2 py-1 rounded uppercase tracking-widest border border-orange-200">Authorized Override</span>
-                )}
                 <span className="text-[8px] font-black text-green-600 uppercase bg-green-500/10 px-2 py-1 rounded">
                   {activeInspections.length} Required
                 </span>
@@ -208,7 +217,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({
                    All scheduled units have been audited
                 </div>
               ) : activeInspections.map(job => {
-                const canInspect = isActualSupervisor || (isManagement && authorizedInspectorIds.includes(user.id));
+                const canInspect = isActualSupervisor || (isManagement && adminOverride);
                 const status = getStatusLabel(job);
                 const isLate = job.date === todayStr && isPastDeadline;
                 return (
@@ -226,7 +235,13 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({
                         </div>
                         {isManagement && isLate && <p className="text-[9px] text-red-600 font-bold uppercase mt-3 italic flex items-center gap-1.5"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>Unit not checked by supervisor deadline</p>}
                       </div>
-                      <button onClick={() => canInspect && handleInspectAction(job.id)} disabled={!canInspect} className={`w-full sm:w-auto px-8 py-2.5 rounded-xl text-[9px] font-black uppercase shadow-lg transition-all ${canInspect ? 'bg-green-600 text-white active:scale-95 hover:bg-green-700' : 'bg-gray-100 text-black/10 cursor-not-allowed border border-gray-200 shadow-none'}`}>INSPECT</button>
+                      <button 
+                        onClick={() => canInspect && handleInspectAction(job.id)} 
+                        disabled={!canInspect} 
+                        className={`w-full sm:w-auto px-8 py-2.5 rounded-xl text-[9px] font-black uppercase shadow-lg transition-all ${canInspect ? 'bg-green-600 text-white active:scale-95 hover:bg-green-700' : 'bg-gray-100 text-black/20 cursor-not-allowed border border-gray-200 shadow-none'}`}
+                      >
+                        {canInspect ? 'INSPECT' : 'READ ONLY'}
+                      </button>
                     </div>
                   </div>
                 );

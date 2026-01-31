@@ -22,6 +22,8 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
   user, setActiveTab, onLogout, shifts = [], setShifts, users = [], properties = [], onTogglePrepared, authorizedLaundryUserIds = [], onToggleAuthority, timeEntries = [], setTimeEntries
 }) => {
   const [activeView, setActiveView] = useState<'queue' | 'reports'>('queue');
+  const [adminOverride, setAdminOverride] = useState(false);
+  const [hasCriticalDamage, setHasCriticalDamage] = useState(false);
   
   // Logic to derive current clock status from persistent history
   const myLastEntry = useMemo(() => {
@@ -43,14 +45,31 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
   const isActualLaundry = user.role === 'laundry';
   const isAuthorizedDelegate = (authorizedLaundryUserIds || []).includes(user.id);
   
-  // Logic: Admins see the management view, not the personal worker view.
-  // Clocking UI is for personnel physically at the laundry hub.
   const showClockUI = !['admin', 'supervisor', 'driver', 'housekeeping'].includes(user.role);
   const isAuthorizedToView = isAdmin || isActualLaundry || isAuthorizedDelegate;
   
-  // Admins can see but don't automatically have 'Mark' authority to prevent accidental state changes.
-  const canMarkItems = isActualLaundry || isAuthorizedDelegate || isAdmin;
+  // ACTION PERMISSION: 
+  // - Laundry Staff: Always Enabled
+  // - Delegates: Always Enabled (if authorized)
+  // - Admin: Only if Override is ON
+  const canMarkItems = isActualLaundry || isAuthorizedDelegate || (isAdmin && adminOverride);
+  
   const showDriverAlerts = isActualLaundry || isAdmin;
+
+  // Check for critical damage (Simulated real-time check when viewing reports or mounting)
+  useEffect(() => {
+    const checkDamage = () => {
+      try {
+        const counts = JSON.parse(localStorage.getItem('studio_damage_counts') || '{}');
+        const critical = Object.values(counts).some((val: any) => (Number(val) || 0) > 10);
+        setHasCriticalDamage(critical);
+      } catch(e) {}
+    };
+    checkDamage();
+    // Poll for changes if needed, or just re-check when switching views
+    const interval = setInterval(checkDamage, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const getLocalISO = (d: Date) => {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -86,7 +105,6 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
   }, [realTodayISO]);
 
   const collectionAlerts = useMemo(() => {
-    // Only show alerts for the VIEWED DATE to prevent historical backlog clutter
     return shifts.filter(s => s.date === viewedDateStrShort && !s.isCollected && !s.excludeLaundry);
   }, [shifts, viewedDateStrShort]);
 
@@ -116,7 +134,6 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
       });
   }, [shifts, properties, viewedDateStrShort]);
 
-  // UPDATED: Exclude 'housekeeping' from delegation pool
   const delegatePool = useMemo(() => {
     return users.filter(u => ['supervisor', 'admin', 'driver'].includes(u.role));
   }, [users]);
@@ -158,23 +175,35 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
             </h1>
           </div>
 
-          <div className="p-1 bg-gray-50 border border-gray-200 rounded-2xl flex items-center shadow-inner">
-             <button 
-               onClick={() => setActiveView('queue')}
-               className={`px-6 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${
-                 activeView === 'queue' ? 'bg-[#C5A059] text-black shadow-lg' : 'text-black/30 hover:text-black/60'
-               }`}
-             >
-               Work Queue
-             </button>
-             <button 
-               onClick={() => setActiveView('reports')}
-               className={`px-6 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${
-                 activeView === 'reports' ? 'bg-[#C5A059] text-black shadow-lg' : 'text-black/30 hover:text-black/60'
-               }`}
-             >
-               Inventory & Reports
-             </button>
+          <div className="flex items-center gap-4">
+             {isAdmin && (
+                <button 
+                  onClick={() => setAdminOverride(!adminOverride)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest border transition-all ${adminOverride ? 'bg-red-600 text-white border-red-600 shadow-lg' : 'bg-white text-black/40 border-gray-200'}`}
+                >
+                   <div className={`w-2 h-2 rounded-full ${adminOverride ? 'bg-white animate-pulse' : 'bg-black/20'}`}></div>
+                   {adminOverride ? 'ADMIN OVERRIDE ACTIVE' : 'READ-ONLY MODE'}
+                </button>
+             )}
+
+             <div className="p-1 bg-gray-50 border border-gray-200 rounded-2xl flex items-center shadow-inner">
+               <button 
+                 onClick={() => setActiveView('queue')}
+                 className={`px-6 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${
+                   activeView === 'queue' ? 'bg-[#C5A059] text-black shadow-lg' : 'text-black/30 hover:text-black/60'
+                 }`}
+               >
+                 Work Queue
+               </button>
+               <button 
+                 onClick={() => setActiveView('reports')}
+                 className={`px-6 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${
+                   activeView === 'reports' ? 'bg-[#C5A059] text-black shadow-lg' : 'text-black/30 hover:text-black/60'
+                 }`}
+               >
+                 Inventory & Reports
+               </button>
+             </div>
           </div>
 
           {showClockUI && activeView === 'queue' && (
@@ -203,6 +232,25 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
 
       {activeView === 'queue' ? (
         <div className="space-y-8">
+          
+          {/* CRITICAL STOCK ALERT BANNER */}
+          {hasCriticalDamage && (
+            <div className="bg-red-600 text-white p-5 rounded-[28px] flex items-center justify-between shadow-2xl animate-pulse cursor-pointer border-2 border-red-500" onClick={() => setActiveView('reports')}>
+               <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-red-600 font-bold text-xl shadow-md">
+                     !
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.3em]">STOCK LEVEL ALERT</p>
+                    <p className="text-[9px] font-bold uppercase mt-0.5 opacity-90">Critical damage threshold exceeded (>10 units). Restock required.</p>
+                  </div>
+               </div>
+               <button className="bg-white text-red-600 px-6 py-3 rounded-xl text-[8px] font-black uppercase tracking-widest shadow-lg hover:bg-red-50 transition-all">
+                  VIEW REPORTS
+               </button>
+            </div>
+          )}
+
           <section className="bg-white border border-gray-200 p-4 rounded-[32px] shadow-sm">
             <div className="flex justify-between items-center gap-2 overflow-x-auto no-scrollbar pb-2 custom-scrollbar">
               {weekDays.map((wd) => (
@@ -223,8 +271,11 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
           </section>
 
           {isAdmin && (
-            <section className="bg-white border border-gray-100 p-6 rounded-[40px] shadow-sm space-y-4">
-              <p className="text-[10px] font-black text-[#C5A059] uppercase tracking-[0.4em]">DELEGATION CONTROL</p>
+            <section className={`bg-white border border-gray-100 p-6 rounded-[40px] shadow-sm space-y-4 transition-all ${!adminOverride ? 'opacity-60 grayscale pointer-events-none' : ''}`}>
+              <div className="flex items-center justify-between">
+                 <p className="text-[10px] font-black text-[#C5A059] uppercase tracking-[0.4em]">DELEGATION CONTROL</p>
+                 {!adminOverride && <span className="text-[8px] font-black text-black/20 uppercase tracking-widest">LOCKED (ENABLE OVERRIDE TO EDIT)</span>}
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 {delegatePool.map(staff => (
                   <label key={staff.id} className="flex items-center gap-3 cursor-pointer bg-gray-50/50 p-3 rounded-xl border border-transparent hover:border-[#C5A059]/20 transition-all">
@@ -233,6 +284,7 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
                       className="w-4 h-4 accent-[#C5A059] rounded border-gray-300"
                       checked={(authorizedLaundryUserIds || []).includes(staff.id)}
                       onChange={() => onToggleAuthority?.(staff.id)}
+                      disabled={!adminOverride}
                     />
                     <div className="text-left">
                       <p className="text-[9px] font-bold text-black uppercase truncate">{staff.name}</p>
@@ -264,12 +316,13 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
                             <p className="text-[8px] text-black/30 font-black uppercase mt-2 text-right">{new Date(item.report.timestamp || 0).toLocaleDateString()}</p>
                         </div>
                         <div className="mt-3 pt-3 border-t border-red-50">
-                            <label className="flex items-center gap-2 cursor-pointer group">
+                            <label className={`flex items-center gap-2 cursor-pointer group ${!canMarkItems ? 'pointer-events-none opacity-50' : ''}`}>
                                 <div className="relative">
                                     <input 
                                         type="checkbox" 
                                         className="peer sr-only"
                                         onChange={() => handleResolveReport(item.shiftId, item.report.id)}
+                                        disabled={!canMarkItems}
                                     />
                                     <div className="w-4 h-4 border-2 border-red-300 rounded peer-checked:bg-green-50 peer-checked:border-green-50 transition-all"></div>
                                     <svg className="absolute top-0.5 left-0.5 w-3 h-3 text-white opacity-0 peer-checked:opacity-100 transition-opacity" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><polyline points="20 6 9 17 4 12"/></svg>
@@ -355,7 +408,7 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
                                isDone ? 'bg-green-600 text-white' : canMarkItems ? 'bg-[#C5A059] text-black hover:bg-[#D4B476]' : 'bg-gray-100 text-black/20 cursor-not-allowed'
                              }`}
                            >
-                             {isDone ? '✓ PREPARED' : canMarkItems ? 'MARK AS PREPARED' : 'VIEW ONLY'}
+                             {isDone ? '✓ PREPARED' : canMarkItems ? 'MARK AS PREPARED' : 'LOCKED (READ-ONLY)'}
                            </button>
                         </div>
                       </div>
