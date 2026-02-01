@@ -2,16 +2,16 @@
 nixPkgs = ["nodejs_20", "npm", "python3", "gcc", "g++", "make"]
 
 [phases.install]
-# We remove everything and re-install to ensure native Linux binaries are used
+# Force a clean state to prevent binary conflicts between different build environments
 cmds = [
-    "rm -rf node_modules package-lock.json dist",
+    "rm -rf node_modules package-lock.json",
     "npm install"
 ]
 
 [phases.build]
-# Clear Vite cache explicitly
+# Clear Vite and Rollup internal caches to resolve module resolution failures
 cmds = [
-    "rm -rf node_modules/.vite",
+    "rm -rf node_modules/.vite node_modules/.rollup.cache",
     "npm run build"
 ]
 
