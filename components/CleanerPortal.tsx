@@ -935,12 +935,18 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                     <h3 className="text-xs font-black text-[#8B6B2E] uppercase tracking-widest">Access Codes Reminder</h3>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1 p-3 bg-white/50 rounded-xl border border-[#D4B476]/10">
-                        <p className="text-[8px] font-black text-black/40 uppercase tracking-widest">Entrance</p>
+                    <div 
+                      className="space-y-1 p-3 bg-white/50 rounded-xl border border-[#D4B476]/10 active:scale-95 transition-transform cursor-pointer"
+                      onClick={() => { navigator.clipboard.writeText(activeProperty.mainEntranceCode || ''); showNotification('Copied Entrance Code!', 'success'); }}
+                    >
+                        <p className="text-[8px] font-black text-black/40 uppercase tracking-widest flex items-center gap-1">Entrance <span className="text-[6px] bg-[#C5A059]/20 px-1 rounded text-[#8B6B2E]">COPY</span></p>
                         <p className="text-xl font-bold font-mono text-black tracking-tight">{activeProperty.mainEntranceCode || 'N/A'}</p>
                     </div>
-                    <div className="space-y-1 p-3 bg-white/50 rounded-xl border border-[#D4B476]/10">
-                        <p className="text-[8px] font-black text-black/40 uppercase tracking-widest">Keybox / Apt</p>
+                    <div 
+                      className="space-y-1 p-3 bg-white/50 rounded-xl border border-[#D4B476]/10 active:scale-95 transition-transform cursor-pointer"
+                      onClick={() => { navigator.clipboard.writeText(activeProperty.keyboxCode || ''); showNotification('Copied Keybox Code!', 'success'); }}
+                    >
+                        <p className="text-[8px] font-black text-black/40 uppercase tracking-widest flex items-center gap-1">Keybox / Apt <span className="text-[6px] bg-[#C5A059]/20 px-1 rounded text-[#8B6B2E]">COPY</span></p>
                         <p className="text-xl font-bold font-mono text-black tracking-tight">{activeProperty.keyboxCode}</p>
                     </div>
                 </div>

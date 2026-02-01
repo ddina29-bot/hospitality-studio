@@ -250,7 +250,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     <span className="text-[7px] font-black text-orange-500 bg-orange-50 px-2 py-0.5 rounded border border-orange-100">{alert.shift.date}</span>
                                 </div>
                                 <p className="text-[8px] font-black text-red-500 uppercase tracking-widest">{alert.issues}</p>
-                                <p className="text-[9px] text-black/60 uppercase mt-2 font-bold">Driver: {alert.assignee}</p>
+                                <p className="text-[9px] text-black/60 uppercase mt-2 font-bold flex items-center gap-1">
+                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+                                  Driver: {alert.assignee}
+                                </p>
                                 {alert.cleaners && <p className="text-[8px] text-black/40 font-medium uppercase">On Site: {alert.cleaners}</p>}
                             </div>
                             {alert.reason && (
