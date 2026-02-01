@@ -64,10 +64,10 @@ const Layout = ({
     },
   ];
 
-  const desktopNavItems: { id: TabType; label: string; icon: React.FC<any>; roles: UserRole[] }[] = [
+  const desktopNavItems = [
     ...allNavItems.filter(i => i.id !== 'manual'),
-    { id: 'users' as TabType, label: 'Team', icon: Icons.Dashboard, roles: ['admin', 'hr'] as UserRole[] },
-    { id: 'settings' as TabType, label: 'Settings', icon: Icons.Settings, roles: ['admin'] as UserRole[] }
+    { id: 'users' as TabType, label: 'Team', icon: Icons.Dashboard, roles: ['admin' as UserRole, 'hr' as UserRole] },
+    { id: 'settings' as TabType, label: 'Settings', icon: Icons.Settings, roles: ['admin' as UserRole] }
   ].filter(item => item.roles.includes(role));
 
   const mobileNavItems = allNavItems.filter(item => item.roles.includes(role));

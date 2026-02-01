@@ -16,21 +16,22 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ 
-  user, setActiveTab, shifts = [], properties, onToggleClock 
+  user, setActiveTab, shifts = [], properties, onToggleClock, timeEntries = []
 }) => {
-  // Derive clock status from user data or prop
-  const isClockedIn = false; // Mock for initial Connecteam feel refinement
+  // Derive clock status from time entries
+  const isClockedIn = useMemo(() => {
+    const myEntries = timeEntries.filter(e => e.userId === user.id).sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return myEntries.length > 0 && myEntries[0].type === 'in';
+  }, [timeEntries, user.id]);
 
   const firstName = user.name ? user.name.split(' ')[0] : 'Member';
 
-  // Quick Action Tiles
   const actions = [
     { id: 'shifts', label: 'Job Schedule', color: 'bg-blue-500', icon: '📅' },
     { id: 'logistics', label: 'My Route', color: 'bg-green-500', icon: '🚚' },
     { id: 'tutorials', label: 'Academy / SOPs', color: 'bg-purple-500', icon: '📚' },
     { id: 'ai', label: 'Studio AI', color: 'bg-[#C5A059]', icon: '🤖' },
   ].filter(a => {
-      // Basic role filtering for tiles
       if (a.id === 'logistics' && !['driver', 'admin'].includes(user.role)) return false;
       return true;
   });

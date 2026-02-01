@@ -2,18 +2,10 @@
 nixPkgs = ["nodejs_20", "npm", "python3", "gcc", "g++", "make"]
 
 [phases.install]
-# Aggressive cleanup of potential lockfile conflicts
-cmds = [
-    "rm -rf node_modules package-lock.json",
-    "npm install"
-]
+cmds = ["npm install"]
 
 [phases.build]
-# Clean build caches
-cmds = [
-    "rm -rf node_modules/.vite node_modules/.rollup.cache",
-    "npm run build"
-]
+cmds = ["npm run build"]
 
 [start]
 cmd = "npm start"
