@@ -1,9 +1,9 @@
 [phases.setup]
-nixPkgs = ["nodejs_20", "npm"]
+# We include python3, gcc, and make to ensure native modules (like better-sqlite3) build correctly
+nixPkgs = ["nodejs_20", "npm", "python3", "gcc", "g++", "make"]
 
 [phases.install]
-# 1. Remove the local lockfile that is causing platform conflicts
-# 2. Run 'npm install' to generate a fresh, correct lockfile for the server
+# Force a clean install to prevent platform-specific lockfile issues
 cmds = [
     "rm -rf package-lock.json node_modules",
     "npm install"
