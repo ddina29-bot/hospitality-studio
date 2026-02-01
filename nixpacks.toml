@@ -2,15 +2,18 @@
 nixPkgs = ["nodejs_20", "npm", "python3", "gcc", "g++", "make"]
 
 [phases.install]
-# We delete the lockfile to force the server to generate a new one compatible with the Linux environment
-# This resolves the 'npm ci' synchronization error
+# We remove everything and re-install to ensure native Linux binaries are used
 cmds = [
-    "rm -rf package-lock.json node_modules",
+    "rm -rf node_modules package-lock.json dist",
     "npm install"
 ]
 
 [phases.build]
-cmds = ["npm run build"]
+# Clear Vite cache explicitly
+cmds = [
+    "rm -rf node_modules/.vite",
+    "npm run build"
+]
 
 [start]
 cmd = "npm start"
