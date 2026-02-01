@@ -2,8 +2,8 @@
 nixPkgs = ["nodejs_20", "npm"]
 
 [phases.install]
-# CRITICAL: Delete package-lock.json to prevent 'npm ci' platform mismatches.
-# We force a fresh 'npm install' to generate a Linux-compatible lockfile.
+# 1. Remove the local lockfile that is causing platform conflicts
+# 2. Run 'npm install' to generate a fresh, correct lockfile for the server
 cmds = [
     "rm -rf package-lock.json node_modules",
     "npm install"
