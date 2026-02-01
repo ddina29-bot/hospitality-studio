@@ -126,8 +126,19 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
            return;
       }
 
-      localStorage.setItem('current_user_obj', JSON.stringify(data.user));
-      localStorage.setItem('studio_org_settings', JSON.stringify(data.organization));
+      // SAFE STORAGE: Handle QuotaExceededError
+      try {
+        localStorage.setItem('current_user_obj', JSON.stringify(data.user));
+        try {
+            localStorage.setItem('studio_org_settings', JSON.stringify(data.organization));
+        } catch (storageErr) {
+            console.warn("Storage Quota Exceeded. Saving minimal config.");
+            // If full data fails, just save the ID so App can fetch the rest from server
+            localStorage.setItem('studio_org_settings', JSON.stringify({ id: data.organization.id }));
+        }
+      } catch (e) {
+        console.error("LocalStorage critical failure:", e);
+      }
 
       onLogin(data.user, data.organization);
     } catch (err: any) {
@@ -171,8 +182,18 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       
-      localStorage.setItem('current_user_obj', JSON.stringify(data.user));
-      localStorage.setItem('studio_org_settings', JSON.stringify(data.organization));
+      // SAFE STORAGE: Handle QuotaExceededError
+      try {
+        localStorage.setItem('current_user_obj', JSON.stringify(data.user));
+        try {
+            localStorage.setItem('studio_org_settings', JSON.stringify(data.organization));
+        } catch (storageErr) {
+            console.warn("Storage Quota Exceeded. Saving minimal config.");
+            localStorage.setItem('studio_org_settings', JSON.stringify({ id: data.organization.id }));
+        }
+      } catch (e) {
+        console.error("LocalStorage critical failure:", e);
+      }
 
       window.history.replaceState({}, document.title, "/");
       onLogin(data.user, data.organization);
@@ -287,7 +308,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
               <button type="submit" disabled={isLoading} className={buttonStyle}>{isLoading ? 'VERIFYING...' : 'ENTER STUDIO'}</button>
             </div>
             <div className="text-center pt-2">
-                <p className="text-[8px] font-black text-black/20 uppercase tracking-[0.3em]">Studio v1.0.5</p>
+                <p className="text-[8px] font-black text-black/20 uppercase tracking-[0.3em]">Studio v1.0.6</p>
             </div>
           </form>
         </div>

@@ -27,7 +27,11 @@ const LaundryReports: React.FC<LaundryReportsProps> = ({ shifts, properties, use
 
   const saveCounts = (counts: Record<string, number>) => {
     setDamageCounts(counts);
-    localStorage.setItem('studio_damage_counts', JSON.stringify(counts));
+    try {
+      localStorage.setItem('studio_damage_counts', JSON.stringify(counts));
+    } catch (e) {
+      console.warn("Could not save damage counts to local storage (quota exceeded)");
+    }
   };
 
   // Updated List as requested

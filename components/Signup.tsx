@@ -64,8 +64,17 @@ const Signup: React.FC<SignupProps> = ({ onSignupComplete, onBackToLogin }) => {
       if (!response.ok) throw new Error(data.error || 'Signup failed');
 
       // CRITICAL: Save session data for components that rely on it
-      localStorage.setItem('current_user_obj', JSON.stringify(data.user));
-      localStorage.setItem('studio_org_settings', JSON.stringify(data.organization));
+      try {
+        localStorage.setItem('current_user_obj', JSON.stringify(data.user));
+        try {
+            localStorage.setItem('studio_org_settings', JSON.stringify(data.organization));
+        } catch (storageErr) {
+            console.warn("Storage Quota Exceeded during signup. Saving minimal config.");
+            localStorage.setItem('studio_org_settings', JSON.stringify({ id: data.organization.id }));
+        }
+      } catch (e) {
+        console.error("LocalStorage error during signup:", e);
+      }
 
       // Success
       onSignupComplete(data.user, data.organization);
