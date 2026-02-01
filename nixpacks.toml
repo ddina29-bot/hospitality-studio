@@ -2,10 +2,10 @@
 nixPkgs = ["nodejs_20", "npm", "python3", "gcc", "g++", "make"]
 
 [phases.install]
-# We must delete the lockfile and node_modules to avoid platform-specific binary conflicts (e.g. Rollup/Esbuild)
+# We delete the lockfile to force the server to generate a new one compatible with the Linux environment
 cmds = [
-    "rm -rf package-lock.json node_modules",
-    "npm install --no-package-lock"
+    "rm -f package-lock.json",
+    "npm install"
 ]
 
 [phases.build]
