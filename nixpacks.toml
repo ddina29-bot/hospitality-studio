@@ -2,7 +2,12 @@
 nixPkgs = ["nodejs_20", "npm"]
 
 [phases.install]
-cmds = ["rm -rf node_modules package-lock.json", "npm install"]
+# We delete package-lock.json to prevent 'npm ci' synchronization errors
+# We use 'npm install' instead of 'npm ci' to generate a Linux-compatible lockfile on the fly
+cmds = [
+    "rm -rf node_modules package-lock.json",
+    "npm install"
+]
 
 [phases.build]
 cmds = ["npm run build"]
