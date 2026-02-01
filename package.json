@@ -1,6 +1,6 @@
 {
   "name": "reset-hospitality-studio",
-  "version": "1.1.9",
+  "version": "1.1.10",
   "type": "module",
   "engines": {
     "node": ">=20.0.0"
@@ -25,9 +25,11 @@
     "nodemailer": "^7.0.0",
     "firebase": "^10.14.1"
   },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "*"
+  },
   "devDependencies": {
     "@types/react": "^18.3.0",
-    "@types/react-dom": "^18.3.0",
-    "rollup": "^4.22.4"
+    "@types/react-dom": "^18.3.0"
   }
 }
