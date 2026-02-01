@@ -205,7 +205,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleForceStop = (e: React.MouseEvent, shiftId: string) => {
     e.stopPropagation();
-    if (!window.confirm("Are you sure you want to FORCE CHECK OUT this user? This will mark the shift as completed pending review.")) return;
+    if (!window.confirm("WARNING: This will stop the timer NOW. \n\nIf the user left hours ago, you must manually correct the time in the 'Verification' tab before approving payroll.\n\nProceed?")) return;
     
     setShifts(prev => prev.map(s => {
         if (s.id === shiftId) {
@@ -214,7 +214,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 status: 'completed',
                 actualEndTime: Date.now(),
                 approvalStatus: 'pending',
-                approvalComment: 'ADMIN TERMINATION: Force Clock Out'
+                approvalComment: 'ADMIN TERMINATION: Force Clock Out - Please Verify Time'
             };
         }
         return s;
@@ -245,8 +245,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       <div className="flex flex-col gap-4">
         
         {/* TOP ACTION BAR */}
-        <section className="flex flex-col md:flex-row gap-4 items-stretch">
-            <div className="flex-1 bg-white border border-gray-200 p-4 rounded-[28px] shadow-sm flex items-center justify-between gap-6">
+        <section className="flex flex-col md:flex-row gap-4 items-center">
+            <div className="flex-1 w-full md:w-auto bg-white border border-gray-200 p-4 rounded-[28px] shadow-sm flex items-center justify-between gap-6">
                 <div className="flex items-center gap-4">
                     <div className="w-10 h-10 bg-[#C5A059]/10 rounded-full flex items-center justify-center text-[#C5A059]">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
@@ -258,8 +258,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
                 <button onClick={() => setShowLaundryAccessModal(true)} className="bg-[#C5A059] text-black font-black px-6 py-2.5 rounded-xl text-[9px] uppercase tracking-widest shadow-lg active:scale-95 transition-all hover:bg-[#d4b476]">MANAGE ACCESS</button>
             </div>
-            <button onClick={onOpenManualTask} className="bg-black hover:bg-zinc-900 text-[#C5A059] font-black px-8 py-4 rounded-[28px] text-[9px] uppercase tracking-[0.2em] flex items-center justify-center gap-3 transition-all shadow-xl active:scale-95">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> ADD MANUAL TASK
+            <button onClick={onOpenManualTask} className="w-full md:w-auto bg-black hover:bg-zinc-900 text-[#C5A059] font-black px-5 py-2.5 rounded-xl text-[8px] uppercase tracking-[0.2em] flex items-center justify-center gap-2 transition-all shadow-xl active:scale-95 shrink-0">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> ADD MANUAL TASK
             </button>
         </section>
 
@@ -668,10 +668,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
          </div>
       )}
 
-      {/* ... (Keep Assignments, Resolution, Extra Time, Rejected Queue sections as is) ... */}
-      {/* (Omitted for brevity as no logic changes needed here) */}
-      
-      {/* ... Assignment Modal ... */}
+      {/* Assignment Modal */}
       {assigningReport && (
         <div className="fixed inset-0 bg-black/80 z-[500] flex items-center justify-center p-4 backdrop-blur-sm animate-in zoom-in-95">
            <div className="bg-[#FDF8EE] border border-[#C5A059]/40 rounded-[40px] w-full max-w-md p-8 space-y-6 shadow-2xl relative">

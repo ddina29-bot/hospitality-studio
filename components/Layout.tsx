@@ -168,7 +168,14 @@ const Layout = ({
             <span className="text-[#C5A059] text-[9px] font-black tracking-[0.3em]">RESET</span>
             <span className="text-black font-bold text-lg tracking-tight">STUDIO</span>
           </h1>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={onLogout}
+              className="p-2.5 rounded-full bg-red-50 text-red-500 transition-all active:scale-95 border border-red-100"
+              title="Log Out"
+            >
+               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            </button>
             <button 
               onClick={() => setActiveTab('ai')}
               className={`p-2.5 rounded-full transition-all ${activeTab === 'ai' ? 'bg-[#C5A059] text-white shadow-lg' : 'bg-gray-50 text-gray-400'}`}

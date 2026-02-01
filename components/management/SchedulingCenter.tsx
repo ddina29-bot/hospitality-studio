@@ -51,6 +51,34 @@ const parseTimeToMinutes = (time12h: string) => {
   return hours * 60 + minutes;
 };
 
+// Helper to get HH:MM from timestamp
+const getTimeFromTimestamp = (ts: number | undefined) => {
+    if (!ts) return '';
+    const d = new Date(ts);
+    const h = String(d.getHours()).padStart(2, '0');
+    const m = String(d.getMinutes()).padStart(2, '0');
+    return `${h}:${m}`;
+};
+
+// Helper to update timestamp with new HH:MM
+const updateTimestampWithTime = (originalTs: number | undefined, timeStr: string, dateStr: string) => {
+    if (!timeStr) return originalTs;
+    const [h, m] = timeStr.split(':').map(Number);
+    
+    // Parse the date of the shift to ensure we keep the correct day
+    // Handle 'DD MMM' or 'YYYY-MM-DD'
+    let d: Date;
+    if (dateStr.includes('-')) {
+        d = new Date(dateStr);
+    } else {
+        const currentYear = new Date().getFullYear();
+        d = new Date(`${dateStr} ${currentYear}`);
+    }
+    
+    d.setHours(h, m, 0, 0);
+    return d.getTime();
+};
+
 const getShiftAttributedPhotos = (shift: Shift): { url: string }[] => {
   const allPhotos: { url: string }[] = [];
   if (shift.tasks) shift.tasks.forEach(task => task.photos?.forEach(p => allPhotos.push({ url: p.url })));
@@ -571,24 +599,30 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
     const auditorName = currentUser.name || 'Management';
     const finalComment = status === 'approved' ? (reviewShift.approvalComment || 'Quality Verified.') : (rejectionReason || reviewShift.approvalComment || 'Remediation Required.');
 
+    // Save any time changes from the review modal
+    const finalShift = { ...reviewShift };
+
     setShifts((prev: Shift[]): Shift[] => {
         let next: Shift[] = prev.map(s => {
-            if (s.id === reviewShift.id) {
+            if (s.id === finalShift.id) {
                 const isAuditTask = s.serviceType === 'TO CHECK APARTMENT';
                 return { 
                     ...s, 
                     approvalStatus: 'approved' as const, 
                     decidedBy: auditorName,
                     approvalComment: finalComment,
-                    userIds: isAuditTask ? [currentUser.id] : s.userIds
+                    userIds: isAuditTask ? [currentUser.id] : s.userIds,
+                    // Apply any time corrections made in review modal
+                    actualStartTime: finalShift.actualStartTime || s.actualStartTime,
+                    actualEndTime: finalShift.actualEndTime || s.actualEndTime
                 };
             }
             return s;
         });
 
-        if (reviewShift.serviceType === 'TO CHECK APARTMENT') {
+        if (finalShift.serviceType === 'TO CHECK APARTMENT') {
             const cleanerShift = next
-                .filter(s => s.propertyId === reviewShift.propertyId && s.serviceType !== 'TO CHECK APARTMENT' && s.status === 'completed')
+                .filter(s => s.propertyId === finalShift.propertyId && s.serviceType !== 'TO CHECK APARTMENT' && s.status === 'completed')
                 .sort((a, b) => (b.actualEndTime || 0) - (a.actualEndTime || 0))[0];
             
             if (cleanerShift) {
@@ -601,12 +635,15 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
                 } : s);
             }
         } else {
-            next = next.map(s => s.id === reviewShift.id ? {
+            next = next.map(s => s.id === finalShift.id ? {
                 ...s,
                 approvalStatus: status,
                 wasRejected: status === 'rejected' ? true : s.wasRejected,
                 approvalComment: finalComment,
-                decidedBy: auditorName
+                decidedBy: auditorName,
+                // Apply time corrections here too for direct cleaner reviews
+                actualStartTime: finalShift.actualStartTime || s.actualStartTime,
+                actualEndTime: finalShift.actualEndTime || s.actualEndTime
             } : s);
         }
         return next;
@@ -694,8 +731,15 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
   const labelStyle = "text-[7px] font-black text-[#C5A059] uppercase tracking-[0.4em] opacity-80 mb-0.5 block px-1";
   const inputStyle = "w-full bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-[#1A1A1A] text-[9px] font-bold uppercase tracking-widest outline-none focus:border-[#C5A059] h-10 transition-all";
 
+  // Calculate duration for review modal
+  const reviewDuration = useMemo(() => {
+      if (!reviewShift?.actualStartTime || !reviewShift?.actualEndTime) return 0;
+      return (reviewShift.actualEndTime - reviewShift.actualStartTime) / (1000 * 60 * 60);
+  }, [reviewShift?.actualStartTime, reviewShift?.actualEndTime]);
+
   return (
     <div className="space-y-6 animate-in fade-in duration-700 text-left pb-24 max-w-full overflow-hidden">
+      {/* ... (Header and Grid/List views remain unchanged) ... */}
       <header className="space-y-4 px-1">
         <h2 className="text-2xl font-serif-brand text-[#1A1A1A] uppercase font-bold tracking-tight">SCHEDULE</h2>
         <div className="flex flex-col lg:flex-row lg:items-center gap-4">
@@ -889,7 +933,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
         </div>
       )}
 
-      {/* Shift Modal */}
+      {/* Shift Modal (Omitted for brevity - same as before) */}
       {showShiftModal && (
         <div className="fixed inset-0 bg-black/80 z-[500] flex items-center justify-center p-4 backdrop-blur-sm animate-in zoom-in-95 overflow-y-auto">
            {/* ... (Shift Modal Content same as before) ... */}
@@ -1111,7 +1155,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
         </div>
       )}
 
-      {/* Review Modal (Audit) */}
+      {/* Review Modal (Audit) - UPDATED with Time Edits */}
       {reviewShift && (
         <div className="fixed inset-0 bg-black/70 z-[500] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in" onClick={handleCloseMonitor}>
            <div className="bg-[#FDF8EE] border border-[#C5A059]/40 rounded-[40px] w-full max-w-4xl p-8 md:p-10 space-y-8 shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar" onClick={e => e.stopPropagation()}>
@@ -1139,12 +1183,42 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
                  </div>
 
                  <div className="space-y-6">
+                    {/* TIME EDITING SECTION */}
+                    <div className="bg-white border border-gray-200 p-4 rounded-2xl">
+                        <div className="flex justify-between items-center mb-3">
+                            <label className="text-[8px] font-black text-[#C5A059] uppercase tracking-[0.4em]">Time Logs (Adjust if needed)</label>
+                            <span className="text-[9px] font-bold text-black uppercase">
+                                Duration: {reviewDuration.toFixed(1)} hrs
+                            </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-[7px] font-bold text-black/40 uppercase tracking-widest block mb-1">Actual Start</label>
+                                <input 
+                                    type="time" 
+                                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-[10px] font-bold"
+                                    value={getTimeFromTimestamp(reviewShift.actualStartTime)}
+                                    onChange={(e) => setReviewShift({...reviewShift, actualStartTime: updateTimestampWithTime(reviewShift.actualStartTime || Date.now(), e.target.value, reviewShift.date)})}
+                                />
+                            </div>
+                            <div>
+                                <label className="text-[7px] font-bold text-black/40 uppercase tracking-widest block mb-1">Actual End</label>
+                                <input 
+                                    type="time" 
+                                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-[10px] font-bold"
+                                    value={getTimeFromTimestamp(reviewShift.actualEndTime)}
+                                    onChange={(e) => setReviewShift({...reviewShift, actualEndTime: updateTimestampWithTime(reviewShift.actualEndTime || Date.now(), e.target.value, reviewShift.date)})}
+                                />
+                            </div>
+                        </div>
+                    </div>
+
                     <div>
                        <label className="text-[8px] font-black text-[#C5A059] uppercase tracking-[0.4em] mb-1.5 block px-1 opacity-80">Feedback / Reason</label>
                        <textarea 
                          value={rejectionReason} 
                          onChange={(e) => setRejectionReason(e.target.value)}
-                         className="w-full bg-white border border-[#C5A059]/20 rounded-xl p-4 text-[10px] font-medium outline-none focus:border-[#C5A059] h-32 placeholder:text-black/20 italic"
+                         className="w-full bg-white border border-[#C5A059]/20 rounded-xl p-4 text-[10px] font-medium outline-none focus:border-[#C5A059] h-24 placeholder:text-black/20 italic"
                          placeholder="Required for rejection. Optional for approval."
                        />
                     </div>

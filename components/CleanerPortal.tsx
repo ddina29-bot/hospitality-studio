@@ -57,10 +57,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   const [isVerifying, setIsVerifying] = useState(false);
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
   
-  // Geofence Debug State
-  const [currentDistance, setCurrentDistance] = useState<number | null>(null);
-  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
-
   // Checkout Key states
   const [keyInBoxPhotos, setKeyInBoxPhotos] = useState<AttributedPhoto[]>([]);
   const [boxClosedPhotos, setBoxClosedPhotos] = useState<AttributedPhoto[]>([]);
@@ -152,15 +148,20 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
         return false;
       })
       .sort((a, b) => {
-        const getStatusWeight = (s: Shift) => {
-          if (s.status === 'active') return 0;
-          if (s.status === 'pending') return 1;
-          if (s.status === 'completed' && s.approvalStatus === 'pending') return 2;
-          return 3;
-        };
-        const weightA = getStatusWeight(a);
-        const weightB = getStatusWeight(b);
-        if (weightA !== weightB) return weightA - weightB;
+        // Updated sorting logic: Prioritize time for non-completed tasks
+        const isCompletedA = a.status === 'completed';
+        const isCompletedB = b.status === 'completed';
+        
+        // Put completed items at the bottom
+        if (isCompletedA && !isCompletedB) return 1;
+        if (!isCompletedA && isCompletedB) return -1;
+        
+        // If both are active/pending, sort strictly by time
+        if (!isCompletedA && !isCompletedB) {
+            return parseTimeValue(a.startTime) - parseTimeValue(b.startTime);
+        }
+        
+        // If both are completed, sort by time as well (or end time if desired, but sticking to start time for consistency)
         return parseTimeValue(a.startTime) - parseTimeValue(b.startTime);
       });
   }, [shifts, currentUser.id, isManagement, viewedDateStr]);
@@ -191,9 +192,10 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
       ...s, 
       status: 'completed', 
       actualEndTime: Date.now(), 
-      approvalStatus: 'rejected', 
-      wasRejected: true,
-      approvalComment: 'AUTOMATIC REJECTION: GEOFENCE BREACH DETECTED >50M FROM PROPERTY.',
+      // Changed to PENDING so Admin sees it in verification queue to fix time
+      approvalStatus: 'pending', 
+      wasRejected: false,
+      approvalComment: 'SYSTEM AUTO-STOP: Geofence Breach (User left property). Please verify actual hours.',
       tasks: tasks 
     } as Shift) : s));
 
@@ -207,10 +209,10 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     setCurrentStep('list');
     
     // Show alert
-    alert("⚠️ SECURITY ALERT: You left the property perimeter (>50m). Shift terminated automatically.");
+    alert("⚠️ LOCATION ALERT: You have left the property area. Shift has been auto-completed and sent for review.");
   }, [selectedShiftId, setShifts, tasks, isManagement]);
 
-  // GPS Monitor - Strict 50m Geofence Logic
+  // GPS Monitor - Strict 150m Geofence Logic
   useEffect(() => {
     let watchId: number | null = null;
     
@@ -224,22 +226,18 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
         (position) => {
           const currentLat = position.coords.latitude;
           const currentLng = position.coords.longitude;
-          const accuracy = position.coords.accuracy;
           
-          setGpsAccuracy(accuracy);
-
           const distanceKm = calculateDistance(targetLat, targetLng, currentLat, currentLng);
-          setCurrentDistance(distanceKm);
 
-          // 0.05 km = 50 meters
-          // Only enforce if accuracy is reasonable (<100m) to prevent GPS jumps
-          if (distanceKm > 0.05 && accuracy < 100) { 
+          // 0.15 km = 150 meters
+          // Triggers if user walks away significantly
+          if (distanceKm > 0.15) { 
             console.warn(`Geofence Breach Detected: ${distanceKm.toFixed(4)}km`);
             handleForceClockOut();
           }
         },
         (error) => console.warn("Geolocation watch error:", error),
-        { enableHighAccuracy: true, maximumAge: 5000, timeout: 5000 }
+        { enableHighAccuracy: true, maximumAge: 10000, timeout: 10000 }
       );
     }
     
@@ -336,12 +334,12 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                 position.coords.longitude
             );
             
-            // Check-in allowed within 100m
-            if (distance <= 0.1) {
+            // Check-in allowed within 200m
+            if (distance <= 0.2) {
                 setIsLocationVerified(true);
                 showNotification("Location Verified Successfully", 'success');
             } else {
-                showNotification(`Location Error: You are ${distance.toFixed(2)}km away. Must be within 100m to start.`, 'error');
+                showNotification(`Location Error: You are ${distance.toFixed(2)}km away. Must be closer.`, 'error');
             }
             setIsVerifying(false);
         },
@@ -367,6 +365,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
 
     setSelectedShiftId(shift.id);
     setIsLocationVerified(false);
+    
     const needsVerification = shift.status === 'completed' && shift.approvalStatus === 'pending';
     const isExplicitAudit = shift.serviceType === 'TO CHECK APARTMENT';
     if (canPerformAudit && (isExplicitAudit || needsVerification)) {
@@ -515,22 +514,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     showNotification("Incident reported successfully.", 'success');
   };
 
-  const handleUpdateSupplyQty = (id: string, delta: number) => {
-    setSelectedSupplyItems(prev => {
-        const current = prev[id] || 0;
-        return { ...prev, [id]: Math.max(0, current + delta) };
-    });
-  };
-
-  const handleSubmitSupplyRequest = () => {
-    if (onAddSupplyRequest) {
-        onAddSupplyRequest(selectedSupplyItems);
-        setSelectedSupplyItems({});
-        setShowSupplyModal(false);
-        showNotification("Supply request sent.", 'success');
-    }
-  };
-
   // --- RENDER ---
 
   if (currentStep === 'list') {
@@ -664,9 +647,11 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                         </div>
                     </div>
                     {!isLocationVerified ? (
-                        <button onClick={verifyLocation} disabled={isVerifying} className="w-full md:w-auto bg-[#C5A059] text-black font-black px-10 py-5 rounded-2xl uppercase tracking-[0.3em] text-[10px] shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3">
-                            {isVerifying ? <><span className="w-3 h-3 border-2 border-black/20 border-t-black rounded-full animate-spin"></span>VERIFYING...</> : 'VERIFY LOCATION'}
-                        </button>
+                        <div className="flex flex-col items-center gap-3 w-full md:w-auto">
+                            <button onClick={verifyLocation} disabled={isVerifying} className="w-full md:w-auto bg-[#C5A059] text-black font-black px-10 py-5 rounded-2xl uppercase tracking-[0.3em] text-[10px] shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3">
+                                {isVerifying ? <><span className="w-3 h-3 border-2 border-black/20 border-t-black rounded-full animate-spin"></span>VERIFYING...</> : 'VERIFY LOCATION'}
+                            </button>
+                        </div>
                     ) : (
                         <div className="flex items-center gap-3 bg-green-50 text-green-600 px-6 py-3 rounded-2xl border border-green-200">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
@@ -877,7 +862,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                                         <img key={i} src={url} className="w-24 h-24 rounded-2xl object-cover border border-gray-200" />
                                     ))}
                                 </div>
-                                <input type="file" ref={reportCameraRef} className="hidden" accept="image/*" capture="environment" onChange={(e) => handleCapture(e, 'report')} />
+                                <input type="file" ref={reportCameraRef} className="hidden" accept="image/*" onChange={(e) => handleCapture(e, 'report')} />
                             </div>
 
                             <button onClick={handleReportSubmit} className="w-full bg-black text-[#C5A059] font-black py-4 rounded-2xl uppercase tracking-[0.3em] text-[10px] shadow-xl">SUBMIT REPORT</button>
@@ -885,93 +870,90 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                     </div>
                 </div>
             )}
-
-            {showSupplyModal && (
-                <div className="fixed inset-0 bg-black/60 z-[500] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
-                    <div className="bg-white border border-green-200 rounded-[48px] w-full max-w-lg p-8 md:p-12 space-y-8 shadow-2xl relative text-left my-auto animate-in zoom-in-95">
-                        <button onClick={() => setShowSupplyModal(false)} className="absolute top-8 right-8 text-black/20 hover:text-black"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-                        <header className="space-y-1">
-                            <h2 className="text-2xl font-serif-brand font-bold text-green-700 uppercase tracking-tight">Request Supplies</h2>
-                            <p className="text-[8px] font-black text-green-600 uppercase tracking-[0.4em]">Inventory Restock</p>
-                        </header>
-                        <div className="space-y-4 max-h-[40vh] overflow-y-auto custom-scrollbar pr-2">
-                            {inventoryItems.map(item => (
-                                <div key={item.id} className="flex justify-between items-center p-3 border-b border-gray-100 last:border-0">
-                                    <span className="text-[10px] font-bold text-black uppercase">{item.name}</span>
-                                    <div className="flex items-center gap-3">
-                                        <button onClick={() => handleUpdateSupplyQty(item.id, -1)} className="w-6 h-6 rounded bg-gray-100 flex items-center justify-center text-black font-bold">-</button>
-                                        <span className="text-[10px] font-mono font-bold w-4 text-center">{selectedSupplyItems[item.id] || 0}</span>
-                                        <button onClick={() => handleUpdateSupplyQty(item.id, 1)} className="w-6 h-6 rounded bg-gray-100 flex items-center justify-center text-black font-bold">+</button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                        <button onClick={handleSubmitSupplyRequest} disabled={Object.values(selectedSupplyItems).every(v => v === 0)} className="w-full bg-green-600 text-white font-black py-4 rounded-2xl uppercase tracking-[0.3em] text-[10px] shadow-xl disabled:opacity-50">SEND REQUEST</button>
-                    </div>
-                </div>
-            )}
-            
-            {zoomedImage && <div className="fixed inset-0 bg-black/95 z-[500] flex items-center justify-center p-4 cursor-pointer" onClick={() => setZoomedImage(null)}><img src={zoomedImage} className="max-w-full max-h-full object-contain rounded-3xl" alt="Preview" /></div>}
         </div>
       );
   }
 
-  // REVIEW & INSPECTION STEPS
-  if ((currentStep === 'review' || currentStep === 'inspection') && activeShift) {
-    const totalPhotos = tasks.reduce((sum, t) => sum + t.photos.length, 0);
-    const keyInBoxDone = keyInBoxPhotos.length >= 1;
-    const boxClosedDone = boxClosedPhotos.length >= 1;
-    
-    return (
-      <div className="space-y-10 animate-in fade-in duration-700 pb-32 max-w-2xl mx-auto text-left px-2 relative">
-        <button onClick={() => setCurrentStep('active')} className="text-[10px] font-black text-black/30 hover:text-black uppercase tracking-widest flex items-center gap-2 mb-4"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>Back to Work</button>
-        <header className="space-y-2"><p className="text-[#C5A059] font-black uppercase tracking-[0.4em] text-[10px]">Submission Core</p><h2 className="text-3xl font-serif-brand font-bold text-black uppercase tracking-tight">Final Summary</h2></header>
-        
-        {/* ACCESS CODES DISPLAY - ENSURING VISIBILITY FOR CLEANER */}
-        {activeProperty && (
-            <section className="bg-[#FDF8EE] p-6 rounded-[32px] border border-[#D4B476]/30 shadow-lg space-y-4 animate-in slide-in-from-bottom-1">
-                <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-[#C5A059] rounded-full animate-pulse"></div>
-                    <h3 className="text-xs font-black text-[#8B6B2E] uppercase tracking-widest">Access Codes Reminder</h3>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                    <div 
-                      className="space-y-1 p-3 bg-white/50 rounded-xl border border-[#D4B476]/10 active:scale-95 transition-transform cursor-pointer"
-                      onClick={() => { navigator.clipboard.writeText(activeProperty.mainEntranceCode || ''); showNotification('Copied Entrance Code!', 'success'); }}
-                    >
-                        <p className="text-[8px] font-black text-black/40 uppercase tracking-widest flex items-center gap-1">Entrance <span className="text-[6px] bg-[#C5A059]/20 px-1 rounded text-[#8B6B2E]">COPY</span></p>
-                        <p className="text-xl font-bold font-mono text-black tracking-tight">{activeProperty.mainEntranceCode || 'N/A'}</p>
+  // REVIEW & CHECKOUT VIEW
+  if (currentStep === 'review' && activeShift) {
+      return (
+        <div className="space-y-8 animate-in fade-in duration-700 pb-32 max-w-2xl mx-auto text-left px-2 relative">
+            <header className="space-y-1">
+                <h2 className="text-2xl font-serif-brand font-bold uppercase tracking-tight text-black">Checkout Protocol</h2>
+                <p className="text-[8px] font-black text-[#C5A059] uppercase tracking-[0.4em]">Final Security Measures</p>
+            </header>
+            
+            <div className="space-y-6">
+                <div className="bg-white border border-gray-200 p-6 rounded-[32px] space-y-4">
+                    <p className="text-[9px] font-black text-black/40 uppercase tracking-widest">1. Keybox Evidence</p>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div onClick={() => { setCheckoutTarget('keyInBox'); checkoutKeyRef.current?.click(); }} className="h-32 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center cursor-pointer hover:border-[#C5A059] transition-all relative overflow-hidden">
+                            {keyInBoxPhotos.length > 0 ? (
+                                <img src={keyInBoxPhotos[keyInBoxPhotos.length-1].url} className="w-full h-full object-cover" />
+                            ) : (
+                                <>
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-300"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                    <span className="text-[7px] font-black uppercase mt-2 text-gray-400">Key Inside</span>
+                                </>
+                            )}
+                        </div>
+                        <div onClick={() => { setCheckoutTarget('boxClosed'); checkoutKeyRef.current?.click(); }} className="h-32 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center cursor-pointer hover:border-[#C5A059] transition-all relative overflow-hidden">
+                            {boxClosedPhotos.length > 0 ? (
+                                <img src={boxClosedPhotos[boxClosedPhotos.length-1].url} className="w-full h-full object-cover" />
+                            ) : (
+                                <>
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-300"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                                    <span className="text-[7px] font-black uppercase mt-2 text-gray-400">Box Closed</span>
+                                </>
+                            )}
+                        </div>
                     </div>
-                    <div 
-                      className="space-y-1 p-3 bg-white/50 rounded-xl border border-[#D4B476]/10 active:scale-95 transition-transform cursor-pointer"
-                      onClick={() => { navigator.clipboard.writeText(activeProperty.keyboxCode || ''); showNotification('Copied Keybox Code!', 'success'); }}
-                    >
-                        <p className="text-[8px] font-black text-black/40 uppercase tracking-widest flex items-center gap-1">Keybox / Apt <span className="text-[6px] bg-[#C5A059]/20 px-1 rounded text-[#8B6B2E]">COPY</span></p>
-                        <p className="text-xl font-bold font-mono text-black tracking-tight">{activeProperty.keyboxCode}</p>
-                    </div>
+                    <input type="file" ref={checkoutKeyRef} className="hidden" accept="image/*" capture="environment" onChange={(e) => handleCapture(e, 'checkout')} />
                 </div>
-            </section>
-        )}
 
-        <section className="bg-white border border-[#D4B476]/40 p-8 rounded-[40px] shadow-2xl space-y-8 animate-in slide-in-from-bottom-2">
-           <div className="space-y-1"><p className="text-[10px] font-black text-[#C5A059] uppercase tracking-[0.4em]">Final Key Verification</p><p className="text-[8px] font-bold text-red-600 uppercase tracking-widest italic animate-pulse">Photo from camera mandatory for clock out</p></div>
-           <div className="space-y-8">
-              <div className="space-y-4">
-                 <div className="flex justify-between items-center"><div className="flex flex-col"><span className="text-[11px] font-bold text-black uppercase">1. Key placed in box</span></div><button onClick={() => { setCheckoutTarget('keyInBox'); checkoutKeyRef.current?.click(); }} className={`p-3 rounded-xl border transition-all ${keyInBoxDone ? 'bg-green-50 border-green-500/20 text-green-600' : 'bg-red-50 border-red-200 text-red-600'}`}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button></div>
-                 {keyInBoxPhotos.length > 0 && (<div className="flex gap-2 overflow-x-auto pb-2">{keyInBoxPhotos.map((p, i) => (<img key={i} src={p.url} onClick={() => setZoomedImage(p.url)} className="w-20 h-20 rounded-xl object-cover border border-gray-100 shadow-sm cursor-zoom-in" alt="Key in box" />))}</div>)}
-              </div>
-              <div className="space-y-4">
-                 <div className="flex justify-between items-center"><div className="flex flex-col"><span className="text-[11px] font-bold text-black uppercase">2. Keybox closed & code at 0000</span></div><button onClick={() => { setCheckoutTarget('boxClosed'); checkoutKeyRef.current?.click(); }} className={`p-3 rounded-xl border transition-all ${boxClosedDone ? 'bg-green-50 border-green-500/20 text-green-600' : 'bg-red-50 border-red-200 text-red-600'}`}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button></div>
-                 {boxClosedPhotos.length > 0 && (<div className="flex gap-2 overflow-x-auto pb-2">{boxClosedPhotos.map((p, i) => (<img key={i} src={p.url} onClick={() => setZoomedImage(p.url)} className="w-20 h-20 rounded-xl object-cover border border-gray-100 shadow-sm cursor-zoom-in" alt="Keybox closed" />))}</div>)}
-              </div>
-           </div>
-        </section>
-        <div className="pt-4 space-y-4">
-           <button onClick={handleFinishShift} className={`w-full font-black py-6 rounded-3xl uppercase tracking-[0.4em] text-sm shadow-xl transition-all active:scale-95 ${(keyInBoxDone && boxClosedDone) ? 'bg-[#C5A059] text-black hover:bg-[#D4B476]' : 'bg-gray-100 text-black/20 border border-gray-200 cursor-not-allowed'}`}>CLOCK OUT</button>
+                <div className="flex gap-3">
+                    <button onClick={handleFinishShift} className="flex-1 bg-[#C5A059] text-black font-black py-5 rounded-3xl uppercase tracking-[0.3em] text-[10px] shadow-xl active:scale-95 transition-all">
+                        CONFIRM & CLOCK OUT
+                    </button>
+                    <button onClick={() => setCurrentStep('active')} className="px-8 border border-gray-200 text-black/40 font-black py-5 rounded-3xl uppercase tracking-widest text-[9px]">
+                        BACK
+                    </button>
+                </div>
+            </div>
         </div>
-        <input type="file" ref={checkoutKeyRef} className="hidden" accept="image/*" capture="environment" onChange={(e) => handleCapture(e, 'checkout')} />
-      </div>
-    );
+      );
+  }
+
+  // INSPECTION / AUDIT VIEW
+  if (currentStep === 'inspection' && activeShift) {
+      return (
+        <div className="space-y-8 animate-in fade-in duration-700 pb-32 max-w-2xl mx-auto text-left px-2 relative">
+            <header className="space-y-1">
+                <h2 className="text-2xl font-serif-brand font-bold uppercase tracking-tight text-black">Audit Mode</h2>
+                <p className="text-[8px] font-black text-[#C5A059] uppercase tracking-[0.4em]">Supervisor Verification</p>
+            </header>
+            
+            <div className="space-y-4">
+               {activeShift.tasks?.map(task => (
+                   <div key={task.id} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+                       <p className="text-[10px] font-bold uppercase mb-2">{task.label}</p>
+                       <div className="flex gap-2 overflow-x-auto">
+                           {task.photos?.length > 0 ? task.photos.map((p, i) => (
+                               <img key={i} src={p.url} className="w-16 h-16 rounded-lg object-cover" onClick={() => setZoomedImage(p.url)} />
+                           )) : <p className="text-[8px] italic text-gray-400">No photos.</p>}
+                       </div>
+                   </div>
+               ))}
+            </div>
+
+            <div className="pt-4">
+                <button onClick={() => setCurrentStep('active')} className="w-full bg-black text-white font-black py-4 rounded-2xl uppercase tracking-[0.3em] text-[10px] shadow-xl">
+                    START INSPECTION SHIFT
+                </button>
+            </div>
+            {zoomedImage && <div className="fixed inset-0 bg-black/95 z-[500] flex items-center justify-center p-4 cursor-pointer" onClick={() => setZoomedImage(null)}><img src={zoomedImage} className="max-w-full max-h-full object-contain rounded-3xl" /></div>}
+        </div>
+      );
   }
 
   return null;
