@@ -10,7 +10,7 @@ interface LaundryReportsProps {
 
 const LaundryReports: React.FC<LaundryReportsProps> = ({ shifts, properties, userRole }) => {
   const [showDamageModal, setShowDamageModal] = useState(false);
-  const [selectedItem, setSelectedItem] = useState('Double Sheet');
+  const [selectedItem, setSelectedItem] = useState('double sheet');
   const [damageType, setDamageType] = useState('Stain');
   const [damageQuantity, setDamageQuantity] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -30,24 +30,23 @@ const LaundryReports: React.FC<LaundryReportsProps> = ({ shifts, properties, use
     localStorage.setItem('studio_damage_counts', JSON.stringify(counts));
   };
 
+  // Updated List as requested
   const LINEN_ITEMS = [
-    'Double Sheet',
-    'Single Sheet',
-    'Double Quilt Cover',
-    'Single Quilt Cover',
-    'Pillow Cases',
-    'Bathmats',
-    'Hand Towels',
-    'Bath Towels',
-    'Beach Towels',
-    'Kitchen Clothes',
-    'Baby Sheet'
+    'double sheet',
+    'single sheet',
+    'double quilt cover',
+    'single quilt cover',
+    'pillow case',
+    'hand towel',
+    'bath towel',
+    'bathmat',
+    'kitchen cloth'
   ];
 
-  // Identify specific items exceeding the critical threshold of 10
-  const criticalItems = useMemo(() => {
+  // Show ALL items with count > 0.
+  const allDamagedItems = useMemo(() => {
     return Object.entries(damageCounts)
-      .filter(([_, count]) => (count as number) > 10)
+      .filter(([_, count]) => (count as number) > 0)
       .map(([name, count]) => ({ name, count: count as number }));
   }, [damageCounts]);
 
@@ -55,9 +54,13 @@ const LaundryReports: React.FC<LaundryReportsProps> = ({ shifts, properties, use
     return Object.values(damageCounts).reduce((sum, val) => (sum as number) + (val as number), 0) as number;
   }, [damageCounts]);
 
-  const totalCriticalUnits = useMemo(() => {
-    return criticalItems.reduce((sum, item) => sum + item.count, 0);
-  }, [criticalItems]);
+  // Alert condition for Admin: Any item > 10
+  const isAdmin = userRole === 'admin';
+  const hasCriticalItems = allDamagedItems.some(i => i.count > 10);
+  const showAdminAlert = isAdmin && hasCriticalItems;
+
+  // Laundry users (and supervisors/drivers) can report.
+  const canReportDamage = ['laundry', 'supervisor', 'driver', 'admin'].includes(userRole || '');
 
   // Logic: Count linens from all shifts marked as "PREPARED" (Sent out to apartments)
   const inventoryInApartments = useMemo(() => {
@@ -98,7 +101,7 @@ const LaundryReports: React.FC<LaundryReportsProps> = ({ shifts, properties, use
       
       setIsSubmitting(false);
       setShowDamageModal(false);
-      setSelectedItem('Double Sheet');
+      setSelectedItem('double sheet');
       setDamageType('Stain');
       setDamageQuantity(1);
     }, 800);
@@ -114,11 +117,6 @@ const LaundryReports: React.FC<LaundryReportsProps> = ({ shifts, properties, use
   const labelStyle = "text-[7px] font-black text-[#8B6B2E] uppercase tracking-[0.4em] opacity-80 mb-1.5 block px-1";
   const inputStyle = "w-full bg-white border border-gray-300 rounded-lg px-3 py-2.5 text-black text-[10px] font-bold uppercase tracking-widest outline-none focus:border-[#C5A059] transition-all placeholder:text-black/20";
 
-  // LOGIC: Admin sees alerts, Laundry/Staff sees input button
-  const isAdmin = userRole === 'admin';
-  const showAdminAlert = isAdmin && criticalItems.length > 0;
-  const canReportDamage = ['laundry', 'supervisor', 'driver'].includes(userRole || '');
-
   return (
     <div className="space-y-10 animate-in fade-in duration-700 text-left pb-32">
       {/* Alert only visible to Admin when thresholds are met */}
@@ -132,27 +130,9 @@ const LaundryReports: React.FC<LaundryReportsProps> = ({ shifts, properties, use
                  <h4 className="text-sm font-black text-red-700 uppercase tracking-widest">CRITICAL PROCUREMENT REQUIRED</h4>
                  <div className="space-y-1">
                     <p className="text-[11px] text-red-600 font-bold leading-relaxed uppercase">
-                      Attention Admin: The following linen categories have exceeded the damage threshold (&gt;10 units) and require immediate replenishment.
+                      Attention Admin: Some linen categories have exceeded the damage threshold (&gt;10 units) and require replenishment.
                     </p>
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {criticalItems.map(item => (
-                        <span key={item.name} className="bg-red-600 text-white text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-widest">
-                          {item.name}: {item.count} UNITS
-                        </span>
-                      ))}
-                    </div>
                  </div>
-              </div>
-           </div>
-           {/* Action for admin to acknowledge restock */}
-           <div className="w-full md:w-auto text-center md:text-right">
-              <p className="text-[8px] text-red-600 font-black uppercase tracking-widest mb-2">RESTOCK & CLEAR</p>
-              <div className="flex gap-2 justify-center md:justify-end">
-                 {criticalItems.map(item => (
-                    <button key={item.name} onClick={() => handleResetCount(item.name)} className="bg-white border border-red-200 text-red-600 px-3 py-2 rounded-lg text-[7px] font-black uppercase hover:bg-red-50">
-                       Reset {item.name}
-                    </button>
-                 ))}
               </div>
            </div>
         </section>
@@ -196,7 +176,7 @@ const LaundryReports: React.FC<LaundryReportsProps> = ({ shifts, properties, use
         </div>
       </section>
 
-      {/* DAMAGE REPORTING SECTION - HIDDEN FROM ADMIN (Visible only to Laundry/Staff) */}
+      {/* DAMAGE REPORTING SECTION */}
       {canReportDamage && (
         <div className="space-y-6">
           <section className="bg-orange-50 border border-orange-200 p-8 rounded-[40px] shadow-sm flex flex-col md:flex-row items-center justify-between gap-8">
@@ -216,23 +196,23 @@ const LaundryReports: React.FC<LaundryReportsProps> = ({ shifts, properties, use
         </div>
       )}
 
-      {/* INVENTORY TRACKER - VISIBLE TO ALL */}
-      {totalCriticalUnits > 0 && (
+      {/* INVENTORY TRACKER - VISIBLE TO ALL - SHOWS EVERYTHING > 0 */}
+      {allDamagedItems.length > 0 && (
         <section className="bg-white border border-gray-100 p-8 rounded-[40px] shadow-sm space-y-6">
           <div className="flex items-center gap-4 px-1">
-            <h3 className="text-[10px] font-black uppercase tracking-[0.5em] text-black/20">CRITICAL DAMAGED INVENTORY</h3>
+            <h3 className="text-[10px] font-black uppercase tracking-[0.5em] text-black/20">DAMAGED INVENTORY LOG</h3>
             <div className="h-px flex-1 bg-black/5"></div>
           </div>
           
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {criticalItems.map(item => (
-              <div key={item.name} className="flex items-center justify-between p-5 rounded-2xl border transition-all group bg-red-50/50 border-red-100 shadow-inner">
+            {allDamagedItems.map(item => (
+              <div key={item.name} className={`flex items-center justify-between p-5 rounded-2xl border transition-all group shadow-inner ${item.count > 10 ? 'bg-red-50/50 border-red-100' : 'bg-gray-50/50 border-gray-100'}`}>
                 <div className="text-left">
-                  <h5 className="text-[11px] font-black uppercase tracking-tight text-red-700">{item.name}</h5>
-                  <p className="text-[8px] text-black/30 font-black uppercase tracking-widest mt-1">Critical Level</p>
+                  <h5 className={`text-[11px] font-black uppercase tracking-tight ${item.count > 10 ? 'text-red-700' : 'text-black'}`}>{item.name}</h5>
+                  <p className="text-[8px] text-black/30 font-black uppercase tracking-widest mt-1">{item.count > 10 ? 'Critical' : 'Recorded'}</p>
                 </div>
                 <div className="flex items-center gap-4">
-                  <span className="text-xl font-serif-brand font-bold text-red-600">{item.count}</span>
+                  <span className={`text-xl font-serif-brand font-bold ${item.count > 10 ? 'text-red-600' : 'text-black'}`}>{item.count}</span>
                   {isAdmin && (
                     <button 
                       onClick={() => handleResetCount(item.name)}

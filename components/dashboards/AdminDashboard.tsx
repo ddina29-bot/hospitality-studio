@@ -49,31 +49,65 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const todayStr = useMemo(() => new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase(), []);
   
   // --- LOGISTICS ALERTS (Driver didn't deliver/collect/return keys) ---
-  // Alerts only show after 3 PM (15:00) if the shift is today.
+  // Alerts show if:
+  // 1. Shift is TODAY and time is past 15:00
+  // 2. Shift is in the PAST (yesterday etc.) and items are still pending
   const logisticsAlerts = useMemo(() => {
     // Recalculate time inside memo to ensure it updates when shifts poll
     const currentHour = new Date().getHours();
     const isPast3PM = currentHour >= 15;
+    
+    // Helper to parse "DD MMM" string to Date object for comparison
+    const parseShiftDate = (dateStr: string) => {
+        if (!dateStr) return new Date(0);
+        const currentYear = new Date().getFullYear();
+        // If already ISO
+        if (dateStr.includes('-')) {
+            const d = new Date(dateStr);
+            d.setHours(0,0,0,0);
+            return d;
+        }
+        // "25 OCT" format
+        const parts = dateStr.trim().split(' ');
+        if (parts.length === 2) {
+            const day = parseInt(parts[0], 10);
+            const monthStr = parts[1].toLowerCase();
+            const months: {[key: string]: number} = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+            if (months[monthStr] !== undefined && !isNaN(day)) {
+                const d = new Date(currentYear, months[monthStr], day);
+                d.setHours(0,0,0,0);
+                return d;
+            }
+        }
+        return new Date(0); // Fallback
+    };
+
+    const todayDate = parseShiftDate(todayStr);
 
     return shifts.filter(s => {
        if (s.excludeLaundry) return false;
        const isLogisticsType = ['CHECK OUT / CHECK IN CLEANING', 'REFRESH', 'MID STAY CLEANING', 'BEDS ONLY', 'LINEN DROP / COLLECTION'].includes(s.serviceType);
        if (!isLogisticsType) return false;
        
-       // Date Logic: 
-       // If shift is today, only show alert if it's past 3 PM.
-       // If shift is in the past, always show.
-       // If shift is future, never show.
-       if (s.date === todayStr) {
+       const sDate = parseShiftDate(s.date);
+       
+       // Filter Logic
+       // If shift is in future, ignore
+       if (sDate.getTime() > todayDate.getTime()) {
+           return false; 
+       } 
+       
+       // If shift is today, check time
+       if (sDate.getTime() === todayDate.getTime()) {
            if (!isPast3PM) return false;
-       } else if (s.date > todayStr) {
-           return false; // Future dates don't show alerts
        }
-       // (Implicitly: s.date < todayStr (past) is allowed and will show alerts immediately)
+       
+       // If past date, ALWAYS include if pending
 
        const missingDelivery = !s.isDelivered;
        const missingCollection = !s.isCollected;
        const missingKeys = s.keysHandled && !s.keysAtOffice;
+       
        return missingDelivery || missingCollection || missingKeys;
     }).map(s => {
         // DRIVER ASSIGNMENT LOGIC:
@@ -103,7 +137,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             reason: s.keyLocationReason
         };
     });
-  }, [shifts, todayStr, users]); // Removed static time dependency to allow re-evaluation on data refresh
+  }, [shifts, todayStr, users]);
 
   const shiftsWithIncidents = useMemo(() => {
     return shifts.filter(s => {
@@ -238,7 +272,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                     <div>
                         <h3 className="text-xs font-black text-orange-700 uppercase tracking-[0.3em]">LOGISTICS FAILURES</h3>
-                        <p className="text-[9px] text-orange-600 font-bold uppercase">{logisticsAlerts.length} Issues Requiring Attention (Post-3PM)</p>
+                        <p className="text-[9px] text-orange-600 font-bold uppercase">{logisticsAlerts.length} Issues Requiring Attention (Post-3PM or Past Due)</p>
                     </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -295,6 +329,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </section>
         )}
 
+        {/* ... Other existing alert sections ... */}
         {pendingLeaves.length > 0 && (
           <section className="bg-blue-50 border-2 border-blue-200 p-6 rounded-[32px] shadow-2xl flex flex-col md:flex-row items-center justify-between gap-6 animate-in slide-in-from-top-4">
             <div className="flex items-center gap-6">
@@ -352,7 +387,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   const staffMembers = shift.userIds.map(uid => users.find(u => u.id === uid)).filter(Boolean) as User[];
                   const durationMins = shift.actualStartTime ? Math.floor((Date.now() - shift.actualStartTime) / 60000) : 0;
                   
-                  // LIVE PHOTOS: Collect recent photos from tasks
                   const allPhotos = shift.tasks?.flatMap(t => t.photos) || [];
                   const recentPhotos = allPhotos.slice(-4).reverse();
 
@@ -388,7 +422,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                            </div>
                            <p className="text-[8px] text-[#C5A059] font-black uppercase tracking-[0.2em]">{shift.serviceType}</p>
                            
-                           {/* LIVE PHOTO FEED */}
                            {recentPhotos.length > 0 && (
                              <div className="pt-2 border-t border-green-500/10">
                                 <p className="text-[7px] font-black text-green-700/50 uppercase tracking-widest mb-2">Live Activity Feed</p>
@@ -413,7 +446,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
          )}
       </section>
 
-      {/* FIELD INCIDENT CENTER (Maintenance, Damage, Missing) */}
+      {/* ... Incident Center, Laundry Access, etc. ... */}
+      {/* ... Keeping existing code for rest of dashboard ... */}
       <section className="bg-white border-2 border-[#C5A059] p-8 rounded-[40px] shadow-xl space-y-8">
          <div className="flex justify-between items-center px-2">
             <div className="flex items-center gap-3">
@@ -634,10 +668,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
          </div>
       )}
 
-      {/* Assignment Modal */}
+      {/* ... (Keep Assignments, Resolution, Extra Time, Rejected Queue sections as is) ... */}
+      {/* (Omitted for brevity as no logic changes needed here) */}
+      
+      {/* ... Assignment Modal ... */}
       {assigningReport && (
         <div className="fixed inset-0 bg-black/80 z-[500] flex items-center justify-center p-4 backdrop-blur-sm animate-in zoom-in-95">
            <div className="bg-[#FDF8EE] border border-[#C5A059]/40 rounded-[40px] w-full max-w-md p-8 space-y-6 shadow-2xl relative">
+              {/* ... Same modal content ... */}
               <button onClick={() => { setAssigningReport(null); setAssignmentNote(''); }} className="absolute top-6 right-6 text-black/20 hover:text-black"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
               <div>
                  <h3 className="text-xl font-serif-brand font-bold uppercase text-black">Assign {assigningReport.type}</h3>
@@ -673,10 +711,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
-      {/* Resolution Modal (Admin Direct Resolve) */}
+      {/* Resolution Modal */}
       {resolvingReport && (
         <div className="fixed inset-0 bg-black/80 z-[500] flex items-center justify-center p-4 backdrop-blur-sm animate-in zoom-in-95">
            <div className="bg-white rounded-[40px] w-full max-w-md p-8 space-y-6 shadow-2xl relative text-left">
+              {/* ... Same modal content ... */}
               <div className="space-y-1">
                  <h3 className="text-xl font-bold text-black uppercase">Confirm Resolution</h3>
                  <p className="text-[8px] text-black/40 font-black uppercase tracking-widest">Close this incident manually</p>
