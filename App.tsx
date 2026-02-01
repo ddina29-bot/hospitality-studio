@@ -16,7 +16,6 @@ import StudioSettings from './components/management/StudioSettings';
 import AppManual from './components/AppManual';
 import ActivityCenter from './components/ActivityCenter';
 import { TabType, Shift, SupplyRequest, User, Client, Property, SupplyItem, Tutorial, LeaveRequest, ManualTask, OrganizationSettings, Invoice, TimeEntry, LeaveType, AppNotification } from './types';
-import { requestForToken, onMessageListener } from './services/firebase';
 
 // Role-specific Dashboards
 import AdminDashboard from './components/dashboards/AdminDashboard';
@@ -129,33 +128,7 @@ const App: React.FC = () => {
   // FAIL-SAFE: Prevent auto-save until we confirm we have data from server or local restore
   const [hasFetchedServer, setHasFetchedServer] = useState(false);
 
-  // --- FIREBASE NOTIFICATIONS ---
-  useEffect(() => {
-    if (user) {
-      // 1. Request Permission
-      requestForToken();
-
-      // 2. Listen for Foreground Messages
-      onMessageListener()
-        .then((payload: any) => {
-          if (payload?.notification) {
-            setNotifications(prev => [{
-              id: `fcm-${Date.now()}`,
-              type: 'info',
-              title: payload.notification.title || 'Notification',
-              message: payload.notification.body || 'New message received',
-              timestamp: Date.now()
-            }, ...prev]);
-            
-            // Show toast/banner
-            console.log('FCM Notification Received:', payload);
-          }
-        })
-        .catch((err) => console.log('failed: ', err));
-    }
-  }, [user]);
-
-  // --- NOTIFICATION ENGINE (Internal Logic) ---
+  // --- NOTIFICATION ENGINE (Internal Logic - Shift Status) ---
   const prevShiftsRef = useRef<Record<string, Shift>>({});
   
   useEffect(() => {
