@@ -26,11 +26,6 @@ const Layout = ({
   onOpenActivityCenter
 }: LayoutProps) => {
   
-  const isLaundryTabVisible = 
-    role === 'admin' || 
-    role === 'laundry' ||
-    (['supervisor', 'driver'].includes(role) && (authorizedLaundryUserIds || []).includes(currentUserId));
-
   const hasUnread = notifications.some(n => {
       const ts = typeof n.timestamp === 'string' ? new Date(n.timestamp).getTime() : n.timestamp;
       return Date.now() - ts < 24 * 60 * 60 * 1000; 
@@ -62,18 +57,17 @@ const Layout = ({
         roles: ['cleaner', 'driver', 'supervisor', 'admin', 'housekeeping', 'maintenance', 'hr', 'finance', 'laundry', 'client']
     },
     { 
-      id: 'manual', 
+      id: 'manual' as TabType, 
       label: 'Menu', 
       icon: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>,
       roles: ['cleaner', 'driver', 'supervisor', 'admin', 'housekeeping', 'maintenance', 'hr', 'finance', 'laundry', 'client', 'outsourced_maintenance'] 
     },
   ];
 
-  // Fix: Explicitly typed desktopNavItems to prevent string widening and ensure id is TabType
   const desktopNavItems: { id: TabType; label: string; icon: React.FC<any>; roles: UserRole[] }[] = [
     ...allNavItems.filter(i => i.id !== 'manual'),
-    { id: 'users', label: 'Team', icon: Icons.Dashboard, roles: ['admin', 'hr'] },
-    { id: 'settings', label: 'Settings', icon: Icons.Settings, roles: ['admin'] }
+    { id: 'users' as TabType, label: 'Team', icon: Icons.Dashboard, roles: ['admin', 'hr'] as UserRole[] },
+    { id: 'settings' as TabType, label: 'Settings', icon: Icons.Settings, roles: ['admin'] as UserRole[] }
   ].filter(item => item.roles.includes(role));
 
   const mobileNavItems = allNavItems.filter(item => item.roles.includes(role));
