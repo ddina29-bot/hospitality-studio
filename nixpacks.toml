@@ -2,8 +2,8 @@
 nixPkgs = ["nodejs_20", "npm", "python3", "make", "gcc", "g++"]
 
 [phases.install]
-# Force removal of lockfile to prevent platform conflicts
-cmds = ["rm -f package-lock.json", "npm install"]
+# Clear existing artifacts to force a fresh, platform-correct install
+cmds = ["rm -rf node_modules package-lock.json", "npm install"]
 
 [phases.build]
 cmds = ["npm run build"]
