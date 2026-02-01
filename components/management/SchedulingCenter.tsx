@@ -375,7 +375,8 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
   };
 
   const handleEditShift = (shift: Shift) => {
-    setShiftForm({ ...shift });
+    // CRITICAL: Ensure userIds is a deep copy to prevent reference issues
+    setShiftForm({ ...shift, userIds: [...(shift.userIds || [])] });
     setSelectedShift(shift);
     setIsReactivating(false);
     setShowShiftModal(true);
@@ -400,8 +401,18 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
 
   const handleSaveShift = (e: React.FormEvent | null, publishScope: 'draft' | 'day' | 'week' | boolean = 'draft') => {
     e?.preventDefault?.();
-    if (!shiftForm.propertyId || !shiftForm.userIds?.length || !shiftForm.date || !shiftForm.serviceType) return;
+    if (!shiftForm.propertyId || !shiftForm.date || !shiftForm.serviceType) return;
     
+    // SAFETY GUARD: Prevent saving empty userIds if it wasn't intended
+    // If userIds is empty but original had users, prompt
+    if (selectedShift && selectedShift.userIds && selectedShift.userIds.length > 0 && (!shiftForm.userIds || shiftForm.userIds.length === 0)) {
+        if (!window.confirm("WARNING: You are about to remove ALL staff from this shift. Continue?")) {
+            return;
+        }
+    }
+
+    if (!shiftForm.userIds) shiftForm.userIds = [];
+
     // Check for Leave Conflict
     const dateObj = new Date(shiftForm.date as string);
     const conflictingLeave = shiftForm.userIds
@@ -440,7 +451,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
     const constructNewShift = (id: string): Shift => ({
         id,
         propertyId: shiftForm.propertyId!,
-        userIds: shiftForm.userIds!,
+        userIds: [...(shiftForm.userIds || [])], // Ensure deep copy
         propertyName: prop?.name || 'Unknown',
         date: dateFormatted,
         startTime: startTime12h,
@@ -476,6 +487,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
                  });
              }
         } else if (selectedShift) {
+             // UPDATE EXISTING SHIFT
              newShifts = newShifts.map(s => s.id === selectedShift.id ? constructNewShift(selectedShift.id) : s);
         } else {
              const newId = `s-${Date.now()}`;
@@ -536,7 +548,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
     setShiftForm({
       ...getEmptyShift(),
       propertyId: originalShift.propertyId,
-      userIds: targetUserIds,
+      userIds: targetUserIds ? [...targetUserIds] : [],
       serviceType: 'TO FIX',
       notes: `[REMEDIAL] Fix required for ${originalShift.propertyName}. Findings: ${originalShift.approvalComment}`,
       approvalComment: originalShift.approvalComment,
@@ -582,6 +594,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
 
   const handleDeleteShift = (id: string) => {
     if (!id) return;
+    if (!window.confirm("Are you sure you want to delete this shift? This cannot be undone.")) return;
     setShifts(prev => prev.filter(s => s.id !== id));
     setShowShiftModal(false);
     setReviewShift(null);

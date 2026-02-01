@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
 import CleanerPortal from './components/CleanerPortal';
@@ -15,7 +15,8 @@ import TutorialsHub from './components/TutorialsHub';
 import AddTaskModal from './components/management/AddTaskModal';
 import StudioSettings from './components/management/StudioSettings';
 import AppManual from './components/AppManual';
-import { TabType, Shift, SupplyRequest, User, Client, Property, SupplyItem, Tutorial, LeaveRequest, ManualTask, OrganizationSettings, Invoice, TimeEntry, LeaveType } from './types';
+import ActivityCenter from './components/ActivityCenter';
+import { TabType, Shift, SupplyRequest, User, Client, Property, SupplyItem, Tutorial, LeaveRequest, ManualTask, OrganizationSettings, Invoice, TimeEntry, LeaveType, AppNotification } from './types';
 
 // Role-specific Dashboards
 import AdminDashboard from './components/dashboards/AdminDashboard';
@@ -122,9 +123,73 @@ const App: React.FC = () => {
   const [deepLinkShiftId, setDeepLinkShiftId] = useState<string | null>(null);
   const [savedTaskNames, setSavedTaskNames] = useState<string[]>(['Extra Towels', 'Deep Clean Fridge', 'Balcony Sweep']);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [showActivityCenter, setShowActivityCenter] = useState(false);
   
   // FAIL-SAFE: Prevent auto-save until we confirm we have data from server or local restore
   const [hasFetchedServer, setHasFetchedServer] = useState(false);
+
+  // --- NOTIFICATION ENGINE ---
+  const prevShiftsRef = useRef<Record<string, Shift>>({});
+  
+  useEffect(() => {
+    if (!user || shifts.length === 0) return;
+
+    const newNotifications: AppNotification[] = [];
+    const prevShifts = prevShiftsRef.current;
+    
+    // Only run comparison if we have previous data (skip on first load)
+    if (Object.keys(prevShifts).length > 0) {
+        shifts.forEach(shift => {
+            const prev = prevShifts[shift.id];
+            
+            // Logic 1: Status Change (Alert user if assigned)
+            if (prev && shift.userIds.includes(user.id)) {
+                if (prev.status !== shift.status) {
+                    // Cleaner completed it, or Admin approved/rejected it
+                    if (shift.status === 'completed' && prev.status === 'active') {
+                        // Probably don't need to notify self of own action
+                    }
+                    if (shift.approvalStatus !== prev.approvalStatus) {
+                        if (shift.approvalStatus === 'approved') {
+                            newNotifications.push({ id: `n-${Date.now()}-1`, type: 'success', title: 'Work Verified', message: `Your shift at ${shift.propertyName} was approved.`, timestamp: Date.now(), linkTab: 'dashboard' });
+                        } else if (shift.approvalStatus === 'rejected') {
+                            newNotifications.push({ id: `n-${Date.now()}-2`, type: 'alert', title: 'Work Rejected', message: `Attention: Work at ${shift.propertyName} was rejected.`, timestamp: Date.now(), linkTab: 'shifts', linkId: shift.id });
+                        }
+                    }
+                }
+            }
+
+            // Logic 2: New Assignment
+            if (!prev && shift.userIds.includes(user.id) && shift.status !== 'completed') {
+                newNotifications.push({ id: `n-${Date.now()}-3`, type: 'info', title: 'New Assignment', message: `You have been assigned to ${shift.propertyName}.`, timestamp: Date.now(), linkTab: 'shifts', linkId: shift.id });
+            }
+
+            // Logic 3: Removed from Shift (The "Deleted Me" Fix)
+            if (prev && prev.userIds.includes(user.id) && !shift.userIds.includes(user.id)) {
+                 newNotifications.push({ id: `n-${Date.now()}-4`, type: 'warning', title: 'Schedule Change', message: `You were removed from ${shift.propertyName}.`, timestamp: Date.now() });
+            }
+        });
+    }
+
+    // Update Ref
+    const newMap: Record<string, Shift> = {};
+    shifts.forEach(s => newMap[s.id] = s);
+    prevShiftsRef.current = newMap;
+
+    if (newNotifications.length > 0) {
+        setNotifications(prev => [...newNotifications, ...prev]);
+        // Optional: Play Sound
+        try {
+            // Very short beep data URI
+            const audio = new Audio('data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU'); 
+            audio.volume = 0.5;
+            audio.play().catch(() => {}); // Ignore auto-play errors
+        } catch(e) {}
+    }
+
+  }, [shifts, user]);
+
 
   // --- 1. LOGIN HANDLER ---
   const handleLogin = (u: User, orgData: any) => {
@@ -456,6 +521,8 @@ const App: React.FC = () => {
         onLogout={handleLogout} 
         currentUserId={user.id} 
         authorizedLaundryUserIds={authorizedLaundryUserIds}
+        notifications={notifications}
+        onOpenActivityCenter={() => setShowActivityCenter(true)}
     >
       <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2">
         {isSyncing ? (
@@ -477,6 +544,16 @@ const App: React.FC = () => {
           users={users} 
           savedTaskNames={savedTaskNames}
           onAddNewTaskName={(name) => setSavedTaskNames(prev => [...prev, name])}
+        />
+      )}
+      {showActivityCenter && (
+        <ActivityCenter 
+          notifications={notifications} 
+          onClose={() => setShowActivityCenter(false)} 
+          onNavigate={(tab, id) => {
+             setActiveTab(tab);
+             if (id) setDeepLinkShiftId(id);
+          }}
         />
       )}
     </Layout>

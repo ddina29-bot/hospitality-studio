@@ -1,6 +1,5 @@
-
 import React from 'react';
-import { TabType, UserRole } from '../types';
+import { TabType, UserRole, AppNotification } from '../types';
 import { Icons } from '../constants';
 
 interface LayoutProps {
@@ -11,6 +10,8 @@ interface LayoutProps {
   onLogout: () => void;
   authorizedLaundryUserIds?: string[];
   currentUserId?: string;
+  notifications?: AppNotification[];
+  onOpenActivityCenter?: () => void;
 }
 
 const Layout = ({ 
@@ -20,13 +21,22 @@ const Layout = ({
   role, 
   onLogout, 
   authorizedLaundryUserIds = [], 
-  currentUserId = ''
+  currentUserId = '',
+  notifications = [],
+  onOpenActivityCenter
 }: LayoutProps) => {
   
   const isLaundryTabVisible = 
     role === 'admin' || 
     role === 'laundry' ||
     (['supervisor', 'driver'].includes(role) && (authorizedLaundryUserIds || []).includes(currentUserId));
+
+  const hasUnread = notifications.some(n => {
+      // Logic for unread check could be improved with 'read' status in types, 
+      // for now, we just show dot if any recent notifications exist.
+      const ts = typeof n.timestamp === 'string' ? new Date(n.timestamp).getTime() : n.timestamp;
+      return Date.now() - ts < 24 * 60 * 60 * 1000; // < 24h old
+  });
 
   // Define navigation items with their visibility logic
   const allNavItems: { id: TabType; label: string; icon: React.FC<any>; roles: UserRole[] }[] = [
@@ -170,11 +180,11 @@ const Layout = ({
           </h1>
           <div className="flex items-center gap-2">
             <button 
-              onClick={onLogout}
-              className="p-2.5 rounded-full bg-red-50 text-red-500 transition-all active:scale-95 border border-red-100"
-              title="Log Out"
+              onClick={onOpenActivityCenter}
+              className="p-2.5 rounded-full bg-gray-50 text-black transition-all active:scale-95 border border-gray-100 relative"
             >
-               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+               {hasUnread && <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-white"></span>}
             </button>
             <button 
               onClick={() => setActiveTab('ai')}
@@ -184,6 +194,24 @@ const Layout = ({
             </button>
           </div>
         </header>
+
+        {/* Desktop Header Actions (Hidden on Mobile) */}
+        <div className="hidden md:flex absolute top-6 right-8 z-30 gap-3">
+            <button 
+              onClick={onOpenActivityCenter}
+              className="p-3 rounded-full bg-white text-black hover:bg-gray-50 transition-all active:scale-95 border border-gray-100 shadow-sm relative"
+            >
+               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+               {hasUnread && <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full border border-white"></span>}
+            </button>
+            <button 
+              onClick={() => setActiveTab('ai')}
+              className={`p-3 rounded-full transition-all flex items-center gap-2 px-6 ${activeTab === 'ai' ? 'bg-[#C5A059] text-white shadow-lg' : 'bg-white text-black border border-gray-100 hover:bg-gray-50'}`}
+            >
+               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+               <span className="text-[10px] font-black uppercase tracking-widest">AI Studio</span>
+            </button>
+        </div>
 
         {/* Content - Padding Bottom added for mobile nav */}
         <div className="flex-1 overflow-y-auto p-4 md:p-10 pb-28 md:pb-10 custom-scrollbar">

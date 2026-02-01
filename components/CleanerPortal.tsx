@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Property, CleaningTask, Shift, User, AttributedPhoto, SpecialReport, SupplyItem } from '../types';
 import { uploadFile } from '../services/storageService';
@@ -88,6 +87,9 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [checkoutTarget, setCheckoutTarget] = useState<'keyInBox' | 'boxClosed' | null>(null);
+
+  // Prevent multiple triggers of geofence breach
+  const hasTriggeredBreach = useRef(false);
 
   const realTodayISO = useMemo(() => getLocalISO(new Date()), []);
   const [viewedDateISO, setViewedDateISO] = useState(realTodayISO);
@@ -187,6 +189,9 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   const handleForceClockOut = useCallback(() => {
     if (!selectedShiftId) return;
     if (isManagement) return; // Admins don't get auto-kicked
+    if (hasTriggeredBreach.current) return; // Prevent double trigger
+
+    hasTriggeredBreach.current = true;
 
     setShifts(prev => prev.map(s => s.id === selectedShiftId ? ({ 
       ...s, 
@@ -209,13 +214,18 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     setCurrentStep('list');
     
     // Show alert
-    alert("⚠️ LOCATION ALERT: You have left the property area. Shift has been auto-completed and sent for review.");
+    alert("⚠️ LOCATION ALERT: You have left the property area (150m+). Shift has been auto-stopped and sent for review.");
   }, [selectedShiftId, setShifts, tasks, isManagement]);
 
   // GPS Monitor - Strict 150m Geofence Logic
   useEffect(() => {
     let watchId: number | null = null;
     
+    // Reset trigger when entering a shift
+    if (currentStep === 'active') {
+        hasTriggeredBreach.current = false;
+    }
+
     // Only run if shift is active, property has coordinates, and user is NOT admin/management
     if (currentStep === 'active' && activeProperty?.lat && activeProperty?.lng && !isManagement) {
       
@@ -527,436 +537,365 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
 
         <header className="space-y-6">
           <div className="flex flex-col space-y-1">
-            <p className="text-[#C5A059] font-black uppercase tracking-[0.4em] text-[10px] leading-none mb-2">Deployments Terminal</p>
-            <h1 className="text-2xl md:text-3xl font-serif-brand font-bold text-black uppercase tracking-tight leading-none">Your Schedule</h1>
+            <p className="text-[#C5A059] font-black uppercase tracking-[0.4em] text-[8px]">Field Operations</p>
+            <h1 className="text-2xl font-serif-brand text-black tracking-tight uppercase leading-none font-bold">
+              Deployment Schedule
+            </h1>
           </div>
-          <div className="bg-white border border-gray-100 p-2 rounded-[28px] shadow-sm flex items-center gap-2 overflow-x-auto no-scrollbar custom-scrollbar">
+          
+          {/* Calendar Strip */}
+          <div className="flex justify-between items-center gap-2 overflow-x-auto no-scrollbar pb-2">
             {weekDays.map((wd) => (
-              <button key={wd.iso} onClick={() => setViewedDateISO(wd.iso)} className={`flex flex-col items-center min-w-[55px] py-3 rounded-2xl border transition-all ${viewedDateISO === wd.iso ? 'bg-[#C5A059] border-[#C5A059] text-white shadow-lg scale-105' : 'bg-white border-gray-100 text-gray-400 hover:border-[#C5A059]/40'}`}>
-                <span className={`text-[7px] font-black uppercase mb-1 ${viewedDateISO === wd.iso ? 'text-white/80' : 'text-gray-300'}`}>{wd.dayName}</span>
+              <button
+                key={wd.iso}
+                onClick={() => setViewedDateISO(wd.iso)}
+                className={`flex flex-col items-center min-w-[60px] py-3 rounded-2xl border transition-all ${
+                  viewedDateISO === wd.iso 
+                    ? 'bg-[#C5A059] border-[#C5A059] text-white shadow-lg scale-105' 
+                    : 'bg-white border-gray-200 text-gray-400 hover:border-[#C5A059]/40'
+                }`}
+              >
+                <span className={`text-[8px] font-black uppercase mb-1 ${viewedDateISO === wd.iso ? 'text-white/80' : 'text-gray-300'}`}>{wd.dayName}</span>
                 <span className={`text-sm font-bold ${viewedDateISO === wd.iso ? 'text-white' : 'text-gray-600'}`}>{wd.dateNum}</span>
               </button>
             ))}
           </div>
         </header>
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-3 px-2 mb-2">
-            <p className="text-[9px] font-black text-black/20 uppercase tracking-[0.4em]">{viewedDateStr}</p>
-            <div className="h-px flex-1 bg-gray-50"></div>
+
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 px-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#C5A059] animate-pulse"></span>
+            <h2 className="text-[9px] font-black text-black/30 uppercase tracking-[0.4em]">ASSIGNED UNITS ({activeQueue.length})</h2>
           </div>
+
           {activeQueue.length === 0 ? (
-            <div className="py-16 text-center border-2 border-dashed border-gray-50 rounded-[32px] opacity-10 italic text-[10px] uppercase font-bold tracking-[0.4em]">No shifts listed for this date.</div>
+            <div className="py-20 text-center border-2 border-dashed border-gray-100 rounded-[32px] opacity-40">
+              <p className="text-[10px] font-black uppercase text-black tracking-widest">No deployments for this date.</p>
+            </div>
           ) : (
-            activeQueue.map(s => {
-              const isThisShiftActive = s.status === 'active';
-              const isCompleted = s.status === 'completed';
-              const isApproved = s.approvalStatus === 'approved';
-              const isRejected = s.approvalStatus === 'rejected';
-              const isPendingReview = isCompleted && s.approvalStatus === 'pending';
-              const isToFix = s.serviceType === 'TO FIX';
-              const canEnter = (!isCompleted && (!currentlyActiveShift || currentlyActiveShift.id === s.id)) || (isManagement && s.approvalStatus === 'pending');
-              
-              return (
-                <button 
-                  key={s.id} 
-                  onClick={() => canEnter && setSelectedIdAndStart(s)} 
-                  disabled={!canEnter} 
-                  className={`p-6 bg-white border rounded-3xl text-left transition-all shadow-md group flex justify-between items-center 
-                    ${!canEnter ? 'opacity-80 cursor-not-allowed border-gray-100 shadow-none' : 'border-gray-100 hover:border-[#C5A059]'} 
-                    ${isThisShiftActive ? 'border-2 border-[#C5A059] ring-4 ring-[#C5A059]/10' : ''} 
-                    ${isPendingReview ? 'bg-blue-50 border-blue-200' : ''} 
-                    ${isToFix && canEnter ? 'border-orange-200 bg-orange-50' : ''}
-                  `}
-                >
-                  <div className="space-y-2 flex-1 min-w-0">
-                     <div className="flex items-center gap-3">
-                        <h3 className={`text-base font-serif-brand font-bold uppercase truncate pr-4 leading-tight ${isCompleted && !isPendingReview ? 'text-black/40' : 'text-black'}`}>{s.propertyName}</h3>
-                        {isThisShiftActive && <span className="w-1.5 h-1.5 bg-[#C5A059] rounded-full animate-pulse shadow-[0_0_8px_rgba(197,160,89,1)]"></span>}
-                     </div>
-                     <div className="flex flex-col gap-1.5">
-                       <p className={`text-[9px] font-black uppercase tracking-widest leading-none ${isCompleted && !isPendingReview ? 'text-black/30' : 'text-[#C5A059]'}`}>{s.startTime} • {s.serviceType}</p>
-                       <div className="flex flex-col gap-1.5 pt-1">
-                         {isToFix && <span className="w-fit text-[7px] bg-orange-600 text-white px-2.5 py-1 rounded font-black uppercase shadow-sm">REMEDIAL ACTION REQ.</span>}
-                         {isThisShiftActive && <span className="w-fit text-[7px] bg-[#C5A059] text-black px-2.5 py-1 rounded font-black uppercase shadow-sm border border-[#C5A059]/30">ACTIVE</span>}
-                         
-                         {isPendingReview && <span className="w-fit text-[7px] bg-blue-600 text-white px-2.5 py-1 rounded font-black uppercase shadow-sm border border-blue-700">SUBMITTED - PENDING REVIEW</span>}
-                         
-                         {isApproved && <span className="w-fit text-[7px] text-green-600 font-black uppercase tracking-widest">QUALITY APPROVED</span>}
-                         {isRejected && (
-                           <div className="space-y-1.5">
-                             <span className="w-fit text-[7px] bg-red-600 text-white px-2.5 py-1 rounded font-black uppercase shadow-lg border border-red-700">REJECTED</span>
-                             {s.approvalComment && <p className="text-[10px] text-red-600 italic font-medium leading-relaxed max-w-[90%] pr-4">Reason: "{s.approvalComment}"</p>}
-                           </div>
-                         )}
-                         {currentlyActiveShift && currentlyActiveShift.id !== s.id && !isCompleted && (
-                            <div className="flex items-center gap-2 opacity-40">
-                               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                               <span className="text-[7px] font-bold text-black uppercase italic">Clock out {currentlyActiveShift.propertyName} first</span>
-                            </div>
-                         )}
-                       </div>
-                     </div>
+            <div className="space-y-4">
+              {activeQueue.map(shift => {
+                const isActive = shift.status === 'active';
+                const isCompleted = shift.status === 'completed';
+                const isPendingReview = isCompleted && shift.approvalStatus === 'pending';
+                const isRejected = shift.approvalStatus === 'rejected';
+                
+                return (
+                  <div 
+                    key={shift.id}
+                    onClick={() => setSelectedIdAndStart(shift)}
+                    className={`p-6 rounded-[32px] border transition-all relative overflow-hidden group active:scale-[0.98] ${
+                      isPendingReview ? 'bg-blue-50 border-blue-200 shadow-md cursor-pointer' :
+                      isActive ? 'bg-[#FDF8EE] border-[#C5A059] shadow-lg ring-2 ring-[#C5A059]/20 cursor-pointer' :
+                      isCompleted ? 'bg-gray-50 border-gray-200 opacity-60 cursor-not-allowed' :
+                      'bg-white border-gray-200 hover:border-[#C5A059]/40 cursor-pointer shadow-sm'
+                    }`}
+                  >
+                    {isActive && <div className="absolute top-0 left-0 w-1 h-full bg-[#C5A059]"></div>}
+                    
+                    <div className="flex justify-between items-start">
+                      <div className="space-y-1.5">
+                        <h3 className="text-base font-bold text-black uppercase tracking-tight">{shift.propertyName}</h3>
+                        <p className="text-[9px] font-black text-[#C5A059] uppercase tracking-widest">{shift.startTime} • {shift.serviceType}</p>
+                        {shift.correctionStatus === 'fixing' && (
+                           <span className="inline-block bg-red-100 text-red-600 px-2 py-0.5 rounded text-[7px] font-black uppercase tracking-widest border border-red-200">Correction Required</span>
+                        )}
+                        {shift.serviceType === 'TO CHECK APARTMENT' && (
+                           <span className="inline-block bg-purple-100 text-purple-600 px-2 py-0.5 rounded text-[7px] font-black uppercase tracking-widest border border-purple-200">Audit Task</span>
+                        )}
+                      </div>
+                      
+                      <div className="flex flex-col items-end gap-2">
+                        {isActive ? (
+                          <span className="text-[8px] font-black bg-[#C5A059] text-black px-3 py-1 rounded-full animate-pulse border border-[#C5A059]">IN PROGRESS</span>
+                        ) : isPendingReview ? (
+                          <span className="text-[8px] font-black bg-blue-100 text-blue-700 px-3 py-1 rounded-full border border-blue-200">IN REVIEW</span>
+                        ) : isCompleted ? (
+                          <span className="text-[8px] font-black bg-gray-100 text-gray-500 px-3 py-1 rounded-full border border-gray-200">DONE</span>
+                        ) : (
+                          <div className="w-8 h-8 rounded-full bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-400 group-hover:bg-[#C5A059] group-hover:text-black group-hover:border-[#C5A059] transition-all">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="9 18 15 12 9 6"/></svg>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  {!canEnter && isPendingReview ? (
-                     <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
-                     </div>
-                  ) : !canEnter ? (
-                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="text-black/10 shrink-0"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                  ) : (
-                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="text-gray-100 group-hover:text-[#C5A059] transition-colors shrink-0"><polyline points="9 18 15 12 9 6"/></svg>
-                  )}
-                </button>
-              );
-            })
+                );
+              })}
+            </div>
           )}
         </div>
       </div>
     );
   }
 
-  // OVERVIEW
-  if (currentStep === 'overview' && activeShift && activeProperty) {
-      const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activeProperty.address)}`;
-      return (
-        <div className="space-y-8 animate-in fade-in duration-700 pb-32 max-w-2xl mx-auto text-left px-2 relative">
-            <button onClick={() => setCurrentStep('list')} className="text-[10px] font-black text-black/30 hover:text-black uppercase tracking-widest flex items-center gap-2 mb-4 transition-colors">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="15 18 9 12 15 6"/></svg> Back to List
-            </button>
-            <header className="space-y-4">
-                <div onClick={() => setZoomedImage(activeProperty.entrancePhoto || 'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=800&q=80')} className="relative h-64 w-full rounded-[40px] overflow-hidden shadow-2xl border border-gray-100 cursor-zoom-in group">
-                    <img src={activeProperty.entrancePhoto || 'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=800&q=80'} className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-700" alt="Entrance reference" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
-                    <div className="absolute bottom-8 left-8 right-8 text-left">
-                        <p className="text-[8px] font-black text-white/60 uppercase tracking-[0.4em] mb-2">Entrance Reference Photo</p>
-                        <h2 className="text-2xl font-serif-brand font-bold text-white uppercase leading-tight">{activeProperty.name}</h2>
-                    </div>
-                </div>
-            </header>
-            <section className="space-y-6">
-                <div className="bg-white border border-gray-100 p-8 rounded-[40px] shadow-lg flex flex-col md:flex-row items-center justify-between gap-6">
-                    <div className="text-left space-y-1">
-                        <p className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-[0.4em]">Site Telemetry</p>
-                        <h4 className="text-sm font-bold text-black uppercase">Property Identification</h4>
-                        <div className="flex flex-col gap-1">
-                            <p className="text-[10px] text-black/60 uppercase font-black">{activeProperty.address}</p>
-                            <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-[#C5A059] font-black uppercase tracking-widest flex items-center gap-2 hover:underline">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                                Open in Google Maps
-                            </a>
-                        </div>
-                    </div>
-                    {!isLocationVerified ? (
-                        <div className="flex flex-col items-center gap-3 w-full md:w-auto">
-                            <button onClick={verifyLocation} disabled={isVerifying} className="w-full md:w-auto bg-[#C5A059] text-black font-black px-10 py-5 rounded-2xl uppercase tracking-[0.3em] text-[10px] shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3">
-                                {isVerifying ? <><span className="w-3 h-3 border-2 border-black/20 border-t-black rounded-full animate-spin"></span>VERIFYING...</> : 'VERIFY LOCATION'}
-                            </button>
-                        </div>
-                    ) : (
-                        <div className="flex items-center gap-3 bg-green-50 text-green-600 px-6 py-3 rounded-2xl border border-green-200">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
-                            <span className="text-[9px] font-black uppercase tracking-widest">POSITION VERIFIED</span>
-                        </div>
-                    )}
-                </div>
-                {isLocationVerified && (
-                    <div className="animate-in slide-in-from-top-4 duration-700 space-y-4">
-                        {activeProperty.keyboxPhoto && (
-                            <div onClick={() => setZoomedImage(activeProperty.keyboxPhoto!)} className="relative h-56 w-full rounded-[40px] overflow-hidden shadow-xl border border-gray-100 mb-2 cursor-zoom-in group">
-                                <img src={activeProperty.keyboxPhoto} className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-700" alt="Keybox reference" />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent"></div>
-                                <div className="absolute bottom-6 left-8 text-left">
-                                    <p className="text-[8px] font-black text-white/80 uppercase tracking-[0.4em] mb-1">Access Protocol Evidence</p>
-                                    <h2 className="text-lg font-bold text-white uppercase tracking-tight">Keybox Location Reference</h2>
-                                </div>
-                            </div>
-                        )}
-                        <div className="bg-[#FDF8EE] p-8 rounded-[40px] border border-[#D4B476]/30 space-y-8 shadow-xl">
-                            <div className="grid grid-cols-2 gap-8 text-left">
-                                <div className="space-y-1">
-                                    <p className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-widest">Entrance Code</p>
-                                    <p className="text-xl font-bold text-black font-mono tracking-tighter">{activeProperty.mainEntranceCode || 'N/A'}</p>
-                                </div>
-                                <div className="space-y-1">
-                                    <p className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-widest">Apt / Keybox Code</p>
-                                    <p className="text-xl font-bold text-black font-mono tracking-tighter">{activeProperty.keyboxCode}</p>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-8 border-t border-black/5 pt-6 text-left">
-                                <div className="space-y-1">
-                                    <p className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-widest">Unit Floor</p>
-                                    <p className="text-sm font-bold text-black uppercase tracking-widest">{activeProperty.floor || 'Level 0'}</p>
-                                </div>
-                                <div className="space-y-1">
-                                    <p className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-widest">Apartment No.</p>
-                                    <p className="text-sm font-bold text-black uppercase tracking-widest">{activeProperty.apartmentNumber || 'N/A'}</p>
-                                </div>
-                            </div>
-                            <div className="border-t border-black/5 pt-6 text-left">
-                                <p className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-widest mb-2">Internal Access Protocols</p>
-                                <p className="text-xs text-black/60 italic leading-relaxed">"{activeProperty.accessNotes}"</p>
-                            </div>
-                        </div>
-                        <div className="flex justify-center pt-2">
-                            <button onClick={handleStartShift} className="bg-[#C5A059] text-black font-black py-4 px-12 rounded-2xl uppercase tracking-[0.4em] text-[11px] shadow-xl active:scale-95 transition-all mt-4">CLOCK IN</button>
-                        </div>
-                    </div>
-                )}
-            </section>
-            {zoomedImage && <div className="fixed inset-0 bg-black/95 z-[500] flex items-center justify-center p-4 cursor-pointer" onClick={() => setZoomedImage(null)}><img src={zoomedImage} className="max-w-full max-h-full object-contain rounded-3xl" alt="Preview" /></div>}
+  // --- OVERVIEW / START SHIFT VIEW ---
+  if (currentStep === 'overview' && activeShift) {
+    return (
+      <div className="space-y-8 animate-in slide-in-from-right-8 duration-500 pb-32 max-w-2xl mx-auto px-4 text-left">
+        <button onClick={() => { setSelectedShiftId(null); setCurrentStep('list'); }} className="text-black/40 hover:text-black flex items-center gap-2 text-[10px] font-black uppercase tracking-widest">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg> Back to Schedule
+        </button>
+
+        <div className="space-y-2">
+          <h1 className="text-3xl font-serif-brand font-bold text-black uppercase tracking-tight leading-tight">{activeShift.propertyName}</h1>
+          <p className="text-[10px] font-black text-[#C5A059] uppercase tracking-[0.3em]">Deployment Briefing</p>
         </div>
-      );
+
+        <div className="bg-[#FDF8EE] border border-[#D4B476]/30 p-8 rounded-[40px] space-y-8 shadow-xl">
+           <div className="grid grid-cols-2 gap-8">
+              <div>
+                 <p className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-widest mb-1">Service Protocol</p>
+                 <p className="text-sm font-bold text-black uppercase">{activeShift.serviceType}</p>
+              </div>
+              <div>
+                 <p className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-widest mb-1">Scheduled Time</p>
+                 <p className="text-sm font-bold text-black uppercase">{activeShift.startTime}</p>
+              </div>
+           </div>
+
+           {activeProperty?.accessNotes && (
+             <div className="bg-white/60 p-5 rounded-2xl border border-[#D4B476]/10">
+                <p className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-widest mb-2 flex items-center gap-2">
+                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> Access Protocol
+                </p>
+                <p className="text-xs text-black italic leading-relaxed">{activeProperty.accessNotes}</p>
+             </div>
+           )}
+
+           {activeProperty?.keyboxCode && (
+             <div className="flex gap-4">
+                <div className="flex-1 bg-black text-[#C5A059] p-4 rounded-2xl text-center">
+                   <p className="text-[7px] font-black uppercase tracking-widest mb-1 opacity-60">Main Entrance</p>
+                   <p className="text-xl font-mono font-bold tracking-widest">{activeProperty.mainEntranceCode || '---'}</p>
+                </div>
+                <div className="flex-1 bg-[#C5A059] text-black p-4 rounded-2xl text-center">
+                   <p className="text-[7px] font-black uppercase tracking-widest mb-1 opacity-60">Keybox Code</p>
+                   <p className="text-xl font-mono font-bold tracking-widest">{activeProperty.keyboxCode}</p>
+                </div>
+             </div>
+           )}
+
+           <div className="pt-4 space-y-4">
+              <button 
+                onClick={verifyLocation}
+                disabled={isVerifying || isLocationVerified}
+                className={`w-full py-4 rounded-2xl font-black uppercase text-[10px] tracking-[0.3em] flex items-center justify-center gap-2 transition-all ${isLocationVerified ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-white border border-gray-200 text-black/60 hover:bg-gray-50'}`}
+              >
+                 {isVerifying ? 'LOCATING...' : isLocationVerified ? 'LOCATION CONFIRMED' : 'VERIFY GPS LOCATION'}
+              </button>
+
+              <button 
+                onClick={handleStartShift}
+                disabled={!isLocationVerified && !isManagement}
+                className={`w-full py-5 rounded-2xl font-black uppercase text-[11px] tracking-[0.4em] shadow-2xl transition-all active:scale-95 ${!isLocationVerified && !isManagement ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-black text-[#C5A059] hover:bg-zinc-900'}`}
+              >
+                 START SHIFT
+              </button>
+              {!isLocationVerified && !isManagement && <p className="text-[8px] text-red-500 text-center font-bold uppercase tracking-widest">GPS Verification Required to Start</p>}
+           </div>
+        </div>
+      </div>
+    );
   }
 
-  // ACTIVE
+  // --- ACTIVE SHIFT VIEW ---
   if (currentStep === 'active' && activeShift) {
-      return (
-        <div className="space-y-8 animate-in fade-in duration-700 pb-32 max-w-2xl mx-auto text-left px-2 relative">
-            {notification && (
-                <div className={`fixed top-6 left-1/2 transform -translate-x-1/2 z-[1000] px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 min-w-[300px] max-w-[90vw] animate-in slide-in-from-top-4 duration-300 ${notification.type === 'error' ? 'bg-red-600 text-white' : 'bg-green-600 text-white'}`}>
-                    <p className="text-xs font-bold leading-tight">{notification.message}</p>
-                </div>
-            )}
-            <header className="flex flex-col gap-4 bg-[#C5A059] p-8 rounded-[40px] text-black shadow-2xl relative overflow-hidden">
-                <div className="flex justify-between items-start relative z-10">
-                    <div>
-                        <p className="text-[8px] font-black uppercase tracking-[0.4em] mb-1 opacity-60">Deployment Active</p>
-                        <h3 className="text-xl font-serif-brand font-bold uppercase tracking-tight">{activeShift.propertyName}</h3>
-                    </div>
-                    <div className="text-right flex flex-col items-end">
-                        <p className="text-2xl font-bold font-mono tracking-tighter">{Math.floor(timer / 60)}:{(timer % 60).toString().padStart(2, '0')}</p>
-                        <p className="text-[7px] font-black uppercase tracking-widest opacity-60">Clocked In</p>
-                        <button onClick={() => setShowMessReport(true)} className="mt-2 bg-[#FDF8EE] text-red-600 text-[7px] font-black py-1.5 px-3 rounded-lg uppercase tracking-[0.2em] shadow-lg active:scale-95 transition-transform">Request Extra Time</button>
-                    </div>
-                </div>
-            </header>
-            
-            {(activeShift.notes || (activeProperty?.specialRequests && activeProperty.specialRequests.length > 0)) && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-[32px] p-6 space-y-4 shadow-sm animate-in slide-in-from-top-2">
-                    <div className="flex items-center gap-2">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-yellow-600"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                        <h3 className="text-xs font-black text-yellow-700 uppercase tracking-widest">Important Instructions</h3>
-                    </div>
-                    
-                    {activeShift.notes && (
-                        <div className="space-y-1">
-                            <p className="text-[9px] font-bold text-black/40 uppercase tracking-widest">Shift Note</p>
-                            <p className="text-sm font-medium text-black italic">"{activeShift.notes}"</p>
-                        </div>
-                    )}
-
-                    {activeProperty?.specialRequests && activeProperty.specialRequests.length > 0 && (
-                        <div className="space-y-2">
-                            <p className="text-[9px] font-bold text-black/40 uppercase tracking-widest">Property Special Requests</p>
-                            <ul className="space-y-2">
-                                {activeProperty.specialRequests.map((req, i) => (
-                                    <li key={i} className="flex gap-3 items-start bg-white p-3 rounded-xl border border-yellow-100">
-                                        <span className="text-yellow-500 font-bold">•</span>
-                                        <span className="text-xs font-bold text-black uppercase">{req}</span>
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                    )}
-                </div>
-            )}
-
-            <div className="space-y-4">
-                <p className="text-[8px] font-black text-black/30 uppercase tracking-[0.4em] px-1">Deployment Checklist</p>
-                {tasks.map(task => (
-                    <div key={task.id} className="bg-white border border-gray-100 rounded-[32px] p-6 shadow-md space-y-4">
-                        <div className="flex justify-between items-center">
-                            <div className="flex-1">
-                                <p className="text-[11px] font-bold text-black uppercase tracking-tight">{task.label}</p>
-                                {task.isMandatory && <p className="text-[7px] text-red-600 font-black uppercase tracking-widest mt-1 animate-pulse">Photo from camera mandatory</p>}
-                            </div>
-                            <button onClick={() => { setActiveTaskId(task.id); cameraInputRef.current?.click(); }} disabled={isProcessingPhoto} className={`p-3 rounded-xl border transition-all ${task.photos.length >= task.minPhotos ? 'bg-green-50 border-green-500/20 text-green-600' : 'bg-gray-50 border border-gray-200 text-black/40 hover:border-[#C5A059]'}`}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
-                        </div>
-                        {task.photos.length > 0 && (
-                            <div className="flex gap-2 overflow-x-auto pb-2">
-                                {task.photos.map((p, i) => (<img key={i} src={p.url} onClick={() => setZoomedImage(p.url)} className="w-16 h-16 rounded-xl object-cover border border-gray-100 shadow-sm cursor-zoom-in" alt="Task Proof" />))}
-                            </div>
-                        )}
-                    </div>
-                ))}
-                <input type="file" ref={cameraInputRef} className="hidden" accept="image/*" capture="environment" onChange={(e) => handleCapture(e, 'task')} />
+    return (
+      <div className="pb-40 px-4 pt-4 max-w-3xl mx-auto space-y-8 animate-in fade-in duration-500">
+         <header className="flex justify-between items-center sticky top-0 bg-[#F9FAFB]/95 backdrop-blur-sm py-4 z-40 border-b border-gray-200">
+            <div>
+               <h2 className="text-lg font-bold text-black uppercase tracking-tight">{activeShift.propertyName}</h2>
+               <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                  <p className="text-[9px] font-black text-green-600 uppercase tracking-widest">LIVE • {Math.floor(timer / 3600)}h {Math.floor((timer % 3600) / 60)}m</p>
+               </div>
             </div>
+            <button onClick={() => setReportModalType('maintenance')} className="bg-red-50 text-red-600 p-3 rounded-full border border-red-100 shadow-sm active:scale-95">
+               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            </button>
+         </header>
 
-            <div className="space-y-4 pt-4">
-               <p className="text-[8px] font-black text-black/30 uppercase tracking-[0.4em] px-1">Operational Actions</p>
-               <div className="grid grid-cols-2 gap-3">
-                  <button onClick={() => setReportModalType('maintenance')} className="bg-blue-50 border border-blue-100 text-blue-600 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 active:scale-95 transition-all shadow-sm hover:bg-blue-100">
-                     <span className="text-[9px] font-black uppercase tracking-widest">Maintenance</span>
-                  </button>
-                  <button onClick={() => setReportModalType('damage')} className="bg-orange-50 border border-orange-100 text-orange-600 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 active:scale-95 transition-all shadow-sm hover:bg-orange-100">
-                     <span className="text-[9px] font-black uppercase tracking-widest">Damage</span>
-                  </button>
-                  <button onClick={() => setReportModalType('missing')} className="bg-purple-50 border border-purple-100 text-purple-600 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 active:scale-95 transition-all shadow-sm hover:bg-purple-100">
-                     <span className="text-[9px] font-black uppercase tracking-widest">Missing Item</span>
-                  </button>
-                  <button onClick={() => setShowSupplyModal(true)} className="bg-green-50 border border-green-100 text-green-600 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 active:scale-95 transition-all shadow-sm hover:bg-green-100">
-                     <span className="text-[9px] font-black uppercase tracking-widest">Request Supplies</span>
+         {/* Tasks List */}
+         <div className="space-y-6">
+            {tasks.map(task => {
+               const hasPhoto = task.photos.length > 0;
+               return (
+                  <div key={task.id} className={`bg-white border rounded-[28px] p-6 transition-all ${hasPhoto ? 'border-green-200 bg-green-50/30' : 'border-gray-200 shadow-sm'}`}>
+                     <div className="flex justify-between items-start mb-4">
+                        <div className="space-y-1">
+                           <p className="text-sm font-bold text-black uppercase leading-tight">{task.label}</p>
+                           {task.isMandatory && <span className="text-[7px] font-black bg-red-100 text-red-600 px-2 py-0.5 rounded uppercase tracking-widest">Evidence Required</span>}
+                        </div>
+                        {hasPhoto && <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center text-white"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg></div>}
+                     </div>
+                     
+                     <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                        {task.photos.map((p, i) => (
+                           <img key={i} src={p.url} className="w-16 h-16 rounded-xl object-cover border border-gray-100 shadow-sm" alt="Evidence" />
+                        ))}
+                        <button 
+                           onClick={() => { setActiveTaskId(task.id); cameraInputRef.current?.click(); }}
+                           className="w-16 h-16 rounded-xl bg-gray-50 border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 hover:border-[#C5A059] hover:text-[#C5A059] transition-all shrink-0"
+                        >
+                           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                        </button>
+                     </div>
+                  </div>
+               );
+            })}
+         </div>
+         <input type="file" ref={cameraInputRef} className="hidden" accept="image/*" capture="environment" onChange={(e) => handleCapture(e, 'task')} />
+
+         {/* Action Bar */}
+         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 pb-8 flex gap-3 justify-center z-50">
+            <button onClick={() => setShowMessReport(true)} className="flex-1 bg-red-50 text-red-600 font-black py-4 rounded-2xl text-[9px] uppercase tracking-widest border border-red-100 active:scale-95">REQUEST TIME</button>
+            <button onClick={handleProceedToClockOut} className="flex-[2] bg-black text-[#C5A059] font-black py-4 rounded-2xl text-[10px] uppercase tracking-[0.3em] shadow-xl active:scale-95">FINISH SHIFT</button>
+         </div>
+
+         {/* Report Modal */}
+         {(reportModalType || showMessReport) && (
+            <div className="fixed inset-0 bg-black/80 z-[1000] flex items-end sm:items-center justify-center p-4 backdrop-blur-sm animate-in slide-in-from-bottom-10">
+               <div className="bg-white w-full max-w-md rounded-[40px] p-8 space-y-6">
+                  <div className="text-center space-y-2">
+                     <h3 className="text-xl font-bold text-black uppercase">{showMessReport ? 'Request Extra Time' : `Report ${reportModalType}`}</h3>
+                     <p className="text-[9px] text-black/40 font-black uppercase tracking-widest">Incident Documentation</p>
+                  </div>
+                  
+                  {!showMessReport && (
+                     <div className="flex gap-2 p-1 bg-gray-100 rounded-xl">
+                        {['maintenance', 'damage', 'missing'].map(t => (
+                           <button key={t} onClick={() => setReportModalType(t as any)} className={`flex-1 py-2 rounded-lg text-[8px] font-black uppercase ${reportModalType === t ? 'bg-black text-white shadow-md' : 'text-black/40'}`}>{t}</button>
+                        ))}
+                     </div>
+                  )}
+
+                  {reportModalType === 'missing' && (
+                     <div className="flex gap-2">
+                        <button onClick={() => setMissingCategory('apartment')} className={`flex-1 py-3 rounded-xl text-[9px] font-bold uppercase border ${missingCategory === 'apartment' ? 'bg-[#C5A059] text-black border-[#C5A059]' : 'bg-white border-gray-200 text-gray-400'}`}>Apartment Item</button>
+                        <button onClick={() => setMissingCategory('laundry')} className={`flex-1 py-3 rounded-xl text-[9px] font-bold uppercase border ${missingCategory === 'laundry' ? 'bg-[#C5A059] text-black border-[#C5A059]' : 'bg-white border-gray-200 text-gray-400'}`}>Laundry Item</button>
+                     </div>
+                  )}
+
+                  <textarea 
+                     className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 text-sm font-medium outline-none focus:border-[#C5A059] h-32 resize-none"
+                     placeholder={showMessReport ? "Describe why extra time is needed (e.g. extremely dirty kitchen)..." : "Describe the issue..."}
+                     value={showMessReport ? messDescription : reportDescription}
+                     onChange={e => showMessReport ? setMessDescription(e.target.value) : setReportDescription(e.target.value)}
+                  />
+
+                  <div className="flex gap-2 overflow-x-auto pb-2">
+                     {(showMessReport ? messPhotos : reportPhotos).map((url, i) => (
+                        <img key={i} src={url} className="w-16 h-16 rounded-xl object-cover border border-gray-200" />
+                     ))}
+                     <button onClick={() => (showMessReport ? messCameraRef : reportCameraRef).current?.click()} className="w-16 h-16 rounded-xl bg-gray-50 border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                     </button>
+                  </div>
+                  <input type="file" ref={showMessReport ? messCameraRef : reportCameraRef} className="hidden" accept="image/*" capture="environment" onChange={(e) => handleCapture(e, showMessReport ? 'mess' : 'report')} />
+
+                  <div className="flex gap-3 pt-4">
+                     <button onClick={() => { setShowMessReport(false); setReportModalType(null); }} className="flex-1 py-4 bg-gray-100 text-black/40 font-black uppercase rounded-2xl text-[9px] tracking-widest">Cancel</button>
+                     <button onClick={showMessReport ? handleSubmitMessReport : handleReportSubmit} className="flex-[2] py-4 bg-black text-white font-black uppercase rounded-2xl text-[9px] tracking-widest shadow-xl">Submit Report</button>
+                  </div>
+               </div>
+            </div>
+         )}
+      </div>
+    );
+  }
+
+  // --- REVIEW & CLOCK OUT (Keys) ---
+  if (currentStep === 'review') {
+    return (
+      <div className="pb-40 px-4 pt-10 max-w-2xl mx-auto text-left space-y-10 animate-in fade-in duration-500">
+         <div className="space-y-2">
+            <h2 className="text-2xl font-serif-brand font-bold text-black uppercase">Shift Handover</h2>
+            <p className="text-[9px] font-black text-[#C5A059] uppercase tracking-[0.4em]">Mandatory Security Protocol</p>
+         </div>
+
+         <div className="bg-[#FDF8EE] border border-[#D4B476]/30 p-8 rounded-[40px] space-y-8 shadow-xl">
+            <div className="space-y-4">
+               <div className="flex justify-between items-center">
+                  <p className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-widest">1. Key in Box Evidence</p>
+                  {keyInBoxPhotos.length > 0 && <span className="text-green-600 text-[10px] font-bold">✓ DONE</span>}
+               </div>
+               <div className="flex gap-3 overflow-x-auto pb-2">
+                  {keyInBoxPhotos.map((p, i) => <img key={i} src={p.url} className="w-20 h-20 rounded-xl object-cover border border-[#D4B476]/20" />)}
+                  <button onClick={() => { setCheckoutTarget('keyInBox'); checkoutKeyRef.current?.click(); }} className="w-20 h-20 rounded-xl bg-white border-2 border-dashed border-[#D4B476]/40 flex items-center justify-center text-[#C5A059] hover:bg-[#C5A059]/10 transition-all">
+                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
                   </button>
                </div>
             </div>
 
-            <button onClick={handleProceedToClockOut} className="w-full bg-black text-[#C5A059] font-black py-6 rounded-3xl uppercase tracking-[0.4em] text-sm shadow-xl active:scale-95 transition-all mt-10">Proceed to Clock Out</button>
-            
-            {isManagement && (
-                <div className="mt-8 pt-8 border-t border-red-200">
-                    <p className="text-[9px] font-black text-red-500 uppercase tracking-widest mb-2 text-center">Admin Emergency Zone</p>
-                    <button 
-                        onClick={() => {
-                            if(confirm("FORCE CHECK OUT: This will bypass all photo/geofence requirements. Are you sure?")) {
-                                handleForceFinish();
-                            }
-                        }}
-                        className="w-full bg-red-600 text-white font-black py-4 rounded-2xl uppercase tracking-[0.3em] text-[10px] shadow-xl active:scale-95 transition-all"
-                    >
-                        ⚠️ FORCE CHECK OUT (ADMIN ONLY)
-                    </button>
-                </div>
-            )}
+            <div className="h-px bg-[#D4B476]/20 w-full"></div>
 
-            {showMessReport && (
-                <div className="fixed inset-0 bg-black/60 z-[500] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
-                    <div className="bg-white border border-red-100 rounded-[48px] w-full max-w-lg p-8 md:p-12 space-y-8 shadow-2xl relative text-left my-auto animate-in zoom-in-95">
-                        <button onClick={() => setShowMessReport(false)} className="absolute top-8 right-8 text-black/20 hover:text-black"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-                        <header className="space-y-1"><h2 className="text-2xl font-serif-brand font-bold text-red-600 uppercase tracking-tight">Report Mess</h2></header>
-                        <div className="space-y-6">
-                            <div className="space-y-2"><label className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-[0.4em] mb-1.5 block px-1">Describe</label><textarea className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 text-[11px] h-32 outline-none" value={messDescription} onChange={e => setMessDescription(e.target.value)} /></div>
-                            <button onClick={() => messCameraRef.current?.click()} className="w-full h-32 rounded-3xl border-2 border-dashed border-[#D4B476]/30 bg-[#FDF8EE] flex items-center justify-center text-[#C5A059] font-black uppercase text-[8px] tracking-widest">Capture Evidence</button>
-                            <input type="file" ref={messCameraRef} className="hidden" accept="image/*" capture="environment" onChange={(e) => handleCapture(e, 'mess')} />
-                            <button onClick={handleSubmitMessReport} className="w-full bg-red-600 text-white font-black py-4 rounded-2xl uppercase tracking-[0.3em] text-[10px] shadow-xl">REPORT</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {reportModalType && (
-                <div className="fixed inset-0 bg-black/60 z-[500] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
-                    <div className="bg-white border border-[#D4B476]/30 rounded-[48px] w-full max-w-lg p-8 md:p-12 space-y-8 shadow-2xl relative text-left my-auto animate-in zoom-in-95">
-                        <button onClick={() => { setReportModalType(null); setReportDescription(''); setReportPhotos([]); }} className="absolute top-8 right-8 text-black/20 hover:text-black"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-                        <header className="space-y-1">
-                            <h2 className="text-2xl font-serif-brand font-bold uppercase tracking-tight text-black">Report {reportModalType}</h2>
-                            <p className="text-[8px] font-black text-[#C5A059] uppercase tracking-[0.4em]">Field Incident Logger</p>
-                        </header>
-                        <div className="space-y-6">
-                            <div className="space-y-2">
-                                <label className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-[0.4em] mb-1.5 block px-1">Details</label>
-                                <textarea className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 text-[11px] h-32 outline-none" value={reportDescription} onChange={e => setReportDescription(e.target.value)} placeholder="Describe the issue..." />
-                            </div>
-                            
-                            {reportModalType === 'missing' && (
-                                <div className="flex gap-2 bg-gray-50 p-1 rounded-xl border border-gray-100">
-                                    <button onClick={() => setMissingCategory('apartment')} className={`flex-1 py-3 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${missingCategory === 'apartment' ? 'bg-black text-white shadow-md' : 'text-black/40 hover:bg-white'}`}>From Apartment</button>
-                                    <button onClick={() => setMissingCategory('laundry')} className={`flex-1 py-3 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${missingCategory === 'laundry' ? 'bg-[#C5A059] text-black shadow-md' : 'text-black/40 hover:bg-white'}`}>From Laundry</button>
-                                </div>
-                            )}
-
-                            <div>
-                                <label className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-[0.4em] mb-1.5 block px-1">Evidence {reportModalType !== 'missing' ? '(Required)' : '(Optional)'}</label>
-                                <div className="flex gap-2 overflow-x-auto pb-2">
-                                    <button onClick={() => reportCameraRef.current?.click()} className="w-24 h-24 rounded-2xl border-2 border-dashed border-[#D4B476]/30 bg-[#FDF8EE] flex items-center justify-center text-[#C5A059] font-black shrink-0 hover:border-[#C5A059] transition-all">+</button>
-                                    {reportPhotos.map((url, i) => (
-                                        <img key={i} src={url} className="w-24 h-24 rounded-2xl object-cover border border-gray-200" />
-                                    ))}
-                                </div>
-                                <input type="file" ref={reportCameraRef} className="hidden" accept="image/*" onChange={(e) => handleCapture(e, 'report')} />
-                            </div>
-
-                            <button onClick={handleReportSubmit} className="w-full bg-black text-[#C5A059] font-black py-4 rounded-2xl uppercase tracking-[0.3em] text-[10px] shadow-xl">SUBMIT REPORT</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
-      );
-  }
-
-  // REVIEW & CHECKOUT VIEW
-  if (currentStep === 'review' && activeShift) {
-      return (
-        <div className="space-y-8 animate-in fade-in duration-700 pb-32 max-w-2xl mx-auto text-left px-2 relative">
-            <header className="space-y-1">
-                <h2 className="text-2xl font-serif-brand font-bold uppercase tracking-tight text-black">Checkout Protocol</h2>
-                <p className="text-[8px] font-black text-[#C5A059] uppercase tracking-[0.4em]">Final Security Measures</p>
-            </header>
-            
-            <div className="space-y-6">
-                <div className="bg-white border border-gray-200 p-6 rounded-[32px] space-y-4">
-                    <p className="text-[9px] font-black text-black/40 uppercase tracking-widest">1. Keybox Evidence</p>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div onClick={() => { setCheckoutTarget('keyInBox'); checkoutKeyRef.current?.click(); }} className="h-32 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center cursor-pointer hover:border-[#C5A059] transition-all relative overflow-hidden">
-                            {keyInBoxPhotos.length > 0 ? (
-                                <img src={keyInBoxPhotos[keyInBoxPhotos.length-1].url} className="w-full h-full object-cover" />
-                            ) : (
-                                <>
-                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-300"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                                    <span className="text-[7px] font-black uppercase mt-2 text-gray-400">Key Inside</span>
-                                </>
-                            )}
-                        </div>
-                        <div onClick={() => { setCheckoutTarget('boxClosed'); checkoutKeyRef.current?.click(); }} className="h-32 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center cursor-pointer hover:border-[#C5A059] transition-all relative overflow-hidden">
-                            {boxClosedPhotos.length > 0 ? (
-                                <img src={boxClosedPhotos[boxClosedPhotos.length-1].url} className="w-full h-full object-cover" />
-                            ) : (
-                                <>
-                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-300"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
-                                    <span className="text-[7px] font-black uppercase mt-2 text-gray-400">Box Closed</span>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                    <input type="file" ref={checkoutKeyRef} className="hidden" accept="image/*" capture="environment" onChange={(e) => handleCapture(e, 'checkout')} />
-                </div>
-
-                <div className="flex gap-3">
-                    <button onClick={handleFinishShift} className="flex-1 bg-[#C5A059] text-black font-black py-5 rounded-3xl uppercase tracking-[0.3em] text-[10px] shadow-xl active:scale-95 transition-all">
-                        CONFIRM & CLOCK OUT
-                    </button>
-                    <button onClick={() => setCurrentStep('active')} className="px-8 border border-gray-200 text-black/40 font-black py-5 rounded-3xl uppercase tracking-widest text-[9px]">
-                        BACK
-                    </button>
-                </div>
-            </div>
-        </div>
-      );
-  }
-
-  // INSPECTION / AUDIT VIEW
-  if (currentStep === 'inspection' && activeShift) {
-      return (
-        <div className="space-y-8 animate-in fade-in duration-700 pb-32 max-w-2xl mx-auto text-left px-2 relative">
-            <header className="space-y-1">
-                <h2 className="text-2xl font-serif-brand font-bold uppercase tracking-tight text-black">Audit Mode</h2>
-                <p className="text-[8px] font-black text-[#C5A059] uppercase tracking-[0.4em]">Supervisor Verification</p>
-            </header>
-            
             <div className="space-y-4">
-               {activeShift.tasks?.map(task => (
-                   <div key={task.id} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
-                       <p className="text-[10px] font-bold uppercase mb-2">{task.label}</p>
-                       <div className="flex gap-2 overflow-x-auto">
-                           {task.photos?.length > 0 ? task.photos.map((p, i) => (
-                               <img key={i} src={p.url} className="w-16 h-16 rounded-lg object-cover" onClick={() => setZoomedImage(p.url)} />
-                           )) : <p className="text-[8px] italic text-gray-400">No photos.</p>}
-                       </div>
-                   </div>
-               ))}
+               <div className="flex justify-between items-center">
+                  <p className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-widest">2. Box Closed & Scrambled</p>
+                  {boxClosedPhotos.length > 0 && <span className="text-green-600 text-[10px] font-bold">✓ DONE</span>}
+               </div>
+               <div className="flex gap-3 overflow-x-auto pb-2">
+                  {boxClosedPhotos.map((p, i) => <img key={i} src={p.url} className="w-20 h-20 rounded-xl object-cover border border-[#D4B476]/20" />)}
+                  <button onClick={() => { setCheckoutTarget('boxClosed'); checkoutKeyRef.current?.click(); }} className="w-20 h-20 rounded-xl bg-white border-2 border-dashed border-[#D4B476]/40 flex items-center justify-center text-[#C5A059] hover:bg-[#C5A059]/10 transition-all">
+                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                  </button>
+               </div>
             </div>
+            
+            <input type="file" ref={checkoutKeyRef} className="hidden" accept="image/*" capture="environment" onChange={(e) => handleCapture(e, 'checkout')} />
+         </div>
 
-            <div className="pt-4">
-                <button onClick={() => setCurrentStep('active')} className="w-full bg-black text-white font-black py-4 rounded-2xl uppercase tracking-[0.3em] text-[10px] shadow-xl">
-                    START INSPECTION SHIFT
-                </button>
-            </div>
-            {zoomedImage && <div className="fixed inset-0 bg-black/95 z-[500] flex items-center justify-center p-4 cursor-pointer" onClick={() => setZoomedImage(null)}><img src={zoomedImage} className="max-w-full max-h-full object-contain rounded-3xl" /></div>}
-        </div>
-      );
+         <div className="flex gap-4">
+            <button onClick={() => setCurrentStep('active')} className="flex-1 py-5 bg-gray-100 text-black/40 font-black rounded-2xl uppercase text-[9px] tracking-widest">Back</button>
+            <button onClick={handleFinishShift} className="flex-[2] py-5 bg-black text-[#C5A059] font-black rounded-2xl uppercase text-[10px] tracking-[0.4em] shadow-xl active:scale-95 transition-all">CLOCK OUT</button>
+         </div>
+      </div>
+    );
   }
 
-  return null;
+  // --- INSPECTION / AUDIT MODE ---
+  if (currentStep === 'inspection' && activeShift) {
+     return (
+        <div className="p-8 max-w-2xl mx-auto space-y-8 animate-in fade-in text-left">
+           <header className="space-y-2">
+              <h2 className="text-2xl font-serif-brand font-bold text-black uppercase">Quality Audit</h2>
+              <p className="text-[9px] font-black text-[#C5A059] uppercase tracking-[0.4em]">Supervisor Inspection Mode</p>
+           </header>
+
+           <div className="bg-white border border-gray-200 p-6 rounded-[32px] space-y-6 shadow-xl">
+              <div className="space-y-4">
+                 <h4 className="text-[10px] font-black text-black/40 uppercase tracking-widest">Original Cleaner Evidence</h4>
+                 <div className="grid grid-cols-3 gap-2">
+                    {activeShift.tasks?.flatMap(t => t.photos).map((p, i) => (
+                       <img key={i} src={p.url} onClick={() => setZoomedImage(p.url)} className="w-full h-24 object-cover rounded-xl border border-gray-100 cursor-zoom-in" />
+                    ))}
+                    {(!activeShift.tasks?.some(t => t.photos.length > 0)) && <p className="text-xs text-gray-400 italic col-span-3">No photos provided.</p>}
+                 </div>
+              </div>
+
+              <div className="h-px bg-gray-100 w-full"></div>
+
+              <div className="space-y-4">
+                 <h4 className="text-[10px] font-black text-black/40 uppercase tracking-widest">Audit Findings (Optional)</h4>
+                 <textarea 
+                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 text-sm outline-none focus:border-[#C5A059] h-24"
+                    placeholder="Enter notes if work is rejected..."
+                    value={messDescription} // Re-using mess state for simplicity in audit notes
+                    onChange={e => setMessDescription(e.target.value)}
+                 />
+              </div>
+
+              <div className="flex gap-4">
+                 <button onClick={handleForceFinish} className="flex-1 bg-green-600 text-white font-black py-4 rounded-2xl uppercase text-[9px] tracking-widest shadow-lg">APPROVE & CLOSE</button>
+                 <button onClick={handleForceFinish} className="flex-1 bg-red-600 text-white font-black py-4 rounded-2xl uppercase text-[9px] tracking-widest shadow-lg">REJECT & FLAG</button>
+              </div>
+           </div>
+        </div>
+     );
+  }
+
+  return <div className="p-20 text-center opacity-20 font-black uppercase tracking-widest">Loading Portal...</div>;
 };
 
 export default CleanerPortal;
