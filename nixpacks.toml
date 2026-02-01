@@ -2,14 +2,14 @@
 nixPkgs = ["nodejs_20", "npm", "python3", "gcc", "g++", "make"]
 
 [phases.install]
-# Aggrssively clear cache to prevent 'package-lock.json' conflicts
+# Force clean state to prevent binary conflicts or lockfile errors
 cmds = [
     "rm -rf node_modules package-lock.json",
     "npm install"
 ]
 
 [phases.build]
-# Clear Vite/Rollup caches before building the bundle
+# Clear caches to ensure Vite and Rollup build from scratch
 cmds = [
     "rm -rf node_modules/.vite node_modules/.rollup.cache",
     "npm run build"
