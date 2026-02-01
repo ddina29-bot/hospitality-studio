@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getMessaging, getToken, onMessage, Messaging } from "firebase/messaging";
+import { getMessaging, getToken, onMessage, Messaging, isSupported } from "firebase/messaging";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -15,16 +15,29 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 let messaging: Messaging | null = null;
 
-try {
-  messaging = getMessaging(app);
-} catch (error) {
-  console.warn("Firebase Messaging not supported in this browser environment:", error);
-}
+// Initialize messaging conditionally
+const initMessaging = async () => {
+  try {
+    const supported = await isSupported();
+    if (supported) {
+      messaging = getMessaging(app);
+    } else {
+      console.debug("Firebase Messaging not supported in this environment.");
+    }
+  } catch (e) {
+    console.debug("Firebase Messaging support check failed:", e);
+  }
+};
+
+// Fire initialization
+initMessaging();
 
 export const requestForToken = async () => {
-  if (!messaging) return null;
-  
   try {
+    // Ensure messaging is initialized or supported
+    const supported = await isSupported();
+    if (!supported || !messaging) return null;
+  
     const currentToken = await getToken(messaging, { 
       vapidKey: 'BE_wFFLMMNkiiKckoUzX6pRhdFdZEfC96JbxAoWpRiNIRsFerwPbOOg5NqL6W4drpC0xe_nsy2DuCP2kjQR43m4' 
     });
@@ -45,10 +58,13 @@ export const requestForToken = async () => {
 
 export const onMessageListener = () =>
   new Promise((resolve) => {
-    if (!messaging) return;
-    onMessage(messaging, (payload) => {
-      console.log("Foreground Message received: ", payload);
-      resolve(payload);
+    isSupported().then(supported => {
+      if (supported && messaging) {
+        onMessage(messaging, (payload) => {
+          console.log("Foreground Message received: ", payload);
+          resolve(payload);
+        });
+      }
     });
   });
 
