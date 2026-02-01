@@ -1,6 +1,5 @@
-
 // Frontend Service for AI
-// Proxies requests to the Node.js backend to keep the API_KEY secure.
+// Strictly proxies requests to the Node.js backend to keep the API_KEY secure.
 
 export const askHRAssistant = async (query: string): Promise<string> => {
   try {
@@ -13,13 +12,14 @@ export const askHRAssistant = async (query: string): Promise<string> => {
     });
 
     if (!response.ok) {
-      throw new Error('Failed to communicate with Studio Intelligence');
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Studio Intelligence connection interrupted');
     }
 
     const data = await response.json();
     return data.text;
   } catch (error) {
     console.error("AI Service Error:", error);
-    return "Studio Intelligence is currently offline. Please check your internet connection.";
+    return "Studio Intelligence is initializing or offline. Please check your admin configuration.";
   }
 };
