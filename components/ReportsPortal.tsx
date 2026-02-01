@@ -106,15 +106,15 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
               
               <div class="flex flex-col gap-1">
                  <div class="flex items-center gap-4">
-                    <span class="text-[9px] font-black uppercase tracking-widest text-gray-400 w-16">DATE</span>
+                    <span class="text-[8px] font-black uppercase tracking-widest text-gray-400 w-16">DATE</span>
                     <span class="text-sm font-bold text-black uppercase tracking-widest bg-gray-50 px-2 rounded">${date}</span>
                  </div>
                  <div class="flex items-center gap-4">
-                    <span class="text-[9px] font-black uppercase tracking-widest text-gray-400 w-16">TIME</span>
+                    <span class="text-[8px] font-black uppercase tracking-widest text-gray-400 w-16">TIME</span>
                     <span class="text-xs font-bold text-black uppercase tracking-widest">${timeRange}</span>
                  </div>
                  <div class="flex items-center gap-4">
-                    <span class="text-[9px] font-black uppercase tracking-widest text-gray-400 w-16">SERVICE</span>
+                    <span class="text-[8px] font-black uppercase tracking-widest text-gray-400 w-16">SERVICE</span>
                     <span class="text-[10px] font-bold text-gray-600 uppercase tracking-widest">${shift.serviceType}</span>
                  </div>
               </div>
@@ -266,14 +266,6 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
 
   const auditMonthGroups = useMemo(() => groupShiftsByMonthDay(auditHistory), [auditHistory]);
 
-  const auditStats = useMemo(() => {
-    const total = auditHistory.length;
-    // Since we only show approved in the list now, passed is total.
-    // However, to show true stats, we might want to query all completed shifts regardless of approval.
-    // For now, let's stick to the visual stats of what's listed.
-    return { total, passed: total, failed: 0, rate: 100 };
-  }, [auditHistory]);
-
   const activityHistory = useMemo(() => {
     return shifts.filter(s => s.status === 'completed' && s.serviceType !== 'TO CHECK APARTMENT') 
       .filter(s => !activitySearch || s.propertyName?.toLowerCase().includes(activitySearch.toLowerCase()) || s.userIds.some(uid => users.find(u => u.id === uid)?.name.toLowerCase().includes(activitySearch.toLowerCase())))
@@ -362,7 +354,6 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
             {[
               { id: 'audit', label: 'Quality Audits' },
               { id: 'incidents', label: 'Incidents' },
-              { id: 'activity', label: 'Activity Log' },
               { id: 'employees', label: 'Personnel' },
             ].map((t) => (
               <button 
@@ -377,7 +368,7 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
         </nav>
       </header>
 
-      {/* --- AUDIT TAB (Approved Shifts) --- */}
+      {/* --- AUDIT TAB (Approved Shifts - List View) --- */}
       {activeTab === 'audit' && (
         <div className="space-y-10 animate-in slide-in-from-right-4">
            {/* Search Bar for Month, Date, Name, Apt */}
@@ -391,22 +382,22 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
                  <div className="py-20 text-center border-2 border-dashed border-black/5 rounded-[40px] opacity-10 italic text-[10px] uppercase font-black tracking-[0.4em]">No approved records found.</div>
               ) : (
                  auditMonthGroups.map((monthGroup, mIdx) => (
-                    <div key={mIdx} className="bg-white border border-gray-100 rounded-[40px] p-8 shadow-xl space-y-8">
-                       <div className="flex items-center justify-between border-b border-gray-100 pb-4">
-                          <h2 className="text-3xl font-serif-brand font-bold text-black uppercase tracking-tight">{monthGroup.monthLabel}</h2>
-                          <div className="px-4 py-1 bg-green-50 rounded-full border border-green-100 text-[8px] font-black text-green-700 uppercase tracking-widest">
-                             {monthGroup.days.reduce((acc, d) => acc + d.shifts.length, 0)} Verified Jobs
-                          </div>
+                    <div key={mIdx} className="bg-white border border-gray-100 rounded-[32px] overflow-hidden shadow-md mb-8">
+                       <div className="bg-gray-50 px-6 py-5 border-b border-gray-100 flex justify-between items-center">
+                          <h2 className="text-xl font-serif-brand font-bold text-black uppercase tracking-tight">{monthGroup.monthLabel}</h2>
+                          <span className="text-[9px] font-black uppercase tracking-widest bg-white px-3 py-1 rounded-full border border-gray-200 text-[#C5A059]">
+                              {monthGroup.days.reduce((acc, d) => acc + d.shifts.length, 0)} Records
+                          </span>
                        </div>
                        
-                       <div className="space-y-8">
+                       <div className="p-6 md:p-8 space-y-8">
                           {monthGroup.days.map((dayGroup, dIdx) => (
                              <div key={dIdx} className="space-y-4">
-                                <div className="flex items-center gap-3">
-                                   <div className="bg-[#FDF8EE] border border-[#D4B476]/30 text-[#8B6B2E] px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-sm">{dayGroup.date}</div>
-                                   <div className="h-px w-full bg-black/5"></div>
+                                <div className="flex items-center gap-4">
+                                   <span className="text-[10px] font-black text-[#C5A059] uppercase tracking-[0.2em]">{dayGroup.date}</span>
+                                   <div className="h-px flex-1 bg-gray-100"></div>
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                <div className="space-y-3">
                                    {dayGroup.shifts.map(shift => {
                                       const durationText = shift.actualStartTime && shift.actualEndTime 
                                         ? `${new Date(shift.actualStartTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} - ${new Date(shift.actualEndTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}` 
@@ -414,22 +405,37 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
                                       const cleaners = shift.userIds.map(id => users.find(u => u.id === id)?.name.split(' ')[0]).join(', ');
 
                                       return (
-                                         <div key={shift.id} className="p-6 rounded-[32px] border border-green-500/20 bg-white/50 shadow-sm hover:shadow-lg transition-all flex flex-col justify-between gap-6 relative overflow-hidden group">
-                                            <div className="absolute top-0 left-0 w-1.5 h-full bg-green-500"></div>
-                                            <div className="space-y-2 pl-3">
-                                               <h4 className="text-sm font-bold text-black uppercase tracking-tight truncate">{shift.propertyName}</h4>
-                                               <p className="text-[8px] font-black text-[#C5A059] uppercase tracking-widest">{shift.serviceType}</p>
-                                               <p className="text-[8px] text-black/40 font-bold uppercase">{cleaners || 'Unknown Staff'}</p>
-                                               <p className="text-[7px] text-black/30 font-bold uppercase mt-1">{durationText}</p>
+                                         <div key={shift.id} className="flex flex-col md:flex-row items-start md:items-center justify-between p-4 rounded-2xl bg-white border border-gray-100 hover:border-[#C5A059]/30 transition-all shadow-sm group gap-4">
+                                            {/* Left: Info */}
+                                            <div className="flex items-center gap-4 w-full md:w-auto">
+                                                <div className="hidden md:flex flex-col items-center justify-center w-12 h-12 bg-[#FDF8EE] rounded-xl border border-[#D4B476]/20 text-[#C5A059]">
+                                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <h4 className="text-sm font-bold text-black uppercase truncate">{shift.propertyName}</h4>
+                                                    <div className="flex flex-wrap items-center gap-2 mt-1">
+                                                        <span className="text-[8px] font-black bg-green-50 text-green-700 px-2 py-0.5 rounded uppercase border border-green-100">Verified</span>
+                                                        <span className="text-[8px] text-black/40 font-bold uppercase">{shift.serviceType}</span>
+                                                        <span className="text-[8px] text-black/30 uppercase font-medium hidden md:inline-block">• {cleaners}</span>
+                                                        <span className="text-[8px] text-black/30 uppercase font-medium hidden md:inline-block">• {durationText}</span>
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <div className="pl-3 flex gap-2">
-                                               <button onClick={(e) => handleGeneratePDF(shift, e)} className="flex-1 bg-black text-[#C5A059] py-3 rounded-xl text-[8px] font-black uppercase tracking-widest shadow-md hover:bg-zinc-800 transition-all">PDF Report</button>
-                                               <button 
-                                                  onClick={(e) => { e.stopPropagation(); setSelectedAuditShift(shift); }} 
-                                                  className="flex-1 bg-white border border-gray-200 text-black/60 py-3 rounded-xl text-[8px] font-black uppercase tracking-widest hover:text-black hover:border-[#C5A059] active:scale-95 transition-all"
-                                               >
-                                                  Details
-                                               </button>
+
+                                            {/* Right: Actions */}
+                                            <div className="flex items-center gap-2 w-full md:w-auto">
+                                                <button 
+                                                    onClick={(e) => handleGeneratePDF(shift, e)} 
+                                                    className="flex-1 md:flex-none px-4 py-2 bg-black text-[#C5A059] rounded-xl text-[8px] font-black uppercase tracking-widest shadow-sm hover:bg-zinc-800 transition-all"
+                                                >
+                                                    PDF Report
+                                                </button>
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); setSelectedAuditShift(shift); }} 
+                                                    className="flex-1 md:flex-none px-4 py-2 bg-white border border-gray-200 text-black/60 rounded-xl text-[8px] font-black uppercase tracking-widest hover:text-black hover:border-[#C5A059] active:scale-95 transition-all"
+                                                >
+                                                    Details
+                                                </button>
                                             </div>
                                          </div>
                                       );
@@ -441,179 +447,12 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
                     </div>
                  ))
               )}
-           </div>
-        </div>
-      )}
-
-      {/* --- INCIDENTS TAB --- */}
-      {activeTab === 'incidents' && (
-         <div className="space-y-8 animate-in slide-in-from-right-4">
-            {/* Same incidents content ... */}
-            <div className="flex flex-col md:flex-row gap-4 items-stretch">
-                <div className="relative flex-1">
-                    <input type="text" placeholder="SEARCH INCIDENTS..." className={`${inputStyle} w-full pl-12 h-11`} value={incidentSearch} onChange={(e) => setIncidentSearch(e.target.value)} />
-                    <div className="absolute left-4 top-3.5 text-black/20"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
-                </div>
-                {/* ... sort buttons ... */}
-            </div>
-            {/* ... Incident List ... */}
-            <div className="space-y-4">
-               {filteredIncidents.length === 0 ? (
-                  <div className="py-20 text-center border-2 border-dashed border-black/5 rounded-[40px] opacity-10 italic text-[10px] uppercase font-black tracking-[0.4em]">Log Clear.</div>
-               ) : (
-                  <>
-                    {/* ... (Existing Incident Mapping Code) ... */}
-                    {filteredIncidents.map((inc, i) => (
-                        <div key={`${inc.shiftId}-${i}`} className={`p-6 rounded-[32px] border flex flex-col md:flex-row items-center justify-between gap-6 shadow-md transition-all ${inc.resolved ? 'bg-gray-50 border-gray-200 opacity-70' : 'bg-white border-red-100 hover:border-red-300'}`}>
-                            <div className="flex items-center gap-6 w-full md:w-auto">
-                            <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white text-lg shadow-lg ${inc.type === 'Maintenance' ? 'bg-blue-500' : inc.type === 'Damage' ? 'bg-orange-500' : 'bg-purple-500'}`}>{inc.type.charAt(0)}</div>
-                            <div className="space-y-1">
-                                <h4 className="text-sm font-bold text-black uppercase tracking-tight">{inc.propertyName}</h4>
-                                <p className="text-[9px] text-black/40 font-black uppercase tracking-widest">{inc.date} • {inc.type}</p>
-                                <p className="text-[10px] text-black/80 italic line-clamp-1">"{inc.description}"</p>
-                            </div>
-                            </div>
-                            <div className="flex items-center gap-4 w-full md:w-auto justify-end">
-                            <span className={`px-4 py-1.5 rounded-full text-[8px] font-black uppercase tracking-widest border ${inc.resolved ? 'bg-green-100 text-green-700 border-green-200' : 'bg-red-100 text-red-600 border-red-200'}`}>{inc.resolved ? 'RESOLVED' : 'OPEN TICKET'}</span>
-                            {inc.photos.length > 0 && (
-                                <button onClick={() => setZoomedImage(inc.photos[0])} className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-black/40 hover:bg-gray-200 hover:text-black transition-all"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M20.4 14.5L16 10 4 20"/></svg></button>
-                            )}
-                            </div>
-                        </div>
-                    ))}
-                  </>
-               )}
-            </div>
-         </div>
-      )}
-
-      {/* --- ACTIVITY TAB (CLEANER LOGS) --- */}
-      {activeTab === 'activity' && (
-        <div className="space-y-10 animate-in slide-in-from-right-4">
-           <div className="relative w-full">
-              <input type="text" placeholder="SEARCH ACTIVITY..." className={`${inputStyle} w-full pl-12`} value={activitySearch} onChange={(e) => setActivitySearch(e.target.value)} />
-              <div className="absolute left-4 top-3 text-black/20"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
-           </div>
-
-           <div className="space-y-16">
-              {activityMonthGroups.length === 0 ? (
-                 <div className="py-20 text-center border-2 border-dashed border-black/5 rounded-[40px] opacity-10 italic text-[10px] uppercase font-black tracking-[0.4em]">No activity found.</div>
-              ) : (
-                 activityMonthGroups.map((monthGroup, mIdx) => (
-                    <div key={mIdx} className="space-y-8">
-                       <div className="flex items-center justify-between">
-                          <h2 className="text-2xl font-serif-brand font-bold text-black uppercase tracking-tight">{monthGroup.monthLabel}</h2>
-                          <div className="h-px flex-1 bg-black/5 mx-6"></div>
-                       </div>
-                       <div className="space-y-6 pl-4 md:pl-8 border-l-2 border-black/5">
-                          {monthGroup.days.map((dayGroup, dIdx) => (
-                             <div key={dIdx} className="space-y-4">
-                                <div className="flex items-center gap-3">
-                                   <div className="bg-[#FDF8EE] border border-[#D4B476]/30 text-[#8B6B2E] px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-sm">{dayGroup.date}</div>
-                                   <div className="h-px w-12 bg-black/5"></div>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                   {dayGroup.shifts.map(shift => {
-                                      const cleaner = users.find(u => u.id === shift.userIds[0]);
-                                      const durationText = shift.actualStartTime && shift.actualEndTime 
-                                        ? `${new Date(shift.actualStartTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} - ${new Date(shift.actualEndTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}` 
-                                        : `${shift.startTime} - ${shift.endTime}`;
-
-                                      return (
-                                         <div key={shift.id} className="bg-white p-5 rounded-[24px] border border-gray-100 shadow-md hover:border-[#C5A059]/20 transition-all flex flex-col gap-4 group">
-                                            <div className="flex items-center gap-3">
-                                               <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center font-bold text-[#C5A059] border border-gray-200">
-                                                  {cleaner?.name.charAt(0) || '?'}
-                                               </div>
-                                               <div>
-                                                  <p className="text-[10px] font-bold text-black uppercase">{cleaner?.name || 'Unknown'}</p>
-                                                  <p className="text-[8px] font-black text-black/30 uppercase tracking-widest">{shift.serviceType}</p>
-                                               </div>
-                                            </div>
-                                            <div>
-                                               <p className="text-sm font-bold text-black uppercase tracking-tight">{shift.propertyName}</p>
-                                               <p className="text-[9px] font-mono text-black/60 mt-1">{durationText}</p>
-                                            </div>
-                                            <button onClick={() => setSelectedAuditShift(shift)} className="w-full bg-gray-50 text-black/40 py-2 rounded-lg text-[8px] font-black uppercase tracking-widest hover:bg-[#C5A059] hover:text-black transition-all">
-                                               View Log
-                                            </button>
-                                         </div>
-                                      );
-                                   })}
-                                </div>
-                             </div>
-                          ))}
-                       </div>
-                    </div>
-                 ))
-              )}
-           </div>
-        </div>
-      )}
-
-      {/* --- EMPLOYEES TAB (PERSONNEL) --- */}
-      {activeTab === 'employees' && (
-        <div className="space-y-8 animate-in slide-in-from-right-4">
-           {/* ... (Existing Personnel Code) ... */}
-           <div className="relative w-full">
-              <input type="text" placeholder="SEARCH STAFF..." className={`${inputStyle} w-full pl-12`} value={personnelSearch} onChange={(e) => setPersonnelSearch(e.target.value)} />
-              <div className="absolute left-4 top-3 text-black/20"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
-           </div>
-
-           <div className="space-y-12">
-              {personnelGroups.map((group, idx) => (
-                 <section key={idx} className="space-y-6">
-                    <div className="flex items-center gap-4 px-1">
-                       <h3 className="text-[11px] font-black uppercase tracking-[0.5em] text-black/30">{group.title}</h3>
-                       <div className="h-px flex-1 bg-black/5"></div>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                       {group.members.map(u => {
-                          const metrics = calculateUserMetrics(u.id);
-                          return (
-                             <div key={u.id} className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-md hover:shadow-xl transition-all flex flex-col gap-6">
-                                <div className="flex items-center gap-4">
-                                   <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white text-lg font-bold shadow-lg ${u.status === 'active' ? 'bg-[#C5A059]' : 'bg-gray-300'}`}>
-                                      {u.name.charAt(0)}
-                                   </div>
-                                   <div>
-                                      <h4 className="text-sm font-bold text-black uppercase">{u.name}</h4>
-                                      <p className="text-[8px] font-black text-black/30 uppercase tracking-widest">{u.role}</p>
-                                   </div>
-                                </div>
-                                
-                                {metrics && (
-                                   <div className="grid grid-cols-3 gap-2 bg-gray-50 p-3 rounded-2xl border border-gray-100">
-                                      <div className="text-center">
-                                         <p className="text-[7px] font-black text-black/30 uppercase tracking-widest">Rating</p>
-                                         <p className="text-lg font-bold text-black">{metrics.score}</p>
-                                      </div>
-                                      <div className="text-center border-l border-gray-200">
-                                         <p className="text-[7px] font-black text-black/30 uppercase tracking-widest">Jobs</p>
-                                         <p className="text-lg font-bold text-black">{metrics.total}</p>
-                                      </div>
-                                      <div className="text-center border-l border-gray-200">
-                                         <p className="text-[7px] font-black text-black/30 uppercase tracking-widest">Hours</p>
-                                         <p className="text-lg font-bold text-black">{metrics.totalHours}</p>
-                                      </div>
-                                   </div>
-                                )}
-                                
-                                <button onClick={() => setSelectedUser(u)} className="w-full bg-black text-[#C5A059] py-3 rounded-xl text-[8px] font-black uppercase tracking-widest hover:bg-zinc-800 transition-all">
-                                   View Profile
-                                </button>
-                             </div>
-                          );
-                       })}
-                    </div>
-                 </section>
-              ))}
            </div>
         </div>
       )}
 
       {selectedAuditShift && (
-        <div className="fixed inset-0 bg-black/70 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in" onClick={() => setSelectedAuditShift(null)}>
+        <div className="fixed inset-0 bg-black/80 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in" onClick={() => setSelectedAuditShift(null)}>
            <div className="bg-[#FDF8EE] border border-[#C5A059]/40 rounded-[40px] w-full max-w-4xl p-8 md:p-10 space-y-8 shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar" onClick={e => e.stopPropagation()}>
               <button onClick={() => setSelectedAuditShift(null)} className="absolute top-8 right-8 text-black/20 hover:text-black transition-colors"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
               
