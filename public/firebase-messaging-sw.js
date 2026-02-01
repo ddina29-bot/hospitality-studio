@@ -1,1 +1,1 @@
-// Service worker deprecated and removed as requested.
+// This file is deleted.
