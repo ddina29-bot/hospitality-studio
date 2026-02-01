@@ -20,8 +20,6 @@ const Layout = ({
   setActiveTab, 
   role, 
   onLogout, 
-  authorizedLaundryUserIds = [], 
-  currentUserId = '',
   notifications = [],
   onOpenActivityCenter
 }: LayoutProps) => {
@@ -34,32 +32,32 @@ const Layout = ({
   const allNavItems: { id: TabType; label: string; icon: React.FC<any>; roles: UserRole[] }[] = [
     { 
       id: 'dashboard', 
-      label: 'Home', 
+      label: 'Feed', 
       icon: Icons.Dashboard, 
       roles: ['cleaner', 'driver', 'supervisor', 'admin', 'housekeeping', 'maintenance', 'hr', 'finance', 'laundry', 'client', 'outsourced_maintenance'] 
     },
     { 
       id: 'shifts', 
-      label: 'Assets', 
-      icon: Icons.Building, 
+      label: 'Job Schedule', 
+      icon: Icons.Calendar, 
       roles: ['cleaner', 'admin', 'supervisor', 'housekeeping', 'maintenance'] 
     },
     { 
       id: 'logistics', 
-      label: 'My Route', 
+      label: 'My Assets', 
       icon: Icons.Truck, 
       roles: ['driver', 'admin', 'housekeeping'] 
     },
     {
         id: 'ai',
-        label: 'Support',
+        label: 'Assistant',
         icon: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>,
         roles: ['cleaner', 'driver', 'supervisor', 'admin', 'housekeeping', 'maintenance', 'hr', 'finance', 'laundry', 'client']
     },
     { 
       id: 'manual' as TabType, 
-      label: 'Menu', 
-      icon: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>,
+      label: 'Admin', 
+      icon: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>,
       roles: ['cleaner', 'driver', 'supervisor', 'admin', 'housekeeping', 'maintenance', 'hr', 'finance', 'laundry', 'client', 'outsourced_maintenance'] 
     },
   ];
@@ -73,10 +71,10 @@ const Layout = ({
   const mobileNavItems = allNavItems.filter(item => item.roles.includes(role));
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#F8F9FB] text-[#1A1A1A]">
+    <div className="flex h-screen overflow-hidden bg-[#F2F4F7] text-[#1A1A1A]">
       
       {/* DESKTOP SIDEBAR */}
-      <aside className="hidden md:flex flex-col w-64 bg-white border-r border-gray-200 z-20">
+      <aside className="hidden md:flex flex-col w-64 bg-white border-r border-gray-200 z-20 shadow-sm">
         <div className="p-8">
           <h1 className="font-serif-brand flex flex-col tracking-tight uppercase leading-none">
             <span className="text-[#C5A059] text-[10px] font-black tracking-[0.4em] mb-1">RESET</span>
@@ -84,7 +82,7 @@ const Layout = ({
           </h1>
         </div>
         
-        <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto custom-scrollbar">
+        <nav className="flex-1 px-4 py-4 space-y-2 overflow-y-auto custom-scrollbar">
           {desktopNavItems.map((item) => (
             <button
               key={item.id}
@@ -92,7 +90,7 @@ const Layout = ({
               className={`w-full flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-200 ${
                 activeTab === item.id
                   ? 'bg-[#C5A059] text-white font-bold shadow-md' 
-                  : 'text-gray-500 hover:text-black hover:bg-gray-100 font-medium' 
+                  : 'text-gray-500 hover:text-black hover:bg-gray-50 font-medium' 
               }`}
             >
               <item.icon />
@@ -114,34 +112,37 @@ const Layout = ({
 
       {/* MAIN CONTENT AREA */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
-        {/* Mobile Header */}
-        <header className="md:hidden sticky top-0 bg-white border-b border-gray-100 flex justify-between items-center px-5 py-4 z-50 pt-[calc(1rem+env(safe-area-inset-top))]">
+        {/* Mobile Header - Cleaner Connecteam Style */}
+        <header className="md:hidden sticky top-0 bg-white border-b border-gray-200 flex justify-between items-center px-5 py-3 z-50 pt-[calc(0.5rem+env(safe-area-inset-top))]">
           <div className="flex items-center gap-3">
-             <div className="w-8 h-8 rounded-full bg-[#C5A059] flex items-center justify-center text-white font-bold text-xs">
+             <div className="w-9 h-9 rounded-full bg-[#C5A059] flex items-center justify-center text-white font-bold text-sm shadow-sm">
                 {role.charAt(0).toUpperCase()}
              </div>
-             <h1 className="font-serif-brand text-black font-bold text-lg tracking-tight uppercase">Studio</h1>
+             <div>
+               <h1 className="font-sans text-black font-bold text-sm tracking-tight leading-none">Studio App</h1>
+               <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">{role}</p>
+             </div>
           </div>
           <div className="flex items-center gap-3">
             <button 
               onClick={onOpenActivityCenter}
-              className="p-2 text-gray-500 relative"
+              className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600 relative transition-colors"
             >
                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-               {hasUnread && <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>}
+               {hasUnread && <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full border border-white"></span>}
             </button>
           </div>
         </header>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
+        <div className="flex-1 overflow-y-auto custom-scrollbar bg-[#F2F4F7]">
           <div className="max-w-7xl mx-auto w-full p-4 md:p-10 pb-32 md:pb-10">
             {children}
           </div>
         </div>
 
-        {/* MOBILE BOTTOM NAVIGATION */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex items-center justify-around px-2 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] z-50 shadow-[0_-10px_40px_rgba(0,0,0,0.03)]">
+        {/* MOBILE BOTTOM NAVIGATION - Connecteam Style */}
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex items-center justify-around px-2 py-2 pb-[calc(1rem+env(safe-area-inset-bottom))] z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
           {mobileNavItems.map((item) => (
             <button
               key={item.id}

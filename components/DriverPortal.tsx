@@ -1,6 +1,5 @@
-
 import React, { useMemo, useState, useEffect } from 'react';
-import { TabType, User, Shift, Property, ManualTask, SupplyRequest, TimeEntry } from '../../types';
+import { TabType, User, Shift, Property, ManualTask, SupplyRequest, TimeEntry } from '../types';
 
 interface DriverPortalProps {
   supplyRequests?: SupplyRequest[];
@@ -67,7 +66,7 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
   const routeEndTime = useMemo(() => {
     // Only valid if there's a corresponding start
     if (!routeStartTime) return null;
-    const endEntry = todaysEntries.reverse().find(e => e.type === 'out' && new Date(e.timestamp) > routeStartTime);
+    const endEntry = todaysEntries.slice().reverse().find(e => e.type === 'out' && new Date(e.timestamp) > routeStartTime);
     return endEntry ? new Date(endEntry.timestamp) : null;
   }, [todaysEntries, routeStartTime]);
 
@@ -170,7 +169,7 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
       ...supplyRequests.filter(r => r.date.split('T')[0] === tomorrowISO).map(r => ({ name: r.itemName, type: 'Supply' })),
       ...manualTasks.filter(t => t.date.split('T')[0] === tomorrowISO).map(t => ({ name: t.taskName, type: 'Extra Task' }))
     ];
-  }, [supplyRequests, manualTasks, activeUserId]);
+  }, [supplyRequests, manualTasks]);
 
   // LOGISTICS ALERTS (For Driver's own view)
   const unresolvedLogistics = useMemo(() => {
@@ -178,7 +177,6 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
   }, [logisticsTasks]);
 
   const handleStartDay = () => {
-    // We assume App.tsx passes setTimeEntries to trigger a real save
     localStorage.setItem(`route_start_time_${activeUserId}`, Date.now().toString());
     localStorage.setItem(`route_active_${activeUserId}`, 'true');
     setRefreshToggle(prev => prev + 1);
@@ -193,7 +191,6 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
   };
 
   const toggleTaskField = (shiftId: string, field: keyof Shift, reason?: string) => {
-    // UPDATED: Removed isViewingToday check to allow drivers to update past statuses
     if (!canInteract) return;
     
     setShifts?.(prev => prev.map(s => {
@@ -247,7 +244,6 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
 
   const driverList = useMemo(() => users.filter(u => u.role === 'driver' && u.status === 'active' && u.id !== currentUser.id), [users, currentUser.id]);
   
-  // UPDATED: Interaction allowed for driver role, regardless of date, to enable retroactive fixes
   const canInteract = (currentUser.role === 'driver' || isAdmin);
   
   const labelStyle = "text-[7px] font-black text-[#A68342] uppercase tracking-[0.4em] mb-1 opacity-60";
@@ -371,8 +367,11 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
                         )}
                       </div>
                       <div>
-                        <p className={labelStyle}>Address Link</p>
-                        <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(task.propDetails?.address || '')}`} target="_blank" className="text-[10px] text-black underline uppercase font-black hover:text-[#A68342] transition-colors">Navigate</a>
+                        <p className={labelStyle}>Navigate To Stop</p>
+                        <div className="flex gap-3">
+                          <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(task.propDetails?.address || '')}`} target="_blank" className="text-[9px] bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-black uppercase hover:bg-blue-600 hover:text-white transition-all border border-blue-100">G-Maps</a>
+                          <a href={`https://maps.apple.com/?q=${encodeURIComponent(task.propDetails?.address || '')}`} target="_blank" className="text-[9px] bg-gray-50 text-black px-3 py-1.5 rounded-lg font-black uppercase hover:bg-black hover:text-white transition-all border border-gray-200">Apple Maps</a>
+                        </div>
                       </div>
                     </div>
 
@@ -451,7 +450,6 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
           ))}
         </div>
 
-        {/* ... (Rest of existing content like groupedStandaloneByProperty and groupedSuppliesByUser) ... */}
         {groupedStandaloneByProperty.length > 0 && (
           <div className="space-y-4">
              <div className="flex items-center gap-3 px-2">

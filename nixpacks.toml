@@ -2,7 +2,10 @@
 nixPkgs = ["nodejs_20", "npm", "python3", "gcc", "g++", "make"]
 
 [phases.install]
-cmds = ["npm install"]
+cmds = [
+    "rm -f package-lock.json",
+    "npm install"
+]
 
 [phases.build]
 cmds = ["npm run build"]
