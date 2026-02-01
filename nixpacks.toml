@@ -1,12 +1,11 @@
 [phases.setup]
-# We include python3, gcc, and make to ensure native modules (like better-sqlite3) build correctly
 nixPkgs = ["nodejs_20", "npm", "python3", "gcc", "g++", "make"]
 
 [phases.install]
-# Force a clean install to prevent platform-specific lockfile issues
+# We must delete the lockfile and node_modules to avoid platform-specific binary conflicts (e.g. Rollup/Esbuild)
 cmds = [
     "rm -rf package-lock.json node_modules",
-    "npm install"
+    "npm install --no-package-lock"
 ]
 
 [phases.build]
