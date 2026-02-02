@@ -1,13 +1,14 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#C5A059">
+  <meta name="theme-color" content="#007AFF">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="RESET STUDIO">
-  <title>RESET HOSPITALITY STUDIO</title>
+  <meta name="apple-mobile-web-app-title" content="STUDIO">
+  <title>STUDIO OPS</title>
   
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3009/3009489.png">
@@ -17,53 +18,41 @@
   <style>
     body {
       font-family: 'Inter', sans-serif;
-      background-color: #F2F4F7; /* Connecteam-like light gray background */
+      background-color: #F8F9FA;
       color: #1A1A1A;
       font-size: 14px;
       -webkit-tap-highlight-color: transparent;
       padding-bottom: env(safe-area-inset-bottom);
       overflow-x: hidden;
     }
-    .font-serif-brand {
-      font-family: 'Libre Baskerville', serif;
-    }
     .custom-scrollbar::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
+      width: 4px;
+      height: 4px;
     }
     .custom-scrollbar::-webkit-scrollbar-track {
-      background: #F9F9F9;
+      background: #F1F1F1;
     }
     .custom-scrollbar::-webkit-scrollbar-thumb {
-      background: #1A1A1A;
+      background: #D1D1D1;
       border-radius: 10px;
-    }
-    *:focus-visible {
-      outline: 2px solid #C5A059 !important;
-      outline-offset: 2px;
-    }
-    .no-scrollbar::-webkit-scrollbar {
-      display: none;
-    }
-    .no-scrollbar {
-      -ms-overflow-style: none;
-      scrollbar-width: none;
-    }
-    /* Connecteam Style Animations */
-    .app-screen-transition {
-      animation: slideIn 0.3s ease-out;
-    }
-    @keyframes slideIn {
-      from { opacity: 0; transform: translateY(10px); }
-      to { opacity: 1; transform: translateY(0); }
     }
     .nav-active-indicator {
       position: absolute;
-      bottom: -6px;
-      width: 4px;
-      height: 4px;
-      border-radius: 50%;
-      background-color: #C5A059;
+      top: -2px;
+      width: 20px;
+      height: 3px;
+      border-radius: 0 0 4px 4px;
+      background-color: #007AFF;
+    }
+    .card-shadow {
+      box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+    }
+    .app-screen-transition {
+      animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
     }
   </style>
 <script type="importmap">
@@ -72,18 +61,18 @@
     "react": "https://esm.sh/react@^19.2.4",
     "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
     "react/": "https://esm.sh/react@^19.2.4/",
-    "express": "https://esm.sh/express@^5.2.1",
-    "cors": "https://esm.sh/cors@^2.8.6",
     "@google/genai": "https://esm.sh/@google/genai@^1.39.0",
-    "dotenv": "https://esm.sh/dotenv@^17.2.3",
-    "path": "https://esm.sh/path@^0.12.7",
-    "url": "https://esm.sh/url@^0.11.4",
-    "multer": "https://esm.sh/multer@^2.0.2",
-    "fs": "https://esm.sh/fs@^0.0.1-security",
-    "nodemailer": "https://esm.sh/nodemailer@^7.0.13",
-    "better-sqlite3": "https://esm.sh/better-sqlite3@^12.6.2",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
     "vite": "https://esm.sh/vite@^7.3.1",
-    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
+    "cors": "https://esm.sh/cors@^2.8.6",
+    "path": "https://esm.sh/path@^0.12.7",
+    "fs": "https://esm.sh/fs@^0.0.1-security",
+    "url": "https://esm.sh/url@^0.11.4",
+    "express": "https://esm.sh/express@^5.2.1",
+    "dotenv": "https://esm.sh/dotenv@^17.2.3",
+    "nodemailer": "https://esm.sh/nodemailer@^7.0.13",
+    "multer": "https://esm.sh/multer@^2.0.2",
+    "better-sqlite3": "https://esm.sh/better-sqlite3@^12.6.2"
   }
 }
 </script>
