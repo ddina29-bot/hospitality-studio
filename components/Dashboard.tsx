@@ -1,5 +1,5 @@
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import { TabType, User, TimeEntry, Shift, SupplyRequest, Property, SupplyItem } from '../types';
 
 interface DashboardProps {
@@ -17,110 +17,92 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ 
-  user, setActiveTab, onToggleClock, timeEntries = []
+  user, setActiveTab, onToggleClock, timeEntries = [], shifts = [], supplyRequests = []
 }) => {
-  const isClockedIn = useMemo(() => {
-    const myEntries = timeEntries.filter(e => e.userId === user.id).sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    return myEntries.length > 0 && myEntries[0].type === 'in';
-  }, [timeEntries, user.id]);
-
-  const firstName = user.name ? user.name.split(' ')[0] : 'Member';
-
-  const actions = [
-    { id: 'shifts', label: 'Job Schedule', color: 'bg-blue-50', iconColor: 'text-blue-600', icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-    )},
-    { id: 'logistics', label: 'My Assets', color: 'bg-green-50', iconColor: 'text-green-600', icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
-    )},
-    { id: 'tutorials', label: 'Guidelines', color: 'bg-purple-50', iconColor: 'text-purple-600', icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
-    )},
-    { id: 'ai', label: 'Assistant', color: 'bg-orange-50', iconColor: 'text-orange-600', icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-    )},
-  ].filter(a => {
-      if (a.id === 'logistics' && !['driver', 'admin', 'housekeeping'].includes(user.role)) return false;
-      return true;
-  });
+  const myEntries = timeEntries.filter(e => e.userId === user.id).sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  const isClockedIn = myEntries.length > 0 && myEntries[0].type === 'in';
+  
+  const todayStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase();
+  const myShiftsToday = shifts.filter(s => s.userIds.includes(user.id) && s.date === todayStr);
+  const myPendingSupplies = supplyRequests.filter(r => r.userId === user.id && r.status === 'pending');
 
   return (
-    <div className="space-y-6 app-screen-transition">
+    <div className="space-y-10 animate-in fade-in duration-700 text-left">
       
-      {/* WELCOME SECTION */}
-      <section className="mb-2">
-         <h2 className="text-2xl font-extrabold text-gray-900 tracking-tight">Hey {firstName},</h2>
-         <p className="text-gray-500 font-medium">Ready for your shift today?</p>
-      </section>
+      {/* Dossier Header */}
+      <header className="space-y-1">
+         <p className="text-[#C5A059] font-black uppercase tracking-[0.4em] text-[10px]">Personnel Briefing</p>
+         <h1 className="text-4xl font-serif-brand font-bold text-black uppercase tracking-tight">STUDIO <span className="text-[#C5A059] italic">DOSSIER</span></h1>
+         <p className="text-[9px] text-black/30 font-black uppercase tracking-widest mt-1">Authorized for: {user.name.toUpperCase()} ({user.role.toUpperCase()})</p>
+      </header>
 
-      {/* TIME CLOCK CARD */}
-      <section className="bg-white p-6 rounded-[28px] border border-gray-100 shadow-sm overflow-hidden relative">
-        <div className="absolute -right-8 -top-8 w-32 h-32 bg-blue-50 rounded-full opacity-50 blur-3xl"></div>
-        <div className="flex justify-between items-center mb-6">
-           <div className="flex items-center gap-2">
-              <div className={`w-2.5 h-2.5 rounded-full ${isClockedIn ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`}></div>
-              <span className="text-xs font-bold uppercase tracking-widest text-gray-400">
-                {isClockedIn ? 'On the clock' : 'Current Status'}
-              </span>
-           </div>
-           <p className="text-xs font-bold text-gray-900">
-              {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-           </p>
-        </div>
-        
-        <div className="flex flex-col items-center justify-center py-4">
-            <button 
+      {/* Primary Stats Grid */}
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-[#1A1A1A] p-8 rounded-[40px] border border-white/5 shadow-2xl relative overflow-hidden group">
+           <div className="relative z-10 space-y-6">
+              <div className="flex justify-between items-start">
+                 <p className="text-[10px] font-black text-[#C5A059] uppercase tracking-[0.3em]">Duty Timer</p>
+                 <div className={`w-2 h-2 rounded-full ${isClockedIn ? 'bg-green-500 animate-pulse' : 'bg-white/10'}`}></div>
+              </div>
+              <div>
+                 <p className="text-3xl font-serif-brand font-bold text-white uppercase">{isClockedIn ? 'ON DUTY' : 'STANDBY'}</p>
+                 <p className="text-[8px] text-white/20 font-black uppercase tracking-widest mt-2">Active Operational State</p>
+              </div>
+              <button 
                 onClick={onToggleClock}
-                className={`w-36 h-36 rounded-full border-[6px] flex flex-col items-center justify-center shadow-xl transition-all active:scale-95 hover:scale-105 ${
-                    isClockedIn 
-                    ? 'bg-red-500 border-red-100 text-white' 
-                    : 'bg-[#007AFF] border-blue-100 text-white' 
+                className={`w-full py-4 rounded-2xl font-black text-[10px] uppercase tracking-[0.3em] transition-all active:scale-95 shadow-xl ${
+                    isClockedIn ? 'bg-red-600 text-white' : 'bg-[#C5A059] text-black hover:bg-[#D4B476]'
                 }`}
-            >
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="mb-1"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                <span className="font-black text-sm uppercase tracking-widest">
-                    {isClockedIn ? 'Stop' : 'Start'}
-                </span>
-            </button>
-            <p className="text-xs text-gray-400 font-semibold mt-6">
-                {isClockedIn ? 'Shift duration is recording...' : 'Tap to start your daily shift'}
-            </p>
+              >
+                {isClockedIn ? 'STOP DEPLOYMENT' : 'START DEPLOYMENT'}
+              </button>
+           </div>
+           <div className="absolute -right-6 -bottom-6 text-white/5 opacity-10 group-hover:scale-110 transition-transform duration-700">
+              <svg width="140" height="140" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+           </div>
+        </div>
+
+        <div className="bg-[#FDF8EE] p-8 rounded-[40px] border border-[#D4B476]/30 shadow-xl space-y-6">
+           <p className="text-[10px] font-black text-[#8B6B2E] uppercase tracking-[0.3em]">Deployment Schedule</p>
+           <div className="space-y-1">
+              <p className="text-4xl font-serif-brand font-bold text-black">{myShiftsToday.length}</p>
+              <p className="text-[8px] text-black/30 font-black uppercase tracking-widest mt-2">Units Assigned Today</p>
+           </div>
+           <button onClick={() => setActiveTab('shifts')} className="w-full py-4 bg-white border border-[#D4B476]/40 rounded-2xl text-[9px] font-black uppercase tracking-widest text-[#8B6B2E] hover:bg-white/50 transition-all">VIEW WORKLIST</button>
+        </div>
+
+        <div className="bg-[#FDF8EE] p-8 rounded-[40px] border border-[#D4B476]/30 shadow-xl space-y-6">
+           <p className="text-[10px] font-black text-[#8B6B2E] uppercase tracking-[0.3em]">Supply Inventory</p>
+           <div className="space-y-1">
+              <p className="text-4xl font-serif-brand font-bold text-black">{myPendingSupplies.length}</p>
+              <p className="text-[8px] text-black/30 font-black uppercase tracking-widest mt-2">Pending Requisitions</p>
+           </div>
+           <button onClick={() => setActiveTab('shifts')} className="w-full py-4 bg-white border border-[#D4B476]/40 rounded-2xl text-[9px] font-black uppercase tracking-widest text-[#8B6B2E] hover:bg-white/50 transition-all">REORDER KIT</button>
         </div>
       </section>
 
-      {/* QUICK ACTIONS GRID */}
-      <section>
-        <h3 className="text-sm font-bold text-gray-900 mb-3 ml-1">Tools & Links</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {actions.map(action => (
-            <button 
-                key={action.id}
-                onClick={() => setActiveTab(action.id as TabType)}
-                className="flex flex-col items-center justify-center p-5 bg-white rounded-[24px] border border-gray-100 shadow-sm hover:shadow-md transition-all active:scale-[0.97]"
-            >
-                <div className={`w-14 h-14 rounded-2xl ${action.color} ${action.iconColor} flex items-center justify-center mb-3 shadow-sm`}>
-                {action.icon}
-                </div>
-                <span className="text-xs font-bold text-gray-700 text-center">{action.label}</span>
-            </button>
-            ))}
-        </div>
-      </section>
-
-      {/* UPDATES SECTION */}
-      <section className="bg-white p-5 rounded-[24px] border border-gray-100 shadow-sm">
-         <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-bold text-gray-900">Announcements</h3>
-            <button className="text-[10px] font-bold text-[#007AFF] uppercase tracking-widest">View all</button>
+      {/* Lower Briefing Section */}
+      <section className="bg-white border border-black/5 rounded-[48px] p-10 shadow-2xl relative overflow-hidden">
+         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8 relative z-10">
+            <div className="space-y-4">
+               <h3 className="text-xl font-serif-brand font-bold uppercase text-black tracking-tight">Studio Announcements</h3>
+               <div className="flex items-center gap-4 p-5 bg-[#FDF8EE] border border-[#D4B476]/20 rounded-[32px]">
+                  <div className="w-10 h-10 rounded-full bg-[#C5A059] flex items-center justify-center text-black shadow-lg">
+                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase text-black tracking-widest">System Update Available</p>
+                    <p className="text-[9px] text-black/40 font-bold mt-1">Please ensure GPS permissions are enabled for field ops.</p>
+                  </div>
+               </div>
+            </div>
+            <div className="text-right">
+               <p className="text-[7px] font-black text-black/10 uppercase tracking-[0.5em] mb-4">Telemetry Synchronized</p>
+               <button onClick={() => setActiveTab('ai')} className="bg-black text-[#C5A059] px-8 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-2xl active:scale-95 transition-all">QUERY STUDIO AI</button>
+            </div>
          </div>
-         <div className="flex items-center gap-4 p-4 bg-blue-50/30 rounded-2xl border border-blue-50">
-            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 shrink-0">
-               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-            </div>
-            <div>
-               <p className="text-xs font-bold text-gray-900">Welcome to the new Studio App!</p>
-               <p className="text-[10px] text-gray-500 font-medium mt-0.5">Please check your schedule for tomorrow.</p>
-            </div>
+         <div className="absolute bottom-0 right-0 p-12 opacity-[0.02] pointer-events-none">
+            <h1 className="font-serif-brand text-[200px] leading-none text-black">S</h1>
          </div>
       </section>
 
