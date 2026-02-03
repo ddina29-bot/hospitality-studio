@@ -1,4 +1,3 @@
-
 export type UserRole = 
   | 'cleaner' 
   | 'driver' 
@@ -16,6 +15,7 @@ export type TabType =
   | 'dashboard'
   | 'shifts' 
   | 'logistics'
+  | 'laundry'
   | 'properties'
   | 'clients'
   | 'finance'
@@ -298,6 +298,7 @@ export interface Shift {
   excludeLaundry?: boolean;
   isDelivered?: boolean;
   isCollected?: boolean;
+  isCleanLinenTakenFromOffice?: boolean;
   keysHandled?: boolean;
   keysAtOffice?: boolean;
   keyLocationReason?: string;

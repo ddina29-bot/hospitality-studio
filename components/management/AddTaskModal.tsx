@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Property, User, ManualTask } from '../../types';
 
@@ -86,20 +85,20 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ onClose, onSave, properties
     });
   };
 
-  const labelStyle = "text-[7px] font-black text-[#A68342] uppercase tracking-[0.4em] mb-1.5 block px-1";
-  const inputStyle = "w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-[10px] font-bold uppercase tracking-widest outline-none focus:border-[#C5A059] transition-all h-11";
-  const dropdownStyle = "absolute top-full left-0 right-0 mt-2 bg-white border border-gray-100 rounded-2xl shadow-2xl z-[100] max-h-60 overflow-y-auto custom-scrollbar p-2 space-y-1 animate-in slide-in-from-top-2";
+  const labelStyle = "text-[7px] font-black text-indigo-600 uppercase tracking-[0.4em] mb-1.5 block px-1";
+  const inputStyle = "w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-[10px] font-bold uppercase tracking-widest outline-none focus:border-indigo-500 transition-all h-11 shadow-inner";
+  const dropdownStyle = "absolute top-full left-0 right-0 mt-2 bg-white border border-slate-100 rounded-2xl shadow-2xl z-[100] max-h-60 overflow-y-auto custom-scrollbar p-2 space-y-1 animate-in slide-in-from-top-2";
 
   return (
     <div className="fixed inset-0 bg-black/40 z-[500] flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="bg-[#FDF8EE] border border-[#D4B476]/30 rounded-[40px] w-full max-w-lg p-8 md:p-10 space-y-8 shadow-2xl relative text-left animate-in zoom-in-95">
-        <button onClick={onClose} className="absolute top-8 right-8 text-black/20 hover:text-black transition-colors">
+      <div className="bg-white border border-slate-100 rounded-[40px] w-full max-w-lg p-8 md:p-10 space-y-8 shadow-2xl relative text-left animate-in zoom-in-95">
+        <button onClick={onClose} className="absolute top-8 right-8 text-slate-300 hover:text-slate-900 transition-colors">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
 
         <header className="space-y-1">
-          <h2 className="text-2xl font-serif-brand font-bold text-black uppercase tracking-tight">Add Manual Task</h2>
-          <p className="text-[8px] font-black text-[#A68342] uppercase tracking-[0.4em]">Proprietary Deployment Extension</p>
+          <h2 className="text-2xl font-serif-brand font-bold text-slate-900 uppercase tracking-tight">Add Manual Task</h2>
+          <p className="text-[8px] font-black text-indigo-600 uppercase tracking-[0.4em]">Proprietary Deployment Extension</p>
         </header>
 
         <div className="space-y-6">
@@ -116,12 +115,12 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ onClose, onSave, properties
             {showPropertyDropdown && (
               <div className={dropdownStyle}>
                 {filteredProperties.length === 0 ? (
-                  <p className="p-4 text-[9px] font-black uppercase text-black/20 text-center">No units found</p>
+                  <p className="p-4 text-[9px] font-black uppercase text-slate-300 text-center">No units found</p>
                 ) : filteredProperties.map(p => (
                   <button 
                     key={p.id}
                     onClick={() => { setSelectedProperty(p); setShowPropertyDropdown(false); setPropertySearch(''); }}
-                    className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-50 text-[10px] font-bold uppercase transition-all"
+                    className="w-full text-left px-4 py-3 rounded-xl hover:bg-slate-50 text-[10px] font-bold uppercase transition-all"
                   >
                     {p.name}
                   </button>
@@ -147,7 +146,7 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ onClose, onSave, properties
                     <button 
                       key={i}
                       onClick={() => { setTaskName(name); setShowTaskDropdown(false); }}
-                      className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-50 text-[10px] font-bold uppercase transition-all"
+                      className="w-full text-left px-4 py-3 rounded-xl hover:bg-slate-50 text-[10px] font-bold uppercase transition-all"
                     >
                       {name}
                     </button>
@@ -156,7 +155,7 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ onClose, onSave, properties
               )}
             </div>
             {taskName && !savedTaskNames.some(n => n.toLowerCase() === taskName.toLowerCase()) && (
-              <p className="text-[7px] font-black text-green-600 uppercase tracking-widest mt-2 px-1 animate-pulse">
+              <p className="text-[7px] font-black text-emerald-600 uppercase tracking-widest mt-2 px-1 animate-pulse">
                 * NEW TASK DETECTED: WILL BE SAVED TO CATALOG
               </p>
             )}
@@ -175,15 +174,15 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ onClose, onSave, properties
             {showAssigneeDropdown && (
               <div className={dropdownStyle}>
                 {filteredUsers.length === 0 ? (
-                  <p className="p-4 text-[9px] font-black uppercase text-black/20 text-center">No staff found</p>
+                  <p className="p-4 text-[9px] font-black uppercase text-slate-300 text-center">No staff found</p>
                 ) : filteredUsers.map(u => (
                   <button 
                     key={u.id}
                     onClick={() => { setSelectedUser(u); setShowAssigneeDropdown(false); setAssigneeSearch(''); }}
-                    className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-50 transition-all flex items-center justify-between"
+                    className="w-full text-left px-4 py-3 rounded-xl hover:bg-slate-50 transition-all flex items-center justify-between"
                   >
-                    <span className="text-[10px] font-bold uppercase">{u.name}</span>
-                    <span className="text-[7px] font-black uppercase text-[#A68342] opacity-60">{u.role}</span>
+                    <span className="text-[10px] font-bold uppercase text-slate-900">{u.name}</span>
+                    <span className="text-[7px] font-black uppercase text-indigo-600 opacity-60">{u.role}</span>
                   </button>
                 ))}
               </div>
@@ -191,16 +190,16 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ onClose, onSave, properties
           </div>
 
           {/* Billing Options */}
-          <div className="bg-white/50 border border-[#C5A059]/20 p-4 rounded-2xl space-y-3">
+          <div className="bg-slate-50/50 border border-slate-100 p-4 rounded-2xl space-y-3">
              <div className="flex items-center gap-3">
                 <input 
                   type="checkbox" 
                   id="isBillable" 
-                  className="w-5 h-5 accent-[#C5A059] rounded cursor-pointer"
+                  className="w-5 h-5 accent-indigo-600 rounded cursor-pointer"
                   checked={isBillable}
                   onChange={(e) => setIsBillable(e.target.checked)}
                 />
-                <label htmlFor="isBillable" className="text-[9px] font-black text-black uppercase tracking-widest cursor-pointer">
+                <label htmlFor="isBillable" className="text-[9px] font-black text-slate-900 uppercase tracking-widest cursor-pointer">
                    Billable to Client?
                 </label>
              </div>
@@ -216,7 +215,7 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ onClose, onSave, properties
                      value={billablePrice}
                      onChange={(e) => setBillablePrice(e.target.value)}
                    />
-                   <p className="text-[7px] text-[#A68342] mt-2 italic font-medium">
+                   <p className="text-[7px] text-slate-400 mt-2 italic font-medium">
                       * This task will appear as a line item on the client invoice.
                    </p>
                 </div>
@@ -227,13 +226,13 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({ onClose, onSave, properties
         <div className="pt-4 flex gap-3">
           <button 
             onClick={handleSave}
-            className="flex-1 bg-black text-[#C5A059] font-black py-4 rounded-2xl uppercase tracking-[0.3em] text-[10px] shadow-2xl active:scale-95 transition-all"
+            className="flex-1 bg-indigo-600 text-white font-black py-4 rounded-2xl uppercase tracking-[0.3em] text-[10px] shadow-2xl active:scale-95 transition-all hover:bg-indigo-700"
           >
             Deploy Task
           </button>
           <button 
             onClick={onClose}
-            className="px-8 border border-black/10 text-black/40 font-black py-4 rounded-2xl uppercase tracking-widest text-[9px]"
+            className="px-8 bg-slate-100 border border-slate-200 text-slate-500 font-black py-4 rounded-2xl uppercase tracking-widest text-[9px] hover:bg-slate-200 transition-all"
           >
             Abort
           </button>

@@ -1,7 +1,5 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { TabType, Shift, User, Property, Invoice, Client, InvoiceItem, OrganizationSettings, ManualTask } from '../../types';
-import PersonnelProfile from '../PersonnelProfile';
 
 interface FinanceDashboardProps {
   setActiveTab: (tab: TabType) => void;
@@ -22,7 +20,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
 }) => {
   const [activeModule, setActiveModule] = useState<'payroll' | 'invoicing' | 'records'>('payroll');
   const [selectedPayslipId, setSelectedPayslipId] = useState<string | null>(null);
-  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [invoiceSearch, setInvoiceSearch] = useState('');
   
   const [recordsSearch, setRecordsSearch] = useState('');
   const [viewingRecordsUser, setViewingRecordsUser] = useState<User | null>(null);
@@ -37,8 +35,16 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
     discountRate: 0 
   });
   
-  const [currentDiscountRate, setCurrentDiscountRate] = useState(0);
   const [generatedPreview, setGeneratedPreview] = useState<Invoice | null>(null);
+
+  const filteredInvoices = useMemo(() => {
+    if (!invoices) return [];
+    const q = invoiceSearch.toLowerCase();
+    return invoices.filter(i => 
+      i.invoiceNumber.toLowerCase().includes(q) || 
+      i.clientName.toLowerCase().includes(q)
+    );
+  }, [invoices, invoiceSearch]);
 
   const filteredRecordsUsers = useMemo(() => {
     return users.filter(u => {
@@ -55,8 +61,6 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
 
   const cleanerPayroll = useMemo(() => {
     const data: Record<string, { user: User, shifts: Shift[] }> = {};
-    
-    // Process shifts awaiting payment
     shifts.filter(s => s.status === 'completed' && !s.paid).forEach(s => {
       s.userIds?.forEach(sid => {
         if (!data[sid]) {
@@ -66,7 +70,6 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
         if (data[sid]) data[sid].shifts.push(s);
       });
     });
-
     return Object.values(data);
   }, [shifts, users]);
 
@@ -78,48 +81,28 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
     staffShifts.forEach(s => {
       const prop = properties.find(p => p.id === s.propertyId);
       if (!prop) return;
-
       const durationMs = (s.actualEndTime || 0) - (s.actualStartTime || 0);
       const hours = durationMs / (1000 * 60 * 60);
       totalHours += hours;
-
       const hourlyRate = staff.payRate || 5.00;
       const basePay = hours * hourlyRate;
-      
-      const teamCount = s.userIds?.length || 1;
       const isApproved = s.approvalStatus === 'approved';
 
-      // Special handling for remediation/common areas
       if (s.serviceType === 'TO FIX' || s.serviceType === 'Common Area') {
-          if (s.fixWorkPayment && s.fixWorkPayment > 0) {
-              totalBonus += s.fixWorkPayment;
-          } else {
-              totalBase += basePay;
-          }
+          if (s.fixWorkPayment && s.fixWorkPayment > 0) totalBonus += s.fixWorkPayment;
+          else totalBase += basePay;
           return;
       }
 
       totalBase += basePay;
-
-      if (isApproved) {
-        const targetFee = prop.serviceRates?.[s.serviceType] !== undefined 
-            ? prop.serviceRates[s.serviceType] 
-            : prop.cleanerPrice;
-
-        if (staff.role === 'cleaner' && staff.paymentType === 'Per Clean') {
-          const shareOfTargetFee = targetFee / teamCount;
-          const potentialBonus = Math.max(0, shareOfTargetFee - basePay);
-          totalBonus += potentialBonus;
-        }
+      if (isApproved && staff.role === 'cleaner' && staff.paymentType === 'Per Clean') {
+        const teamCount = s.userIds?.length || 1;
+        const targetFee = prop.serviceRates?.[s.serviceType] !== undefined ? prop.serviceRates[s.serviceType] : prop.cleanerPrice;
+        totalBonus += Math.max(0, (targetFee / teamCount) - basePay);
       }
     });
 
-    return { 
-      totalBase, 
-      totalBonus, 
-      totalHours, 
-      totalNet: totalBase + totalBonus 
-    };
+    return { totalBase, totalBonus, totalHours, totalNet: totalBase + totalBonus };
   };
 
   const activePayslip = useMemo(() => {
@@ -133,81 +116,9 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
     if (!activePayslip || !setShifts) return;
     const shiftIds = activePayslip.shifts.map(s => s.id);
     const now = new Date().toISOString();
-    
-    setShifts(prev => prev.map(s => 
-        shiftIds.includes(s.id) ? { ...s, paid: true, payoutDate: now } : s
-    ));
-    
+    setShifts(prev => prev.map(s => shiftIds.includes(s.id) ? { ...s, paid: true, payoutDate: now } : s));
     setSelectedPayslipId(null);
     alert(`Payment confirmed for ${activePayslip.user.name}.`);
-  };
-
-  const calculateItemsFromShifts = (clientId: string, startStr: string, endStr: string) => {
-    const start = new Date(startStr);
-    const end = new Date(endStr);
-    end.setHours(23, 59, 59, 999);
-
-    const clientPropertyIds = properties.filter(p => p.clientId === clientId).map(p => p.id);
-    
-    const getShiftDateObj = (dateStr: string) => {
-        if (dateStr.includes('-')) return new Date(dateStr);
-        const currentYear = new Date().getFullYear();
-        return new Date(`${dateStr} ${currentYear}`);
-    };
-
-    const eligibleShifts = shifts.filter(s => {
-        if (!clientPropertyIds.includes(s.propertyId)) return false;
-        if (s.status !== 'completed') return false; 
-        const sDate = getShiftDateObj(s.date);
-        return sDate >= start && sDate <= end;
-    });
-
-    return eligibleShifts.map(s => {
-        const prop = properties.find(p => p.id === s.propertyId);
-        let amount = prop?.clientPrice || 0;
-        if (s.serviceType !== 'Check out/check in') {
-          amount = prop?.clientServiceRates?.[s.serviceType] || amount;
-        }
-        return {
-            description: `${s.serviceType}: ${s.propertyName}`,
-            date: s.date,
-            amount: amount
-        };
-    });
-  };
-
-  const handleGeneratePreview = () => {
-    if (!invoiceForm.clientId || !invoiceForm.startDate || !invoiceForm.endDate || !invoiceForm.dueDate) return;
-    const client = clients?.find(c => c.id === invoiceForm.clientId);
-    if (!client) return;
-    const items = calculateItemsFromShifts(client.id, invoiceForm.startDate, invoiceForm.endDate);
-    const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
-    const vat = subtotal * 0.18;
-    
-    const draftInvoice: Invoice = {
-        id: `inv-${Date.now()}`,
-        invoiceNumber: `INV-${new Date().getFullYear()}-${(invoices?.length || 0) + 1}`,
-        clientId: client.id,
-        clientName: client.name,
-        issueDate: new Date().toISOString().split('T')[0],
-        dueDate: invoiceForm.dueDate,
-        periodStart: invoiceForm.startDate,
-        periodEnd: invoiceForm.endDate,
-        items,
-        subtotal,
-        vat,
-        totalAmount: subtotal + vat,
-        status: 'draft'
-    };
-    setGeneratedPreview(draftInvoice);
-  };
-
-  const handleSaveInvoice = (status: 'draft' | 'sent') => {
-    if (!generatedPreview || !setInvoices) return;
-    const finalInvoice: Invoice = { ...generatedPreview, status };
-    setInvoices(prev => [finalInvoice, ...prev]);
-    setShowInvoiceModal(false);
-    setGeneratedPreview(null);
   };
 
   return (
@@ -225,7 +136,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
       </div>
 
       {activeModule === 'payroll' && (
-        <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-xl space-y-8">
+        <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-8">
             <h3 className="text-sm font-bold text-slate-900 uppercase tracking-widest">Pending Payout Queue</h3>
             <div className="space-y-4">
                 {cleanerPayroll.map(entry => {
@@ -243,11 +154,10 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                               </p>
                           </div>
                         </div>
-                        
                         <div className="flex items-center gap-8 w-full md:w-auto justify-between md:justify-end">
                           <div className="text-right">
                               <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">NET PAYABLE</p>
-                              <p className="text-2xl font-bold text-green-600">€{totals.totalNet.toFixed(2)}</p>
+                              <p className="text-2xl font-bold text-emerald-600">€{totals.totalNet.toFixed(2)}</p>
                           </div>
                           <button onClick={() => setSelectedPayslipId(entry.user.id)} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">DETAILS</button>
                         </div>
@@ -261,35 +171,94 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
 
       {activeModule === 'invoicing' && (
         <div className="space-y-8 animate-in slide-in-from-right-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.4em]">TOTAL BILLED</p>
-                    <p className="text-4xl font-bold text-slate-900 mt-2">€{invoices?.reduce((acc, i) => acc + (i.totalAmount || 0), 0).toFixed(2)}</p>
+            {/* Compact Finance Strip - Single Row */}
+            <div className="bg-white px-8 py-6 rounded-[32px] shadow-sm border border-slate-200 flex flex-col md:flex-row items-center justify-between gap-6">
+                <div className="flex items-center gap-12 w-full md:w-auto">
+                    <div>
+                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.4em] mb-1">TOTAL BILLED</p>
+                        <p className="text-2xl font-bold text-slate-900 leading-none">€{invoices?.reduce((acc, i) => acc + (i.totalAmount || 0), 0).toFixed(2)}</p>
+                    </div>
+                    <div>
+                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.4em] mb-1">PENDING PAY</p>
+                        <p className="text-2xl font-bold text-emerald-600 leading-none">€{invoices?.filter(i => i.status === 'sent').reduce((acc, i) => acc + (i.totalAmount || 0), 0).toFixed(2)}</p>
+                    </div>
                 </div>
-                <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.4em]">PENDING PAY</p>
-                    <p className="text-4xl font-bold text-teal-600 mt-2">€{invoices?.filter(i => i.status === 'sent').reduce((acc, i) => acc + (i.totalAmount || 0), 0).toFixed(2)}</p>
-                </div>
-                <div className="flex items-center justify-center">
-                    <button onClick={() => { setGeneratedPreview(null); setShowInvoiceModal(true); }} className="w-full h-full bg-[#0D9488] text-white font-black rounded-[40px] uppercase text-[11px] tracking-widest shadow-2xl active:scale-95 hover:bg-teal-700 transition-all flex items-center justify-center gap-3">
-                        GENERATE INVOICE
-                    </button>
-                </div>
+                <button 
+                    onClick={() => { setGeneratedPreview(null); setShowInvoiceModal(true); }} 
+                    className="h-12 px-10 bg-emerald-600 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest shadow-lg active:scale-95 hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 whitespace-nowrap"
+                >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="mr-1">
+                        <path d="M12 5v14M5 12h14"/>
+                    </svg>
+                    GENERATE INVOICE
+                </button>
             </div>
-            {/* Invoice list rendering... */}
+
+            <section className="bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden">
+                <div className="p-8 border-b border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4">
+                   <h3 className="text-sm font-bold text-slate-900 uppercase tracking-widest">Invoice Registry</h3>
+                   <div className="relative w-full md:w-64">
+                      <input 
+                        type="text" 
+                        placeholder="Search invoices..." 
+                        className="w-full bg-slate-50 border border-slate-200 rounded-full px-5 py-2.5 text-[10px] font-bold uppercase outline-none focus:bg-white focus:border-emerald-400 transition-all"
+                        value={invoiceSearch}
+                        onChange={e => setInvoiceSearch(e.target.value)}
+                      />
+                   </div>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                        <thead className="bg-slate-50 text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
+                           <tr>
+                              <th className="px-8 py-4">Invoice #</th>
+                              <th className="px-8 py-4">Client</th>
+                              <th className="px-8 py-4">Issue Date</th>
+                              <th className="px-8 py-4">Amount</th>
+                              <th className="px-8 py-4">Status</th>
+                              <th className="px-8 py-4 text-right">Actions</th>
+                           </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                           {filteredInvoices.length === 0 ? (
+                             <tr><td colSpan={6} className="px-8 py-20 text-center text-[10px] font-black uppercase text-slate-300 italic">No invoices found in registry</td></tr>
+                           ) : filteredInvoices.map(inv => (
+                             <tr key={inv.id} className="hover:bg-slate-50 transition-colors">
+                                <td className="px-8 py-5 text-[11px] font-bold text-slate-900">{inv.invoiceNumber}</td>
+                                <td className="px-8 py-5 text-[11px] font-bold text-slate-600 uppercase">{inv.clientName}</td>
+                                <td className="px-8 py-5 text-[10px] text-slate-400 font-bold">{inv.issueDate}</td>
+                                <td className="px-8 py-5 text-[11px] font-black text-slate-900">€{inv.totalAmount.toFixed(2)}</td>
+                                <td className="px-8 py-5">
+                                   <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${
+                                     inv.status === 'paid' ? 'bg-emerald-100 text-emerald-700' :
+                                     inv.status === 'overdue' ? 'bg-rose-100 text-rose-700' :
+                                     'bg-blue-100 text-blue-700'
+                                   }`}>
+                                      {inv.status}
+                                   </span>
+                                </td>
+                                <td className="px-8 py-5 text-right">
+                                   <button className="text-[9px] font-black text-emerald-600 uppercase tracking-widest hover:underline">Download PDF</button>
+                                </td>
+                             </tr>
+                           ))}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
         </div>
       )}
 
       {activeModule === 'records' && (
         <div className="space-y-6 animate-in slide-in-from-right-4">
-           <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-xl space-y-6">
+           <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm space-y-6">
               <div className="flex flex-col md:flex-row justify-between items-center gap-4">
                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-widest">Employee Archive</h3>
                  <div className="relative w-full md:w-80">
                     <input 
                       type="text" 
                       placeholder="SEARCH STAFF..." 
-                      className="w-full bg-slate-50 border border-slate-100 rounded-full px-6 py-3 text-[11px] text-slate-900 font-bold uppercase tracking-widest outline-none focus:bg-white focus:border-teal-400"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-full px-6 py-3 text-[11px] text-slate-900 font-bold uppercase tracking-widest outline-none focus:bg-white focus:border-teal-400"
                       value={recordsSearch}
                       onChange={(e) => setRecordsSearch(e.target.value)}
                     />
@@ -328,12 +297,12 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                     <h2 className="text-3xl font-bold text-slate-900 uppercase tracking-tighter">Earnings Summary</h2>
                  </div>
               </header>
-              <div className="bg-teal-600 p-10 rounded-[32px] flex flex-col sm:flex-row justify-between items-center gap-6 shadow-xl shadow-teal-900/20">
+              <div className="bg-emerald-600 p-10 rounded-[32px] flex flex-col sm:flex-row justify-between items-center gap-6 shadow-xl shadow-emerald-900/20">
                 <div className="text-white">
                     <p className="text-[10px] font-black uppercase tracking-widest opacity-60">NET PAYOUT</p>
                     <p className="text-5xl font-bold tracking-tighter">€{activePayslip.breakdown.totalNet.toFixed(2)}</p>
                 </div>
-                <button onClick={handleMarkPayrollPaid} className="w-full sm:w-auto bg-white text-teal-700 px-10 py-5 rounded-2xl font-black uppercase text-[11px] tracking-widest shadow-2xl hover:bg-teal-50 transition-all active:scale-95">Confirm Payout</button>
+                <button onClick={handleMarkPayrollPaid} className="w-full sm:w-auto bg-white text-emerald-700 px-10 py-5 rounded-2xl font-black uppercase text-[11px] tracking-widest shadow-2xl hover:bg-emerald-50 transition-all active:scale-95">Confirm Payout</button>
               </div>
            </div>
         </div>

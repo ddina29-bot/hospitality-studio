@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { TabType, User, Shift, Property, SpecialReport, TimeEntry } from '../../types';
 import LaundryReports from './LaundryReports';
@@ -25,7 +24,6 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
   const [adminOverride, setAdminOverride] = useState(false);
   const [hasCriticalDamage, setHasCriticalDamage] = useState(false);
   
-  // Logic to derive current clock status from persistent history
   const myLastEntry = useMemo(() => {
     return timeEntries
       .filter(e => e.userId === user.id)
@@ -48,15 +46,10 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
   const showClockUI = !['admin', 'supervisor', 'driver', 'housekeeping'].includes(user.role);
   const isAuthorizedToView = isAdmin || isActualLaundry || isAuthorizedDelegate;
   
-  // ACTION PERMISSION: 
-  // - Laundry Staff: Always Enabled
-  // - Delegates: Always Enabled (if authorized)
-  // - Admin: Only if Override is ON
   const canMarkItems = isActualLaundry || isAuthorizedDelegate || (isAdmin && adminOverride);
   
   const showDriverAlerts = isActualLaundry || isAdmin;
 
-  // Check for critical damage (Simulated real-time check when viewing reports or mounting)
   useEffect(() => {
     const checkDamage = () => {
       try {
@@ -66,7 +59,6 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
       } catch(e) {}
     };
     checkDamage();
-    // Poll for changes if needed, or just re-check when switching views
     const interval = setInterval(checkDamage, 5000);
     return () => clearInterval(interval);
   }, []);
@@ -140,24 +132,15 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
 
   const handleToggleClock = () => {
     if (!setTimeEntries) return;
-    
     const newType = isClockedIn ? 'out' : 'in';
-    const newEntry: TimeEntry = {
-      id: `time-${Date.now()}`,
-      userId: user.id,
-      type: newType,
-      timestamp: new Date().toISOString()
-    };
-
+    const newEntry: TimeEntry = { id: `time-${Date.now()}`, userId: user.id, type: newType, timestamp: new Date().toISOString() };
     setTimeEntries(prev => [...prev, newEntry]);
   };
 
   const handleResolveReport = (shiftId: string, reportId: string) => {
     setShifts?.(prev => prev.map(s => {
       if (s.id === shiftId && s.missingReports) {
-        const updatedReports = s.missingReports.map(r => 
-          r.id === reportId ? { ...r, status: 'resolved' as const } : r
-        );
+        const updatedReports = s.missingReports.map(r => r.id === reportId ? { ...r, status: 'resolved' as const } : r);
         return { ...s, missingReports: updatedReports };
       }
       return s;
@@ -165,131 +148,121 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 text-left pb-32">
-      <div className="space-y-6">
+    <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500 text-left pb-24">
+      <div className="space-y-4 md:space-y-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-          <div className="flex flex-col space-y-0.5">
-            <p className="text-[#C5A059] font-black uppercase tracking-[0.4em] text-[8px]">LINEN & FABRIC CENTER</p>
-            <h1 className="text-2xl font-serif-brand text-black tracking-tight uppercase leading-tight font-bold">
-              LAUNDRY <span className="text-[#C5A059] italic">HUB</span>
+          <div className="flex flex-col space-y-1">
+            <p className="text-indigo-600 font-black uppercase tracking-[0.4em] text-[7px] md:text-[8px]">LINEN CENTER</p>
+            <h1 className="text-2xl md:text-3xl font-serif-brand text-slate-900 tracking-tight uppercase leading-none font-bold">
+              LAUNDRY <span className="text-indigo-600 italic">HUB</span>
             </h1>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3 w-full md:w-auto">
              {isAdmin && (
                 <button 
                   onClick={() => setAdminOverride(!adminOverride)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest border transition-all ${adminOverride ? 'bg-red-600 text-white border-red-600 shadow-lg' : 'bg-white text-black/40 border-gray-200'}`}
+                  className={`flex items-center justify-center md:justify-start gap-2 px-4 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest border transition-all ${adminOverride ? 'bg-red-600 text-white border-red-600 shadow-lg' : 'bg-white text-black/40 border-gray-200'}`}
                 >
-                   <div className={`w-2 h-2 rounded-full ${adminOverride ? 'bg-white animate-pulse' : 'bg-black/20'}`}></div>
-                   {adminOverride ? 'ADMIN OVERRIDE ACTIVE' : 'READ-ONLY MODE'}
+                   <div className={`w-1.5 h-1.5 rounded-full ${adminOverride ? 'bg-white animate-pulse' : 'bg-black/20'}`}></div>
+                   {adminOverride ? 'OVERRIDE ON' : 'READ-ONLY'}
                 </button>
              )}
 
              <div className="p-1 bg-gray-50 border border-gray-200 rounded-2xl flex items-center shadow-inner">
                <button 
                  onClick={() => setActiveView('queue')}
-                 className={`px-6 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${
-                   activeView === 'queue' ? 'bg-[#C5A059] text-black shadow-lg' : 'text-black/30 hover:text-black/60'
+                 className={`flex-1 md:flex-none px-4 md:px-6 py-2 md:py-2.5 rounded-xl text-[8px] md:text-[9px] font-black uppercase tracking-widest transition-all ${
+                   activeView === 'queue' ? 'bg-indigo-600 text-white shadow-lg' : 'text-black/30 hover:text-black/60'
                  }`}
                >
-                 Work Queue
+                 Queue
                </button>
                <button 
                  onClick={() => setActiveView('reports')}
-                 className={`px-6 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${
-                   activeView === 'reports' ? 'bg-[#C5A059] text-black shadow-lg' : 'text-black/30 hover:text-black/60'
+                 className={`flex-1 md:flex-none px-4 md:px-6 py-2 md:py-2.5 rounded-xl text-[8px] md:text-[9px] font-black uppercase tracking-widest transition-all ${
+                   activeView === 'reports' ? 'bg-indigo-600 text-white shadow-lg' : 'text-black/30 hover:text-black/60'
                  }`}
                >
-                 Inventory & Reports
+                 Reports
                </button>
              </div>
           </div>
 
           {showClockUI && activeView === 'queue' && (
-            <div className="flex items-center gap-6">
+            <div className="flex items-center gap-4 md:gap-6 w-full md:w-auto">
               {isClockedIn && (
-                <div className="text-right">
-                  <p className="text-[7px] font-black text-black/30 uppercase tracking-widest">START TIME</p>
-                  <p className="text-sm font-serif-brand font-bold text-[#C5A059]">{startTimeDisplay}</p>
+                <div className="text-left md:text-right flex-1">
+                  <p className="text-[6px] md:text-[7px] font-black text-black/30 uppercase tracking-widest leading-none">START</p>
+                  <p className="text-sm font-serif-brand font-bold text-indigo-600 leading-none mt-1">{startTimeDisplay}</p>
                 </div>
               )}
               <button
                 onClick={handleToggleClock}
                 className={`${
-                  isClockedIn ? 'bg-red-500/10 text-red-500' : 'bg-black text-[#C5A059]'
-                } font-black px-6 py-3 rounded-2xl text-[9px] uppercase tracking-widest transition-all active:scale-95 flex items-center gap-3`}
+                  isClockedIn ? 'bg-rose-50 text-rose-600' : 'bg-indigo-600 text-white'
+                } font-black px-5 md:px-6 py-2.5 md:py-3 rounded-xl md:rounded-2xl text-[9px] uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2 md:gap-3 shadow-lg flex-1 md:flex-none`}
               >
-                <div className={`w-1.5 h-1.5 rounded-full ${isClockedIn ? 'bg-red-500 animate-pulse' : 'bg-[#C5A059]'}`}></div>
+                <div className={`w-1.5 h-1.5 rounded-full ${isClockedIn ? 'bg-rose-500 animate-pulse' : 'bg-white'}`}></div>
                 {isClockedIn ? 'STOP' : 'START CLOCK'}
               </button>
             </div>
           )}
         </div>
         
-        <div className="h-px w-full bg-gray-100"></div>
+        <div className="h-px w-full bg-gray-100/50"></div>
       </div>
 
       {activeView === 'queue' ? (
-        <div className="space-y-8">
-          
-          {/* CRITICAL STOCK ALERT BANNER */}
+        <div className="space-y-6 md:space-y-8">
           {hasCriticalDamage && (
-            <div className="bg-red-600 text-white p-5 rounded-[28px] flex items-center justify-between shadow-2xl animate-pulse cursor-pointer border-2 border-red-500" onClick={() => setActiveView('reports')}>
-               <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-red-600 font-bold text-xl shadow-md">
-                     !
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.3em]">STOCK LEVEL ALERT</p>
-                    {/* FIXED: Escaped > symbol to &gt; */}
-                    <p className="text-[9px] font-bold uppercase mt-0.5 opacity-90">Critical damage threshold exceeded (&gt;10 units). Restock required.</p>
+            <div className="bg-red-600 text-white p-4 md:p-5 rounded-2xl md:rounded-[28px] flex flex-col sm:flex-row items-center justify-between shadow-2xl animate-pulse cursor-pointer border-2 border-red-500 gap-4" onClick={() => setActiveView('reports')}>
+               <div className="flex items-center gap-3 md:gap-4 w-full md:w-auto">
+                  <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-white flex items-center justify-center text-red-600 font-bold text-lg shadow-md shrink-0">!</div>
+                  <div className="min-w-0">
+                    <p className="text-[8px] md:text-[10px] font-black uppercase tracking-widest md:tracking-[0.3em]">STOCK ALERT</p>
+                    <p className="text-[8px] md:text-[9px] font-bold uppercase mt-0.5 opacity-90 truncate">Damages exceed limit (&gt;10). Restock.</p>
                   </div>
                </div>
-               <button className="bg-white text-red-600 px-6 py-3 rounded-xl text-[8px] font-black uppercase tracking-widest shadow-lg hover:bg-red-50 transition-all">
-                  VIEW REPORTS
-               </button>
+               <button className="w-full sm:w-auto bg-white text-red-600 px-6 py-2.5 rounded-xl text-[8px] font-black uppercase tracking-widest shadow-lg">VIEW</button>
             </div>
           )}
 
-          <section className="bg-white border border-gray-200 p-4 rounded-[32px] shadow-sm">
-            <div className="flex justify-between items-center gap-2 overflow-x-auto no-scrollbar pb-2 custom-scrollbar">
+          <section className="bg-white border border-gray-200 p-3 md:p-4 rounded-2xl md:rounded-[32px] shadow-sm">
+            <div className="flex justify-between items-center gap-2 overflow-x-auto no-scrollbar pb-1 custom-scrollbar">
               {weekDays.map((wd) => (
                 <button
                   key={wd.iso}
                   onClick={() => setViewedDate(wd.iso)}
-                  className={`flex flex-col items-center min-w-[70px] py-4 rounded-2xl border transition-all ${
+                  className={`flex flex-col items-center min-w-[55px] md:min-w-[70px] py-3 md:py-4 rounded-xl md:rounded-2xl border transition-all ${
                     viewedDate === wd.iso 
-                      ? 'bg-[#C5A059] border-[#C5A059] text-white shadow-lg scale-105' 
-                      : 'bg-white border-gray-200 text-gray-400 hover:border-[#C5A059]/40'
+                      ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg scale-105' 
+                      : 'bg-white border-gray-100 text-gray-400 hover:border-indigo-600/40 shadow-sm'
                   }`}
                 >
-                  <span className={`text-[8px] font-black uppercase mb-1 ${viewedDate === wd.iso ? 'text-white/80' : 'text-gray-300'}`}>{wd.dayName}</span>
-                  <span className={`text-sm font-bold ${viewedDate === wd.iso ? 'text-white' : 'text-gray-600'}`}>{wd.dateNum}</span>
+                  <span className={`text-[7px] md:text-[8px] font-black uppercase mb-0.5 md:mb-1 ${viewedDate === wd.iso ? 'text-white/80' : 'text-gray-300'}`}>{wd.dayName}</span>
+                  <span className={`text-xs md:text-sm font-bold ${viewedDate === wd.iso ? 'text-white' : 'text-slate-600'}`}>{wd.dateNum}</span>
                 </button>
               ))}
             </div>
           </section>
 
           {isAdmin && (
-            <section className={`bg-white border border-gray-100 p-6 rounded-[40px] shadow-sm space-y-4 transition-all ${!adminOverride ? 'opacity-60 grayscale pointer-events-none' : ''}`}>
-              <div className="flex items-center justify-between">
-                 <p className="text-[10px] font-black text-[#C5A059] uppercase tracking-[0.4em]">DELEGATION CONTROL</p>
-                 {!adminOverride && <span className="text-[8px] font-black text-black/20 uppercase tracking-widest">LOCKED (ENABLE OVERRIDE TO EDIT)</span>}
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <section className={`bg-white border border-gray-100 p-4 md:p-6 rounded-2xl md:rounded-[40px] shadow-sm space-y-3 md:space-y-4 transition-all ${!adminOverride ? 'opacity-60 grayscale pointer-events-none' : ''}`}>
+              <p className="text-[9px] md:text-[10px] font-black text-indigo-600 uppercase tracking-widest md:tracking-[0.4em]">DELEGATION CONTROL</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 md:gap-3">
                 {delegatePool.map(staff => (
-                  <label key={staff.id} className="flex items-center gap-3 cursor-pointer bg-gray-50/50 p-3 rounded-xl border border-transparent hover:border-[#C5A059]/20 transition-all">
+                  <label key={staff.id} className="flex items-center gap-2 md:gap-3 cursor-pointer bg-gray-50/50 p-2.5 md:p-3 rounded-xl border border-transparent hover:border-indigo-600/20 transition-all">
                     <input 
                       type="checkbox" 
-                      className="w-4 h-4 accent-[#C5A059] rounded border-gray-300"
+                      className="w-3.5 h-3.5 md:w-4 md:h-4 accent-indigo-600 rounded"
                       checked={(authorizedLaundryUserIds || []).includes(staff.id)}
                       onChange={() => onToggleAuthority?.(staff.id)}
                       disabled={!adminOverride}
                     />
-                    <div className="text-left">
-                      <p className="text-[9px] font-bold text-black uppercase truncate">{staff.name}</p>
-                      <p className="text-[6px] text-[#C5A059] font-black uppercase tracking-widest">{staff.role}</p>
+                    <div className="text-left min-w-0">
+                      <p className="text-[9px] font-bold text-slate-900 uppercase truncate">{staff.name}</p>
+                      <p className="text-[6px] text-indigo-600 font-black uppercase tracking-widest">{staff.role}</p>
                     </div>
                   </label>
                 ))}
@@ -298,37 +271,32 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
           )}
 
           {isAuthorizedToView && missingLaundryItems.length > 0 && (
-            <section className="bg-red-50 border-2 border-red-500 p-6 rounded-[32px] shadow-xl space-y-4 mb-8">
+            <section className="bg-red-50 border-2 border-red-500 p-5 md:p-6 rounded-3xl md:rounded-[32px] shadow-xl space-y-4">
                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-red-600 flex items-center justify-center text-white animate-pulse">
-                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-red-600 flex items-center justify-center text-white animate-pulse shrink-0 shadow-md">
+                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                   </div>
-                  <div>
-                     <h3 className="text-sm font-black text-red-700 uppercase tracking-widest">Missing Laundry Reports</h3>
-                     <p className="text-[10px] text-red-600 font-bold uppercase tracking-wide">Reported by Cleaning Staff</p>
+                  <div className="min-w-0">
+                     <h3 className="text-xs md:text-sm font-black text-red-700 uppercase tracking-widest leading-none">Missing Reports</h3>
+                     <p className="text-[8px] md:text-[10px] text-red-600 font-bold uppercase tracking-wide mt-1 leading-none">Field Staff Updates</p>
                   </div>
                </div>
-               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
                   {missingLaundryItems.map((item, idx) => (
-                     <div key={`${item.shiftId}-${idx}`} className="bg-white p-4 rounded-2xl border border-red-200 shadow-sm flex flex-col justify-between h-full">
-                        <div>
-                            <p className="text-[10px] font-bold text-black uppercase">{item.propertyName}</p>
-                            <p className="text-[9px] text-red-600 italic mt-1 font-medium">"{item.report.description}"</p>
-                            <p className="text-[8px] text-black/30 font-black uppercase mt-2 text-right">{new Date(item.report.timestamp || 0).toLocaleDateString()}</p>
+                     <div key={`${item.shiftId}-${idx}`} className="bg-white p-3.5 md:p-4 rounded-xl md:rounded-2xl border border-red-200 shadow-sm flex flex-col justify-between h-full">
+                        <div className="min-w-0">
+                            <p className="text-[9px] md:text-[10px] font-bold text-slate-900 uppercase truncate">{item.propertyName}</p>
+                            <p className="text-[8px] md:text-[9px] text-red-600 italic mt-1 font-medium leading-tight line-clamp-2">"{item.report.description}"</p>
+                            <p className="text-[7px] text-black/30 font-black uppercase mt-2 text-right">{new Date(item.report.timestamp || 0).toLocaleDateString()}</p>
                         </div>
-                        <div className="mt-3 pt-3 border-t border-red-50">
+                        <div className="mt-2.5 md:mt-3 pt-2.5 md:pt-3 border-t border-red-50">
                             <label className={`flex items-center gap-2 cursor-pointer group ${!canMarkItems ? 'pointer-events-none opacity-50' : ''}`}>
                                 <div className="relative">
-                                    <input 
-                                        type="checkbox" 
-                                        className="peer sr-only"
-                                        onChange={() => handleResolveReport(item.shiftId, item.report.id)}
-                                        disabled={!canMarkItems}
-                                    />
+                                    <input type="checkbox" className="peer sr-only" onChange={() => handleResolveReport(item.shiftId, item.report.id)} disabled={!canMarkItems} />
                                     <div className="w-4 h-4 border-2 border-red-300 rounded peer-checked:bg-green-50 peer-checked:border-green-50 transition-all"></div>
                                     <svg className="absolute top-0.5 left-0.5 w-3 h-3 text-white opacity-0 peer-checked:opacity-100 transition-opacity" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><polyline points="20 6 9 17 4 12"/></svg>
                                 </div>
-                                <span className="text-[8px] font-black text-black/40 group-hover:text-black uppercase tracking-widest transition-colors">Mark Prepared</span>
+                                <span className="text-[8px] font-black text-slate-400 group-hover:text-slate-900 uppercase tracking-widest transition-colors">Mark Done</span>
                             </label>
                         </div>
                      </div>
@@ -338,16 +306,13 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
           )}
 
           {isAuthorizedToView && showDriverAlerts && collectionAlerts.length > 0 && (
-            <section className="bg-orange-50 border border-orange-200 p-6 rounded-[32px] shadow-sm space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></div>
-                <h3 className="text-[10px] font-black text-orange-700 uppercase tracking-[0.4em]">Driver Collection Alerts (Today)</h3>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <section className="bg-orange-50 border border-orange-200 p-4 md:p-6 rounded-[1.5rem] md:rounded-[32px] shadow-sm space-y-3 md:space-y-4">
+              <h3 className="text-[9px] md:text-[10px] font-black text-orange-700 uppercase tracking-[0.3em]">Driver Alerts (Today)</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-3">
                 {collectionAlerts.slice(0, 6).map(alert => (
-                  <div key={alert.id} className="bg-white/80 p-3 rounded-xl flex justify-between items-center border border-orange-100">
-                    <p className="text-[9px] font-bold text-black uppercase truncate pr-4">{alert.propertyName}</p>
-                    <span className="text-[7px] font-black text-orange-600 uppercase tracking-widest whitespace-nowrap">Awaiting Drop-off</span>
+                  <div key={alert.id} className="bg-white/80 p-2.5 md:p-3 rounded-xl flex justify-between items-center border border-orange-100 shadow-sm">
+                    <p className="text-[9px] font-bold text-slate-900 uppercase truncate pr-3">{alert.propertyName}</p>
+                    <span className="text-[6px] md:text-[7px] font-black text-orange-600 uppercase tracking-widest whitespace-nowrap bg-orange-100/50 px-2 py-0.5 rounded-full">Drop-off</span>
                   </div>
                 ))}
               </div>
@@ -355,18 +320,18 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
           )}
 
           {isAuthorizedToView ? (
-            <section className="space-y-6">
+            <section className="space-y-4 md:space-y-6">
               <div className="flex items-center justify-between px-2">
-                <h3 className="text-sm font-serif-brand text-black uppercase font-bold tracking-widest">
-                  Linen Preparation: <span className="text-[#C5A059]">{viewedDateStrShort}</span>
+                <h3 className="text-xs md:text-sm font-serif-brand text-slate-900 uppercase font-bold tracking-widest">
+                  Linen: <span className="text-indigo-600">{viewedDateStrShort}</span>
                 </h3>
-                <p className="text-[9px] font-black text-black/30 uppercase tracking-widest">{preparationQueue.length} UNITS</p>
+                <p className="text-[8px] md:text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none">{preparationQueue.length} UNITS</p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
                 {preparationQueue.length === 0 ? (
-                  <div className="col-span-full py-20 text-center border-2 border-dashed border-gray-100 rounded-[48px]">
-                    <p className="opacity-10 italic text-[10px] uppercase font-black tracking-[0.5em]">No linens scheduled</p>
+                  <div className="col-span-full py-20 text-center border-2 border-dashed border-gray-100 rounded-[2rem] md:rounded-[48px] opacity-30">
+                    <p className="text-[9px] md:text-[10px] uppercase font-black tracking-widest">No linens scheduled</p>
                   </div>
                 ) : (
                   preparationQueue.map(shift => {
@@ -376,40 +341,40 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
                     const bathCount = shift.propertyDetails?.bathrooms || 0;
                     const isDone = shift.isLaundryPrepared;
                     return (
-                      <div key={shift.id} className={`p-8 bg-[#FDF8EE] border rounded-[40px] shadow-xl hover:shadow-2xl transition-all flex flex-col justify-between h-full ${isDone ? 'opacity-80 border-green-500/20' : 'border-[#D4B476]/30'}`}>
-                        <div className="space-y-6">
-                          <div className="flex justify-between items-start">
-                            <h4 className={`text-sm font-serif-brand font-bold uppercase tracking-widest leading-tight ${isDone ? 'text-black/40' : 'text-black'}`}>{shift.propertyName}</h4>
-                            {isDone && <span className="text-[7px] font-black bg-green-500 text-white px-2 py-1 rounded uppercase shadow-sm">Prepared</span>}
+                      <div key={shift.id} className={`p-6 md:p-8 bg-white border rounded-[2rem] md:rounded-[40px] shadow-xl hover:shadow-2xl transition-all flex flex-col justify-between h-full ${isDone ? 'opacity-80 border-green-500/20' : 'border-slate-100'}`}>
+                        <div className="space-y-5 md:space-y-6">
+                          <div className="flex justify-between items-start gap-3">
+                            <h4 className={`text-xs md:text-sm font-serif-brand font-bold uppercase tracking-widest leading-tight min-w-0 truncate ${isDone ? 'text-slate-400' : 'text-slate-900'}`}>{shift.propertyName}</h4>
+                            {isDone && <span className="text-[6px] md:text-[7px] font-black bg-green-500 text-white px-2 py-0.5 rounded uppercase shadow-sm shrink-0">Ready</span>}
                           </div>
-                          <div className="space-y-4">
-                            <div className={`p-4 rounded-2xl border ${isDone ? 'bg-gray-50 border-gray-200' : 'bg-white/60 border-[#D4B476]/10'}`}>
-                              <p className={`text-[7px] font-black uppercase tracking-widest mb-1.5 ${isDone ? 'text-black/20' : 'text-[#8B6B2E]'}`}>Beds & Pillows Required</p>
-                              <p className={`text-[10px] font-bold uppercase ${isDone ? 'text-black/30' : 'text-black'}`}>{dCount} Double • {sCount} Single • {pCount} Pillows</p>
+                          <div className="space-y-3 md:space-y-4">
+                            <div className={`p-3 md:p-4 rounded-xl md:rounded-2xl border ${isDone ? 'bg-gray-50 border-gray-100' : 'bg-slate-50 border-slate-100'}`}>
+                              <p className={`text-[6px] md:text-[7px] font-black uppercase tracking-widest mb-1 ${isDone ? 'text-slate-400' : 'text-indigo-600'}`}>Beds & Pillows</p>
+                              <p className={`text-[9px] md:text-[10px] font-bold uppercase leading-none ${isDone ? 'text-slate-400' : 'text-slate-900'}`}>{dCount}D • {sCount}S • {pCount}P</p>
                             </div>
                             
-                            <div className={`p-4 rounded-2xl border ${isDone ? 'bg-gray-50 border-gray-200' : 'bg-white/60 border-[#D4B476]/10'}`}>
-                              <p className={`text-[7px] font-black uppercase tracking-widest mb-1.5 ${isDone ? 'text-black/20' : 'text-[#8B6B2E]'}`}>Bathrooms / Towel Packs</p>
-                              <p className={`text-[10px] font-bold uppercase ${isDone ? 'text-black/30' : 'text-black'}`}>{bathCount} Full Bathroom{bathCount !== 1 ? 's' : ''}</p>
+                            <div className={`p-3 md:p-4 rounded-xl md:rounded-2xl border ${isDone ? 'bg-gray-50 border-gray-100' : 'bg-slate-50 border-slate-100'}`}>
+                              <p className={`text-[6px] md:text-[7px] font-black uppercase tracking-widest mb-1 ${isDone ? 'text-slate-400' : 'text-indigo-600'}`}>Bathrooms / Packs</p>
+                              <p className={`text-[9px] md:text-[10px] font-bold uppercase leading-none ${isDone ? 'text-slate-400' : 'text-slate-900'}`}>{bathCount} Full Unit{bathCount !== 1 ? 's' : ''}</p>
                             </div>
 
                             {shift.notes && (
-                              <div className={`p-4 rounded-2xl border border-dashed ${isDone ? 'bg-gray-50/30 border-gray-200' : 'bg-white/40 border-[#D4B476]/30'}`}>
-                                <p className={`text-[7px] font-black uppercase tracking-widest mb-1.5 ${isDone ? 'text-black/10' : 'text-[#8B6B2E]'}`}>Notes</p>
-                                <p className={`text-[10px] italic leading-relaxed ${isDone ? 'text-black/20' : 'text-black/70'}`}>"{shift.notes}"</p>
+                              <div className={`p-3 md:p-4 rounded-xl md:rounded-2xl border border-dashed ${isDone ? 'bg-gray-50/30 border-gray-100' : 'bg-slate-50/50 border-slate-100'}`}>
+                                <p className={`text-[6px] md:text-[7px] font-black uppercase tracking-widest mb-1 ${isDone ? 'text-slate-400' : 'text-indigo-400'}`}>Notes</p>
+                                <p className={`text-[8px] md:text-[9px] italic leading-tight ${isDone ? 'text-slate-400' : 'text-slate-600'}`}>"{shift.notes}"</p>
                               </div>
                             )}
                           </div>
                         </div>
-                        <div className="pt-8">
+                        <div className="pt-6 md:pt-8">
                            <button 
                              onClick={() => !isDone && onTogglePrepared(shift.id)}
                              disabled={!canMarkItems || isDone}
-                             className={`w-full py-4 rounded-2xl font-black text-[9px] uppercase tracking-widest transition-all shadow-xl active:scale-95 ${
-                               isDone ? 'bg-green-600 text-white' : canMarkItems ? 'bg-[#C5A059] text-black hover:bg-[#D4B476]' : 'bg-gray-100 text-black/20 cursor-not-allowed'
+                             className={`w-full py-3.5 md:py-4 rounded-xl md:rounded-2xl font-black text-[8px] md:text-[9px] uppercase tracking-widest transition-all shadow-xl active:scale-95 ${
+                               isDone ? 'bg-green-600 text-white' : canMarkItems ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-gray-100 text-slate-400 cursor-not-allowed shadow-none'
                              }`}
                            >
-                             {isDone ? '✓ PREPARED' : canMarkItems ? 'MARK AS PREPARED' : 'LOCKED (READ-ONLY)'}
+                             {isDone ? '✓ PREPARED' : canMarkItems ? 'MARK AS PREPARED' : 'LOCKED'}
                            </button>
                         </div>
                       </div>
@@ -419,9 +384,9 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
               </div>
             </section>
           ) : (
-            <div className="py-40 text-center space-y-4">
-               <h3 className="text-xl font-serif-brand font-bold uppercase text-black">Authorization Required</h3>
-               <p className="text-[10px] text-black/40 font-black uppercase tracking-widest max-w-xs mx-auto leading-relaxed">Please request official Laundry Authority or Admin Clearance.</p>
+            <div className="py-32 text-center space-y-3 px-6">
+               <h3 className="text-lg font-serif-brand font-bold uppercase text-slate-900">Authorization Required</h3>
+               <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest max-w-xs mx-auto leading-relaxed">Request official Laundry Authority or Admin Clearance to view.</p>
             </div>
           )}
         </div>

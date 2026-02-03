@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { Tutorial, UserRole } from '../types';
 import { uploadFile } from '../services/storageService';
@@ -15,7 +14,6 @@ const TutorialsHub: React.FC<TutorialsHubProps> = ({ tutorials, setTutorials, us
   const [showModal, setShowModal] = useState(false);
   const [editingTutorial, setEditingTutorial] = useState<Tutorial | null>(null);
   
-  // Stateful categories to allow adding new ones
   const [categories, setCategories] = useState<string[]>(['setup', 'cleaning', 'safety']);
   const [showNewCatInput, setShowNewCatInput] = useState(false);
   const [newCatName, setNewCatName] = useState('');
@@ -96,20 +94,20 @@ const TutorialsHub: React.FC<TutorialsHubProps> = ({ tutorials, setTutorials, us
     setShowNewCatInput(false);
   };
 
-  const labelStyle = "text-[7px] font-black text-[#8B6B2E] uppercase tracking-[0.4em] opacity-80 mb-1.5 block px-1";
-  const inputStyle = "w-full bg-white border border-gray-300 rounded-lg px-3 py-2.5 text-black text-[10px] font-bold uppercase tracking-widest outline-none focus:border-[#C5A059] transition-all placeholder:text-black/20";
+  const labelStyle = "text-[7px] font-black text-slate-500 uppercase tracking-[0.4em] opacity-80 mb-1.5 block px-1";
+  const inputStyle = "w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-slate-800 text-[10px] font-bold uppercase tracking-widest outline-none focus:border-teal-500 transition-all placeholder:text-slate-300";
 
   return (
     <div className="space-y-10 animate-in fade-in duration-700 text-left pb-24">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div className="space-y-2">
           <h2 className="text-2xl font-serif-brand text-black uppercase font-bold tracking-tight">STANDARD OPERATING PROCEDURES</h2>
-          <p className="text-[10px] font-black text-[#8B6B2E] uppercase tracking-[0.4em] opacity-80">Official Methodologies Hub</p>
+          <p className="text-[10px] font-black text-teal-600 uppercase tracking-[0.4em] opacity-80">Official Methodologies Hub</p>
         </div>
         {isManager && (
           <button 
             onClick={() => { setEditingTutorial(null); setForm({ category: 'setup' as any, title: '', description: '', videoUrl: '', thumbnail: '' }); setShowModal(true); }}
-            className="bg-[#C5A059] text-black px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-[0.3em] shadow-xl active:scale-95 transition-all"
+            className="bg-teal-600 text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-[0.3em] shadow-xl active:scale-95 transition-all hover:bg-teal-700"
           >
             ADD TUTORIAL
           </button>
@@ -120,34 +118,34 @@ const TutorialsHub: React.FC<TutorialsHubProps> = ({ tutorials, setTutorials, us
         {categories.map(cat => (
           <section key={cat} className="space-y-6">
             <div className="flex items-center gap-4">
-              <h3 className="text-[11px] font-black uppercase tracking-[0.5em] text-black/30">{cat.toUpperCase()} PROTOCOLS</h3>
-              <div className="h-px flex-1 bg-black/5"></div>
+              <h3 className="text-[11px] font-black uppercase tracking-[0.5em] text-indigo-900">{cat.toUpperCase()} PROTOCOLS</h3>
+              <div className="h-px flex-1 bg-slate-200"></div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                {tutorials.filter(t => t.category === cat).map(t => (
-                 <div key={t.id} onClick={() => setSelected(t)} className="bg-[#FDF8EE] rounded-[32px] overflow-hidden border border-[#D4B476]/30 hover:border-[#C5A059]/40 transition-all group cursor-pointer shadow-xl relative">
+                 <div key={t.id} onClick={() => setSelected(t)} className="bg-white rounded-[32px] overflow-hidden border border-slate-200 hover:border-teal-500/40 transition-all group cursor-pointer shadow-xl relative">
                     {isManager && (
                       <div className="absolute top-4 right-4 z-10 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                         <button onClick={(e) => handleEdit(e, t)} className="w-8 h-8 bg-white/80 rounded-full flex items-center justify-center text-black hover:text-[#C5A059] backdrop-blur-md border border-[#D4B476]/20"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                         <button onClick={(e) => handleEdit(e, t)} className="w-8 h-8 bg-white/80 rounded-full flex items-center justify-center text-black hover:text-teal-600 backdrop-blur-md border border-slate-200"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
                          <button onClick={(e) => handleDelete(e, t.id)} className="w-8 h-8 bg-red-50/80 rounded-full flex items-center justify-center text-red-600 hover:text-red-700 backdrop-blur-md border border-red-500/20"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
                       </div>
                     )}
                     <div className="h-44 relative overflow-hidden">
                        <img src={t.thumbnail} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 opacity-80" alt={t.title} />
                        <div className="absolute inset-0 flex items-center justify-center">
-                          <div className="w-14 h-14 rounded-full bg-[#C5A059]/20 border border-[#C5A059]/40 flex items-center justify-center backdrop-blur-md shadow-2xl">
-                             <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className="text-[#C5A059] ml-1"><path d="M5 3l14 9-14 9V3z"/></svg>
+                          <div className="w-14 h-14 rounded-full bg-teal-600/20 border border-teal-600/40 flex items-center justify-center backdrop-blur-md shadow-2xl">
+                             <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className="text-teal-600 ml-1"><path d="M5 3l14 9-14 9V3z"/></svg>
                           </div>
                        </div>
                     </div>
                     <div className="p-6">
-                       <h4 className="text-black font-bold uppercase text-sm tracking-tight">{t.title}</h4>
-                       <p className="text-[10px] text-black/40 mt-2 line-clamp-2 leading-relaxed italic">"{t.description}"</p>
+                       <h4 className="text-slate-900 font-bold uppercase text-sm tracking-tight">{t.title}</h4>
+                       <p className="text-[10px] text-slate-400 mt-2 line-clamp-2 leading-relaxed italic">"{t.description}"</p>
                     </div>
                  </div>
                ))}
                {tutorials.filter(t => t.category === cat).length === 0 && (
-                 <div className="col-span-full py-10 border border-dashed border-black/5 rounded-[32px] text-center opacity-10 italic text-[10px] uppercase">No protocols listed.</div>
+                 <div className="col-span-full py-10 border border-dashed border-slate-200 rounded-[32px] text-center italic text-[10px] uppercase text-slate-400">No protocols listed.</div>
                )}
             </div>
           </section>
@@ -157,16 +155,16 @@ const TutorialsHub: React.FC<TutorialsHubProps> = ({ tutorials, setTutorials, us
       {/* Viewing Modal */}
       {selected && (
         <div className="fixed inset-0 bg-black/40 z-[300] flex items-center justify-center p-4 backdrop-blur-sm animate-in zoom-in-95">
-           <div className="bg-[#FDF8EE] border border-[#D4B476]/30 rounded-[48px] w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl relative overflow-hidden">
-              <button onClick={() => setSelected(null)} className="absolute top-8 right-8 text-black/20 z-10 hover:text-black transition-colors"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+           <div className="bg-white border border-slate-200 rounded-[48px] w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl relative overflow-hidden">
+              <button onClick={() => setSelected(null)} className="absolute top-8 right-8 text-slate-400 z-10 hover:text-black transition-colors"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
               
               <div className="p-8 md:p-12 overflow-y-auto custom-scrollbar flex-1 space-y-8 text-left">
                 <header className="pr-12">
-                   <h2 className="text-xl md:text-2xl font-serif-brand font-bold text-black uppercase tracking-tight leading-tight">{selected.title}</h2>
-                   <p className="text-[9px] font-black text-[#8B6B2E] uppercase tracking-[0.3em] mt-2 opacity-60">Category: {selected.category}</p>
+                   <h2 className="text-xl md:text-2xl font-serif-brand font-bold text-slate-900 uppercase tracking-tight leading-tight">{selected.title}</h2>
+                   <p className="text-[9px] font-black text-teal-600 uppercase tracking-[0.3em] mt-2 opacity-60">Category: {selected.category}</p>
                 </header>
 
-                <div className="aspect-video bg-black rounded-[32px] border border-[#D4B476]/10 flex items-center justify-center text-white/10 overflow-hidden shadow-inner relative">
+                <div className="aspect-video bg-black rounded-[32px] border border-slate-200 flex items-center justify-center text-white/10 overflow-hidden shadow-inner relative">
                    {selected.videoUrl ? (
                      <iframe width="100%" height="100%" src={selected.videoUrl.replace("watch?v=", "embed/")} frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen></iframe>
                    ) : (
@@ -177,9 +175,9 @@ const TutorialsHub: React.FC<TutorialsHubProps> = ({ tutorials, setTutorials, us
                    )}
                 </div>
 
-                <div className="bg-white/40 p-8 rounded-[32px] border border-[#D4B476]/10">
-                   <p className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-[0.4em] mb-4">Summary & Protocol</p>
-                   <p className="text-black/70 text-sm leading-relaxed italic font-serif-brand whitespace-pre-line">{selected.description}</p>
+                <div className="bg-slate-50 p-8 rounded-[32px] border border-slate-200">
+                   <p className="text-[8px] font-black text-slate-500 uppercase tracking-[0.4em] mb-4">Summary & Protocol</p>
+                   <p className="text-slate-700 text-sm leading-relaxed italic font-serif-brand whitespace-pre-line">{selected.description}</p>
                 </div>
               </div>
            </div>
@@ -189,14 +187,14 @@ const TutorialsHub: React.FC<TutorialsHubProps> = ({ tutorials, setTutorials, us
       {/* Creation/Edit Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 z-[400] flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-[#FDF8EE] border border-[#D4B476]/30 rounded-[48px] w-full max-w-2xl p-10 space-y-10 shadow-2xl relative my-auto text-left">
-            <button onClick={closeModal} className="absolute top-10 right-10 text-black/20"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+          <div className="bg-white border border-slate-200 rounded-[48px] w-full max-w-2xl p-10 space-y-10 shadow-2xl relative my-auto text-left">
+            <button onClick={closeModal} className="absolute top-10 right-10 text-slate-400 hover:text-black"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
             
             <div className="space-y-2">
-              <h2 className="text-2xl font-serif-brand font-bold text-black uppercase tracking-tight">{editingTutorial ? 'Refine Tutorial' : 'New Tutorial Registration'}</h2>
+              <h2 className="text-2xl font-serif-brand font-bold text-slate-900 uppercase tracking-tight">{editingTutorial ? 'Refine Tutorial' : 'New Tutorial Registration'}</h2>
               <div className="space-y-1">
                 <p className={labelStyle}>Knowledge Management Hub</p>
-                <p className="text-[9px] text-black/40 italic px-1">Register official Standard Operating Procedures (SOPs) to ensure consistent quality across all Studio deployments.</p>
+                <p className="text-[9px] text-slate-400 italic px-1">Register official Standard Operating Procedures (SOPs) to ensure consistent quality across all Studio deployments.</p>
               </div>
             </div>
 
@@ -219,15 +217,15 @@ const TutorialsHub: React.FC<TutorialsHubProps> = ({ tutorials, setTutorials, us
                           onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAddCategory())}
                           placeholder="Category Name" 
                         />
-                        <button type="button" onClick={handleAddCategory} className="w-10 bg-[#C5A059] text-black font-black rounded-lg flex items-center justify-center shrink-0">✓</button>
-                        <button type="button" onClick={() => setShowNewCatInput(false)} className="w-10 bg-white border border-gray-300 text-black/40 font-black rounded-lg flex items-center justify-center shrink-0">×</button>
+                        <button type="button" onClick={handleAddCategory} className="w-10 bg-teal-600 text-white font-black rounded-lg flex items-center justify-center shrink-0 hover:bg-teal-700">✓</button>
+                        <button type="button" onClick={() => setShowNewCatInput(false)} className="w-10 bg-white border border-slate-200 text-slate-400 font-black rounded-lg flex items-center justify-center shrink-0">×</button>
                       </div>
                     ) : (
                       <>
-                        <select className={inputStyle} value={form.category} onChange={e => setForm({...form, category: e.target.value as any})}>
+                        <select className={`${inputStyle} bg-white`} value={form.category} onChange={e => setForm({...form, category: e.target.value as any})}>
                           {categories.map(c => <option key={c} value={c}>{c.toUpperCase()}</option>)}
                         </select>
-                        <button type="button" onClick={() => setShowNewCatInput(true)} className="w-10 bg-white border border-gray-300 text-[#8B6B2E] font-black rounded-lg flex items-center justify-center shrink-0 hover:bg-gray-50 transition-all shadow-sm">+</button>
+                        <button type="button" onClick={() => setShowNewCatInput(true)} className="w-10 bg-white border border-slate-200 text-teal-600 font-black rounded-lg flex items-center justify-center shrink-0 hover:bg-slate-50 transition-all shadow-sm">+</button>
                       </>
                     )}
                   </div>
@@ -248,16 +246,16 @@ const TutorialsHub: React.FC<TutorialsHubProps> = ({ tutorials, setTutorials, us
                     <label className={labelStyle}>Reference Thumbnail</label>
                     <div 
                       onClick={() => fileInputRef.current?.click()}
-                      className="w-full h-11 bg-white border border-gray-300 rounded-lg flex items-center justify-between px-4 cursor-pointer hover:border-[#C5A059] transition-all"
+                      className="w-full h-11 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between px-4 cursor-pointer hover:border-teal-500 transition-all"
                     >
-                       <span className="text-[10px] text-black/40 uppercase font-black truncate max-w-[150px]">{form.thumbnail ? 'Image Attached' : 'Select Frame'}</span>
-                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                       <span className="text-[10px] text-slate-400 uppercase font-black truncate max-w-[150px]">{form.thumbnail ? 'Image Attached' : 'Select Frame'}</span>
+                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="text-slate-400"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                     </div>
                     <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handlePhotoUpload} />
                  </div>
               </div>
 
-              <button type="submit" className="w-full bg-[#C5A059] text-black font-black py-5 rounded-2xl uppercase tracking-[0.4em] text-[10px] shadow-2xl active:scale-95 transition-all">
+              <button type="submit" className="w-full bg-teal-600 text-white font-black py-5 rounded-2xl uppercase tracking-[0.4em] text-[10px] shadow-2xl active:scale-95 transition-all hover:bg-teal-700">
                 {editingTutorial ? 'UPDATE TUTORIAL' : 'ADD TUTORIAL'}
               </button>
             </form>

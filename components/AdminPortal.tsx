@@ -4,7 +4,7 @@ import PropertyPortfolio from './management/PropertyPortfolio';
 import ClientRegistry from './management/ClientRegistry';
 import StaffHub from './management/StaffHub';
 import SchedulingCenter from './management/SchedulingCenter';
-import { Property, Client, User, Shift, TabType } from '../types';
+import { Property, Client, User, Shift, TabType, LeaveRequest } from '../types';
 
 interface AdminPortalProps {
   user: User;
@@ -22,13 +22,17 @@ interface AdminPortalProps {
   selectedPropertyIdToEdit?: string | null;
   setSelectedPropertyIdToEdit?: (id: string | null) => void;
   onSelectPropertyToEdit?: (id: string) => void;
+  // Added leaveRequests to props to resolve TS error in App.tsx
+  leaveRequests?: LeaveRequest[];
 }
 
 const AdminPortal: React.FC<AdminPortalProps> = ({ 
   user, view, properties = [], setProperties, clients = [], setClients, 
   users = [], setUsers, shifts = [], setShifts,
   setActiveTab, setSelectedClientIdFilter,
-  selectedPropertyIdToEdit, setSelectedPropertyIdToEdit, onSelectPropertyToEdit
+  selectedPropertyIdToEdit, setSelectedPropertyIdToEdit, onSelectPropertyToEdit,
+  // Destructured leaveRequests from props
+  leaveRequests = []
 }) => {
   if (view === 'properties' && setProperties && setClients) return (
     <PropertyPortfolio 
@@ -52,7 +56,8 @@ const AdminPortal: React.FC<AdminPortalProps> = ({
     />
   );
   if (view === 'users' && setUsers) return <StaffHub users={users} setUsers={setUsers} />;
-  if (view === 'scheduling' && setShifts) return <SchedulingCenter shifts={shifts} setShifts={setShifts} properties={properties} users={users} setActiveTab={setActiveTab} />;
+  // Added leaveRequests to SchedulingCenter to allow checking staff availability in calendar
+  if (view === 'scheduling' && setShifts) return <SchedulingCenter shifts={shifts} setShifts={setShifts} properties={properties} users={users} setActiveTab={setActiveTab} leaveRequests={leaveRequests} />;
   
   return <div className="p-20 text-center opacity-10 font-black uppercase tracking-[0.5em]">Module Initializing...</div>;
 };

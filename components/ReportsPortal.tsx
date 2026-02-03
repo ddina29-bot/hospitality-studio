@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { AuditReport, User, UserRole, SupplyRequest, Shift, LeaveRequest, AnomalyReport } from '../types';
 
@@ -142,6 +141,25 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
       return list.sort((a, b) => b.timestamp - a.timestamp);
   }, [shifts, incidentSearch]);
 
+  const employeeLeaveStats = useMemo(() => {
+    const stats: Record<string, { name: string, sick: number, vacation: number, off: number, total: number }> = {};
+    
+    users.filter(u => ['cleaner', 'supervisor', 'driver'].includes(u.role)).forEach(u => {
+        stats[u.id] = { name: u.name, sick: 0, vacation: 0, off: 0, total: 0 };
+    });
+
+    leaveRequests.filter(l => l.status === 'approved').forEach(l => {
+        if (stats[l.userId]) {
+            if (l.type === 'Sick Leave') stats[l.userId].sick++;
+            else if (l.type === 'Vacation Leave') stats[l.userId].vacation++;
+            else stats[l.userId].off++;
+            stats[l.userId].total++;
+        }
+    });
+
+    return Object.values(stats).sort((a, b) => b.total - a.total);
+  }, [users, leaveRequests]);
+
   const inputStyle = "bg-white border border-slate-200 rounded-full px-5 py-2.5 text-black text-[10px] font-bold uppercase tracking-widest outline-none focus:border-[#0D9488] transition-all placeholder:text-slate-300 shadow-sm";
 
   return (
@@ -253,6 +271,48 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
                      </div>
                   ))
                )}
+            </div>
+         </div>
+      )}
+
+      {activeTab === 'employees' && (
+         <div className="space-y-10 animate-in slide-in-from-right-4">
+            <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-sm space-y-6">
+                <div className="flex justify-between items-center">
+                    <h3 className="text-sm font-bold uppercase tracking-widest">Personnel Leave Intelligence</h3>
+                    <p className="text-[10px] text-slate-400 font-black uppercase">Approved Absence Tracking</p>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                        <thead className="bg-slate-50 border-b border-slate-100">
+                           <tr>
+                              <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Operator</th>
+                              <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Day Off</th>
+                              <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Sick</th>
+                              <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Vacation</th>
+                              <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Frequency Score</th>
+                           </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                           {employeeLeaveStats.map((stat, i) => (
+                              <tr key={i} className="hover:bg-slate-50/50">
+                                 <td className="px-6 py-4 font-bold text-xs text-slate-900 uppercase">{stat.name}</td>
+                                 <td className="px-6 py-4 text-center font-bold text-xs">{stat.off}</td>
+                                 <td className="px-6 py-4 text-center font-bold text-xs text-rose-600">{stat.sick}</td>
+                                 <td className="px-6 py-4 text-center font-bold text-xs text-teal-600">{stat.vacation}</td>
+                                 <td className="px-6 py-4 text-right">
+                                    <div className="flex items-center justify-end gap-2">
+                                       <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                          <div className={`h-full ${stat.total > 5 ? 'bg-rose-500' : 'bg-teal-500'}`} style={{ width: `${Math.min(100, stat.total * 10)}%` }}></div>
+                                       </div>
+                                       <span className="text-[10px] font-black text-slate-400">{stat.total}</span>
+                                    </div>
+                                 </td>
+                              </tr>
+                           ))}
+                        </tbody>
+                    </table>
+                </div>
             </div>
          </div>
       )}

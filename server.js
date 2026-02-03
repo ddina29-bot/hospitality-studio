@@ -6,7 +6,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
 import fs from 'fs';
-import { initializeDatabase } from './initDb.js';
+import nodemailer from 'nodemailer';
+import Database from 'better-sqlite3';
 
 // Load environment variables
 dotenv.config();
@@ -21,11 +22,7 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'dist')));
 
-// --- DATABASE INITIALIZATION ---
-// This runs the migrations and returns the connected db instance
-const db = initializeDatabase();
-
-// Helper to determine the uploads directory (matching DB path logic)
+// --- SQLITE DATABASE SETUP ---
 let DATA_DIR;
 if (process.env.RAILWAY_VOLUME_MOUNT_PATH) {
   DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH;
@@ -34,6 +31,25 @@ if (process.env.RAILWAY_VOLUME_MOUNT_PATH) {
 } else {
   DATA_DIR = path.join(__dirname, 'data');
 }
+
+if (!fs.existsSync(DATA_DIR)) {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  } catch (e) {
+    DATA_DIR = '/tmp/data';
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+}
+
+const DB_PATH = path.join(DATA_DIR, 'studio.db');
+const db = new Database(DB_PATH);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS organizations (
+    id TEXT PRIMARY KEY,
+    data TEXT
+  )
+`);
 
 const saveOrgToDb = (org) => {
   const stmt = db.prepare('INSERT OR REPLACE INTO organizations (id, data) VALUES (?, ?)');
@@ -62,9 +78,6 @@ const findOrgByUserEmail = (email) => {
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads'); 
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
-// Serve static uploads
-app.use('/uploads', express.static(UPLOADS_DIR));
-
 const diskStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOADS_DIR),
   filename: (req, file, cb) => {
@@ -86,8 +99,7 @@ app.post('/api/auth/signup', async (req, res) => {
     settings: organization, 
     users: [{ ...adminUser, id: `admin-${Date.now()}`, role: 'admin', status: 'active' }], 
     shifts: [], properties: [], clients: [], supplyRequests: [], inventoryItems: [], 
-    manualTasks: [], leaveRequests: [], invoices: [], tutorials: [], timeEntries: [],
-    anomalyReports: [] // Added for compatibility
+    manualTasks: [], leaveRequests: [], invoices: [], tutorials: [], timeEntries: [] 
   };
   saveOrgToDb(newOrg);
   res.json({ success: true, user: newOrg.users[0], organization: newOrg });
@@ -124,9 +136,13 @@ app.post('/api/sync', async (req, res) => {
   const org = getOrgById(orgId);
   if (!org) return res.status(404).json({ error: "Org not found" });
   
-  // Merge logic to prevent data loss - ensures we keep existing keys if not provided
+  // Merge logic to prevent data loss
   Object.keys(data).forEach(key => {
-    org[key] = data[key];
+    if (Array.isArray(data[key])) {
+      org[key] = data[key];
+    } else {
+      org[key] = data[key];
+    }
   });
   
   saveOrgToDb(org);
@@ -140,4 +156,4 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
 
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
 
-app.listen(PORT, () => console.log(`[SERVER] Node environment active on port ${PORT}`));
+app.listen(PORT, () => console.log(`Server running on ${PORT}`));

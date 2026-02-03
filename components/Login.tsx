@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { User } from '../types';
 
@@ -89,18 +88,8 @@ const Login: React.FC<LoginProps> = ({ onLogin, onDemoLogin }) => {
               disabled={isLoading}
               className="w-full btn-teal py-5 shadow-2xl shadow-teal-900/20 text-xs uppercase tracking-[0.3em] disabled:opacity-50"
             >
-              {isLoading ? 'Verifying...' : 'Initialize Session'}
+              {isLoading ? 'Verifying...' : 'Log in'}
             </button>
-
-            {onDemoLogin && (
-              <button 
-                type="button"
-                onClick={onDemoLogin}
-                className="w-full bg-indigo-50 text-indigo-600 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest border border-indigo-100 hover:bg-indigo-100 transition-all active:scale-95"
-              >
-                PROCEED WITH DEMO DATA
-              </button>
-            )}
           </div>
           
           <div className="pt-4 text-center">
