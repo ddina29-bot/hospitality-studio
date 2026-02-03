@@ -3,23 +3,40 @@ import React, { useState } from 'react';
 import { User } from '../types';
 
 interface LoginProps {
-  onLogin: (user: User) => void;
+  onLogin: (user: User, orgData?: any) => void;
   onSignupClick: () => void;
 }
 
 const Login: React.FC<LoginProps> = ({ onLogin }) => {
-  const [email, setEmail] = useState('admin@studio.com');
-  const [password, setPassword] = useState('password');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onLogin({
-      id: 'u1',
-      name: 'Operations Manager',
-      email: email,
-      role: 'admin',
-      status: 'active'
-    });
+    setError('');
+    setIsLoading(true);
+
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        onLogin(data.user, data.organization);
+      } else {
+        setError(data.error || 'Authentication failed');
+      }
+    } catch (err) {
+      setError('Connection error. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -32,21 +49,49 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         </div>
 
         <form onSubmit={handleSubmit} className="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-2xl space-y-8 text-left">
+          {error && (
+            <div className="bg-red-50 border border-red-100 text-red-600 p-4 rounded-xl text-[10px] font-black uppercase text-center animate-in fade-in">
+              {error}
+            </div>
+          )}
+          
           <div className="space-y-6">
             <div className="space-y-2">
                 <label className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.3em] px-2">Operator ID</label>
-                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full bg-slate-50 border border-transparent rounded-2xl px-6 py-4 text-sm font-semibold outline-none focus:bg-white focus:border-[#0D9488] transition-all uppercase tracking-widest placeholder:text-slate-300" />
+                <input 
+                  type="email" 
+                  value={email} 
+                  onChange={(e) => setEmail(e.target.value)} 
+                  required 
+                  disabled={isLoading}
+                  placeholder="name@reset.studio"
+                  className="w-full bg-slate-50 border border-transparent rounded-2xl px-6 py-4 text-sm font-semibold outline-none focus:bg-white focus:border-[#0D9488] transition-all uppercase tracking-widest placeholder:text-slate-300" 
+                />
             </div>
             <div className="space-y-2">
                 <label className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.3em] px-2">Access Key</label>
-                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full bg-slate-50 border border-transparent rounded-2xl px-6 py-4 text-sm font-semibold outline-none focus:bg-white focus:border-[#0D9488] transition-all uppercase tracking-widest placeholder:text-slate-300" />
+                <input 
+                  type="password" 
+                  value={password} 
+                  onChange={(e) => setPassword(e.target.value)} 
+                  required 
+                  disabled={isLoading}
+                  placeholder="••••••••"
+                  className="w-full bg-slate-50 border border-transparent rounded-2xl px-6 py-4 text-sm font-semibold outline-none focus:bg-white focus:border-[#0D9488] transition-all uppercase tracking-widest placeholder:text-slate-300" 
+                />
             </div>
           </div>
           
-          <button type="submit" className="w-full btn-teal py-5 shadow-2xl shadow-teal-900/20 text-xs uppercase tracking-[0.3em]">Initialize</button>
+          <button 
+            type="submit" 
+            disabled={isLoading}
+            className="w-full btn-teal py-5 shadow-2xl shadow-teal-900/20 text-xs uppercase tracking-[0.3em] disabled:opacity-50"
+          >
+            {isLoading ? 'Verifying...' : 'Initialize Session'}
+          </button>
           
           <div className="pt-4 text-center">
-             <p className="text-[8px] text-slate-300 font-bold uppercase tracking-[0.5em] animate-pulse">Session Encrypted • v3.8</p>
+             <p className="text-[8px] text-slate-300 font-bold uppercase tracking-[0.5em] animate-pulse">Session Encrypted • Production v1.0</p>
           </div>
         </form>
       </div>

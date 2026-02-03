@@ -8,10 +8,9 @@ interface StudioSettingsProps {
   userCount: number;
   propertyCount: number;
   currentOrgId: string | null;
-  onInjectDemo?: () => void;
 }
 
-const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrganization, userCount, propertyCount, onInjectDemo }) => {
+const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrganization, userCount, propertyCount }) => {
   const [formData, setFormData] = useState<OrganizationSettings>(organization);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -28,7 +27,7 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
     setTimeout(() => {
       setOrganization(formData);
       setIsSaving(false);
-      alert('Studio Registry Updated Locally.');
+      alert('Studio Registry Updated.');
     }, 500);
   };
 
@@ -43,15 +42,6 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
           <h2 className="text-xl font-serif-brand font-bold text-black uppercase tracking-tight">Studio Registry & Configuration</h2>
         </div>
         <div className="flex gap-3">
-           {onInjectDemo && (
-              <button 
-                onClick={onInjectDemo}
-                className="px-6 py-3 bg-black text-[#C5A059] border border-[#C5A059]/20 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-zinc-900 transition-all shadow-lg flex items-center gap-2"
-              >
-                <div className="w-1.5 h-1.5 bg-[#C5A059] rounded-full animate-pulse"></div>
-                INJECT PREVIEW DATA
-              </button>
-           )}
            <button 
              onClick={handleSave} 
              disabled={!isDirty || isSaving}
@@ -66,7 +56,7 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
         <section className="bg-[#FDF8EE] border border-[#D4B476]/30 p-8 rounded-[40px] shadow-xl space-y-8">
            <div className="flex items-center gap-4 border-b border-[#D4B476]/10 pb-4">
               <div className="w-12 h-12 bg-black text-[#C5A059] rounded-full flex items-center justify-center font-serif-brand text-xl font-bold shadow-lg">
-                 {formData.name.charAt(0)}
+                 {formData.name?.charAt(0) || 'S'}
               </div>
               <div>
                  <h3 className="text-sm font-serif-brand font-bold text-black uppercase tracking-tight">Organization Identity</h3>
@@ -129,22 +119,22 @@ const StudioSettings: React.FC<StudioSettingsProps> = ({ organization, setOrgani
            </div>
         </section>
 
-        <section className="lg:col-span-2 bg-[#F6E6C2] text-black p-10 rounded-[40px] shadow-2xl relative overflow-hidden">
+        <section className="lg:col-span-2 bg-slate-900 text-white p-10 rounded-[40px] shadow-2xl relative overflow-hidden">
            <div className="relative z-10 flex flex-col md:flex-row justify-between items-end gap-10">
               <div className="space-y-6">
-                 <h3 className="text-xl font-serif-brand font-bold uppercase tracking-tight text-black">Local Preview Terminal</h3>
+                 <h3 className="text-xl font-serif-brand font-bold uppercase tracking-tight text-[#C5A059]">System Summary</h3>
                  <div className="flex gap-8">
                     <div>
                        <p className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">Total Assets</p>
-                       <p className="text-3xl font-serif-brand font-bold text-black">{propertyCount}</p>
+                       <p className="text-3xl font-serif-brand font-bold text-white">{propertyCount}</p>
                     </div>
                     <div>
                        <p className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">Personnel</p>
-                       <p className="text-3xl font-serif-brand font-bold text-black">{userCount}</p>
+                       <p className="text-3xl font-serif-brand font-bold text-white">{userCount}</p>
                     </div>
                  </div>
               </div>
-              <p className="text-[8px] font-black text-black/20 uppercase tracking-[0.4em] italic">SYSTEM RUNNING IN SANDBOX MODE • DATA PERSISTS TO LOCALSTORAGE</p>
+              <p className="text-[8px] font-black text-white/20 uppercase tracking-[0.4em] italic">PRODUCTION CORE ACTIVE • SECURE ENCRYPTED STORAGE</p>
            </div>
         </section>
       </div>

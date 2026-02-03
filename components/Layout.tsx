@@ -6,19 +6,16 @@ interface LayoutProps {
   children: React.ReactNode;
   activeTab: TabType;
   setActiveTab: (tab: TabType) => void;
-  role: UserRole; // This is the user's actual role
-  effectiveRole: UserRole; // This is the simulated role for UI testing
+  role: UserRole;
   onLogout: () => void;
-  onSimulateRole: (role: UserRole) => void;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role, effectiveRole, onLogout, onSimulateRole }) => {
+const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role, onLogout }) => {
   const [showMenu, setShowMenu] = useState(false);
-  const isAdmin = role === 'admin';
 
   const navItems: { id: TabType; label: string; icon: string; roles: UserRole[] }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊', roles: ['admin', 'cleaner', 'driver', 'housekeeping', 'supervisor', 'hr', 'finance', 'client'] },
-    { id: 'shifts', label: 'Schedule', icon: '🗓️', roles: ['admin', 'cleaner', 'housekeeping', 'supervisor'] }, // Driver removed
+    { id: 'shifts', label: 'Schedule', icon: '🗓️', roles: ['admin', 'cleaner', 'housekeeping', 'supervisor'] },
     { id: 'logistics', label: 'Deliveries', icon: '📦', roles: ['admin', 'driver', 'housekeeping'] },
     { id: 'tutorials', label: 'Guidelines', icon: '📚', roles: ['admin', 'cleaner', 'driver', 'housekeeping', 'supervisor'] },
     { id: 'properties', label: 'Properties', icon: '🏠', roles: ['admin', 'housekeeping'] },
@@ -29,8 +26,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role
     { id: 'settings', label: 'Settings', icon: '⚙️', roles: ['admin'] },
   ];
 
-  // Filters navigation based on the SIMULATED role
-  const visibleItems = navItems.filter(item => item.roles.includes(effectiveRole));
+  const visibleItems = navItems.filter(item => item.roles.includes(role));
   const mobilePrimary = visibleItems.filter(i => ['dashboard', 'shifts', 'logistics'].includes(i.id));
 
   return (
@@ -41,13 +37,6 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role
           <h1 className="font-brand text-2xl text-white tracking-tighter uppercase leading-none">RESET</h1>
           <p className="text-[9px] font-bold text-teal-100 uppercase tracking-[0.25em] mt-2">HOSPITALITY STUDIO</p>
         </div>
-        
-        {/* SIMULATION INDICATOR */}
-        {role !== effectiveRole && (
-          <div className="mx-4 mb-4 px-4 py-2 bg-red-600 rounded-xl border border-red-400 animate-pulse">
-            <p className="text-[8px] font-black uppercase tracking-widest text-white">SIMULATING: {effectiveRole.toUpperCase()}</p>
-          </div>
-        )}
 
         <nav className="flex-1 overflow-y-auto px-4 space-y-1 custom-scrollbar">
           {visibleItems.map(item => (
@@ -64,24 +53,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role
           ))}
         </nav>
 
-        <div className="p-4 border-t border-teal-700/50 space-y-4">
-          {isAdmin && (
-            <div className="px-2">
-              <p className="text-[7px] font-black text-teal-200 uppercase tracking-[0.3em] mb-2">Simulate UI View:</p>
-              <select 
-                className="w-full bg-teal-800 text-[9px] font-black uppercase border border-teal-600 rounded-lg p-2 outline-none focus:border-white transition-colors"
-                value={effectiveRole}
-                onChange={(e) => onSimulateRole(e.target.value as UserRole)}
-              >
-                <option value="admin">ADMIN (FULL)</option>
-                <option value="cleaner">CLEANER VIEW</option>
-                <option value="driver">DRIVER VIEW</option>
-                <option value="supervisor">SUPERVISOR VIEW</option>
-                <option value="housekeeping">HOUSEKEEPING VIEW</option>
-              </select>
-            </div>
-          )}
-          
+        <div className="p-4 border-t border-teal-700/50">
           <button onClick={onLogout} className="w-full flex items-center gap-4 px-5 py-3 text-teal-100 text-xs font-bold uppercase hover:bg-white/10 rounded-2xl transition-colors">
              <span>🚪</span>
              <span>Log out</span>
@@ -94,22 +66,12 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role
         <header className="md:hidden bg-white border-b border-slate-100 px-6 py-4 flex justify-between items-center sticky top-0 z-40">
            <div className="flex flex-col">
               <h2 className="font-brand font-bold text-[#0D9488] text-xl leading-none">RESET</h2>
-              <span className="text-[7px] font-black text-[#0D9488] uppercase tracking-widest mt-0.5">
-                {role !== effectiveRole ? `PREVIEW: ${effectiveRole.toUpperCase()}` : 'HOSPITALITY STUDIO'}
-              </span>
+              <span className="text-[7px] font-black text-[#0D9488] uppercase tracking-widest mt-0.5">HOSPITALITY STUDIO</span>
            </div>
-           <div className={`w-9 h-9 rounded-full border flex items-center justify-center text-[10px] font-bold uppercase ${role !== effectiveRole ? 'bg-red-50 border-red-200 text-red-600' : 'bg-teal-50 border border-teal-100 text-[#0D9488]'}`}>
-            {effectiveRole.charAt(0)}
+           <div className="w-9 h-9 rounded-full bg-teal-50 border border-teal-100 text-[#0D9488] flex items-center justify-center text-[10px] font-bold uppercase">
+            {role.charAt(0)}
            </div>
         </header>
-
-        {/* MOBILE SIMULATION TOGGLE */}
-        {isAdmin && role !== effectiveRole && (
-          <div className="md:hidden bg-red-600 text-white px-6 py-1.5 flex justify-between items-center text-[8px] font-black uppercase tracking-widest">
-            <span>Simulation Mode Active</span>
-            <button onClick={() => onSimulateRole('admin')} className="underline">Exit Preview</button>
-          </div>
-        )}
 
         <div className="flex-1 overflow-y-auto p-6 md:p-10 pb-28 md:pb-10 custom-scrollbar">
           <div className="max-w-7xl mx-auto">
@@ -159,22 +121,6 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role
                     <span className="text-xs font-bold uppercase tracking-widest">{item.label}</span>
                   </button>
                 ))}
-                {isAdmin && (
-                  <div className="col-span-2 mt-6 pt-6 border-t border-slate-100">
-                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-4">Simulation Control:</p>
-                    <div className="grid grid-cols-2 gap-2">
-                       {['admin', 'cleaner', 'driver', 'supervisor', 'housekeeping'].map(r => (
-                         <button 
-                          key={r}
-                          onClick={() => { onSimulateRole(r as UserRole); setShowMenu(false); }}
-                          className={`py-3 rounded-xl text-[8px] font-black uppercase tracking-widest border transition-all ${effectiveRole === r ? 'bg-red-600 text-white border-red-600' : 'bg-white text-slate-400 border-slate-200'}`}
-                         >
-                           {r}
-                         </button>
-                       ))}
-                    </div>
-                  </div>
-                )}
              </div>
           </div>
         )}
