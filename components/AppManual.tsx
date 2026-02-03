@@ -8,9 +8,9 @@ const AppManual: React.FC = () => {
     { id: 'overview', title: 'System Overview' },
     { id: 'field_ops', title: 'Cleaner Field Ops & GPS' },
     { id: 'scheduling', title: 'Scheduling & Audits' },
-    { id: 'logistics', title: 'Logistics & Drivers' },
+    { id: 'logistics', title: 'Deliveries & Drivers' },
     { id: 'reporting', title: 'Incident & Damage Logs' },
-    { id: 'intel', title: 'Intelligence Portal' }, // New
+    { id: 'intel', title: 'Intelligence Portal' }, 
     { id: 'finance', title: 'Finance & Payroll' },
   ];
 
@@ -19,19 +19,19 @@ const AppManual: React.FC = () => {
       case 'overview':
         return (
           <div className="space-y-6 animate-in fade-in">
-            <h3 className="text-xl font-serif-brand font-bold text-black uppercase">Welcome to Reset Studio v3.2</h3>
+            <h3 className="text-xl font-serif-brand font-bold text-black uppercase">Welcome to RESET HOSPITALITY STUDIO v3.2</h3>
             <p className="text-xs text-black/70 leading-relaxed">
-              Reset Hospitality Studio is a comprehensive Operations Operating System (OOS) designed to manage premium short-term rental cleaning, logistics, and maintenance.
+              RESET HOSPITALITY STUDIO is a comprehensive Operations Operating System (OOS) designed to manage premium short-term rental cleaning, deliveries, and maintenance.
               This centralized platform connects administrative command with field personnel in real-time.
             </p>
             <div className="grid grid-cols-2 gap-4 mt-4">
-              <div className="p-4 bg-[#FDF8EE] rounded-2xl border border-[#D4B476]/30">
-                <h4 className="text-[10px] font-black text-[#8B6B2E] uppercase tracking-widest mb-2">For Management</h4>
+              <div className="p-4 bg-[#F0FDFA] rounded-2xl border border-teal-100">
+                <h4 className="text-[10px] font-black text-teal-700 uppercase tracking-widest mb-2">For Management</h4>
                 <p className="text-[10px] text-black/60">Full oversight of schedules, staff, payroll, asset quality control, and incident resolution.</p>
               </div>
-              <div className="p-4 bg-[#FDF8EE] rounded-2xl border border-[#D4B476]/30">
-                <h4 className="text-[10px] font-black text-[#8B6B2E] uppercase tracking-widest mb-2">For Field Staff</h4>
-                <p className="text-[10px] text-black/60">Mobile-optimized portals for checking in, viewing tasks, reporting damages, and supply chain logistics.</p>
+              <div className="p-4 bg-[#F0FDFA] rounded-2xl border border-teal-100">
+                <h4 className="text-[10px] font-black text-teal-700 uppercase tracking-widest mb-2">For Field Staff</h4>
+                <p className="text-[10px] text-black/60">Mobile-optimized portals for checking in, viewing tasks, reporting damages, and supply chain deliveries.</p>
               </div>
             </div>
           </div>
@@ -78,9 +78,9 @@ const AppManual: React.FC = () => {
       case 'logistics':
         return (
           <div className="space-y-6 animate-in fade-in">
-            <h3 className="text-xl font-serif-brand font-bold text-black uppercase">Logistics & Drivers</h3>
+            <h3 className="text-xl font-serif-brand font-bold text-black uppercase">Deliveries & Drivers</h3>
             <p className="text-xs text-black/70 leading-relaxed">
-              Drivers use the "Logistics Portal" to manage efficient routing for keys and linen.
+              Drivers use the "Deliveries Portal" to manage efficient routing for keys and linen.
             </p>
             <div className="grid grid-cols-2 gap-3 mt-2">
                 <div className="p-3 border border-gray-200 rounded-xl">
@@ -126,8 +126,8 @@ const AppManual: React.FC = () => {
             </p>
             <ul className="list-disc list-inside text-xs text-black/70 space-y-3 mt-2">
               <li><strong>Incident Logs:</strong> A consolidated view of all active and resolved Maintenance, Damage, and Missing item reports. Filter by status (Open/Sorted).</li>
-              <li><strong>Personnel:</strong> Staff records grouped by department (Cleaning, Logistics, Management). View individual ratings and attendance gaps.</li>
-              <li><strong>Logistics Archive:</strong> Historical view of driver routes. See exactly where a driver went on a specific past date and what they delivered.</li>
+              <li><strong>Personnel:</strong> Staff records grouped by department (Cleaning, Deliveries, Management). View individual ratings and attendance gaps.</li>
+              <li><strong>Delivery Archive:</strong> Historical view of driver routes. See exactly where a driver went on a specific past date and what they delivered.</li>
               <li><strong>Audit History:</strong> Pass/Fail rates for properties based on Supervisor inspections.</li>
             </ul>
           </div>
@@ -164,10 +164,10 @@ const AppManual: React.FC = () => {
   return (
     <div className="flex flex-col md:flex-row gap-8 h-[calc(100vh-140px)] animate-in fade-in duration-700">
       {/* Sidebar Navigation */}
-      <div className="w-full md:w-64 bg-[#FDF8EE] border border-[#D4B476]/30 rounded-[32px] p-6 shadow-xl flex-shrink-0 overflow-y-auto custom-scrollbar">
+      <div className="w-full md:w-64 bg-teal-50 border border-teal-100 rounded-[32px] p-6 shadow-xl flex-shrink-0 overflow-y-auto custom-scrollbar">
         <div className="mb-6">
-           <h2 className="text-lg font-serif-brand font-bold text-black uppercase">System Manual</h2>
-           <p className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-[0.3em] opacity-60">Usage Guide v3.2</p>
+           <h2 className="text-lg font-serif-brand font-bold text-black uppercase leading-tight">RESET HOSPITALITY STUDIO</h2>
+           <p className="text-[8px] font-black text-teal-600 uppercase tracking-[0.3em] opacity-60 mt-1">Usage Guide v3.2</p>
         </div>
         <nav className="space-y-2">
           {sections.map(section => (
@@ -176,7 +176,7 @@ const AppManual: React.FC = () => {
               onClick={() => setActiveSection(section.id)}
               className={`w-full text-left px-4 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${
                 activeSection === section.id
-                  ? 'bg-[#C5A059] text-black shadow-md'
+                  ? 'bg-teal-600 text-white shadow-md'
                   : 'text-black/40 hover:bg-white hover:text-black'
               }`}
             >

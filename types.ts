@@ -6,314 +6,35 @@ export type UserRole =
   | 'admin' 
   | 'housekeeping' 
   | 'maintenance' 
-  | 'outsourced_maintenance' 
   | 'client'
   | 'hr'
   | 'finance'
-  | 'laundry';
+  | 'laundry'
+  | 'outsourced_maintenance';
 
-export interface OrganizationSettings {
-  name: string;
-  legalEntity: string;
-  regNumber?: string;
-  taxId: string;
-  peNumber?: string;
-  address: string;
-  email: string;
-  phone: string;
-  website: string;
-}
+export type TabType = 
+  | 'dashboard'
+  | 'shifts' 
+  | 'logistics'
+  | 'properties'
+  | 'clients'
+  | 'finance'
+  | 'reports'
+  | 'users'
+  | 'settings'
+  | 'inventory_admin'
+  | 'tutorials';
 
-export interface ManualTask {
+export interface Message {
   id: string;
-  propertyId: string;
-  propertyName: string;
-  taskName: string;
-  userId: string;
-  userName: string;
-  date: string; // ISO string
-  status: 'pending' | 'completed';
-  isBillable?: boolean;
-  billablePrice?: number;
+  sender: string;
+  text: string;
+  timestamp: string;
 }
 
 export interface AttributedPhoto {
   url: string;
   userId: string;
-}
-
-export interface TimeEntry {
-  id: string;
-  userId: string;
-  type: 'in' | 'out';
-  timestamp: string; // ISO string
-}
-
-export type PropertyType = 'Villa' | 'Townhouse' | 'Penthouse' | 'Studio' | 'Apartment';
-export type SofaBedType = 'none' | 'single' | 'double';
-export type EmploymentType = 'Full-Time' | 'Part-Time' | 'Casual' | 'Contractor';
-export type PaymentType = 'Per Clean' | 'Per Hour' | 'Fixed Wage' | 'Contract Fixed';
-export type SupplyCategory = 'laundry' | 'cleaning' | 'maintenance' | 'welcome pack' | 'other';
-export type LeaveType = 'Day Off' | 'Sick Leave' | 'Vacation Leave';
-
-export interface LeaveRequest {
-  id: string;
-  userId: string;
-  userName: string;
-  type: LeaveType;
-  startDate: string; // ISO String
-  endDate: string;   // ISO String
-  status: 'pending' | 'approved' | 'rejected';
-}
-
-export interface Tutorial {
-  id: string;
-  title: string;
-  category: 'cleaning' | 'setup' | 'safety';
-  videoUrl?: string;
-  description: string;
-  thumbnail: string;
-}
-
-export interface Property {
-  id: string;
-  name: string;
-  type: PropertyType;
-  clientId: string;
-  address: string;
-  apartmentNumber?: string;
-  floor?: string;
-  entrancePhoto: string;
-  keyboxPhoto?: string;
-  keyboxCode: string;
-  mainEntranceCode?: string;
-  accessNotes: string;
-  lat?: number;
-  lng?: number;
-  rooms: number;
-  bathrooms: number;
-  halfBaths: number;
-  hasDishwasher: boolean;
-  hasCoffeeMachine: boolean;
-  coffeeMachineType?: string;
-  doubleBeds: number;
-  singleBeds: number;
-  pillows: number;
-  sofaBed: SofaBedType;
-  foldableBeds: number;
-  babyCots: number;
-  capacity: number;
-  clientPrice: number;
-  clientPriceType?: 'Fixed' | 'Per Hour'; // Deprecated but kept for type compatibility
-  clientServiceRates?: Record<string, number>; // Specific client rates (e.g., REFRESH, MID STAY)
-  cleanerPrice: number;
-  servicePackage?: string;
-  packagePrice?: number;
-  packageNote?: string;
-  serviceRates?: Record<string, number>; // Cleaner rates
-  specialRequests: string[];
-  roomReferencePhotos: Record<string, string[]>;
-  status?: 'active' | 'disabled';
-}
-
-export interface Client {
-  id: string;
-  name: string;
-  contactEmail: string;
-  phone: string;
-  billingAddress?: string;
-  vatNumber?: string;
-  propertyIds: string[];
-  status: 'active' | 'inactive';
-}
-
-export interface InvoiceItem {
-  description: string;
-  date: string;
-  amount: number;
-}
-
-export interface Invoice {
-  id: string;
-  invoiceNumber: string;
-  clientId: string;
-  clientName: string;
-  issueDate: string;
-  dueDate: string;
-  periodStart?: string;
-  periodEnd?: string;
-  items: InvoiceItem[];
-  subtotal: number;
-  discount: number;
-  vat: number;
-  totalAmount: number;
-  status: 'draft' | 'sent' | 'paid' | 'overdue';
-}
-
-export type TabType = 
-  | 'dashboard'
-  | 'laundry'
-  | 'shifts' 
-  | 'logistics'
-  | 'supervisor_portal'
-  | 'properties'
-  | 'clients'
-  | 'tutorials'
-  | 'inventory_admin'
-  | 'maintenance'
-  | 'reports'
-  | 'finance'
-  | 'personnel_profile'
-  | 'users'
-  | 'settings'
-  | 'ai'
-  | 'manual';
-
-export interface SupplyItem {
-  id: string;
-  name: string;
-  photo: string;
-  category: 'spray' | 'basic' | 'linen' | 'pack';
-  type: SupplyCategory;
-  explanation: string; // How to use instructions
-  unit: string;
-}
-
-export interface SupplyRequest {
-  id: string;
-  userId: string;
-  userName: string;
-  itemId: string;
-  itemName: string;
-  quantity: number;
-  date: string; // ISO string
-  status: 'pending' | 'approved' | 'delivered';
-}
-
-export interface SpecialReport {
-  id: string;
-  description: string;
-  photos: string[];
-  timestamp: number;
-  status?: 'open' | 'assigned' | 'resolved';
-  assignedTo?: string;
-  assignedToName?: string;
-  assignedAt?: number;
-  assignmentNotes?: string;
-  category?: 'laundry' | 'apartment';
-  // Outsourcing Fields
-  cost?: number;
-  invoiceRef?: string;
-  vendorNotes?: string;
-}
-
-export interface AuditReport {
-  id: string;
-  shiftId: string;
-  propertyName: string;
-  serviceType: string;
-  cleanerNames: string[];
-  decision: 'approved' | 'rejected';
-  reason: string;
-  decidedBy: string;
-  timestamp: number;
-  photos: string[];
-  checkInTime?: number;
-  checkOutTime?: number;
-  paymentAmount: number;
-  paymentType: string;
-  maintenanceReports?: SpecialReport[];
-  damageReports?: SpecialReport[];
-  missingReports?: SpecialReport[];
-}
-
-export interface Shift {
-  id: string;
-  propertyId: string;
-  userIds: string[];
-  date: string;
-  status: 'pending' | 'active' | 'completed';
-  approvalStatus?: 'pending' | 'approved' | 'rejected';
-  correctionStatus?: 'fixing' | 'corrected';
-  approvalComment?: string;
-  serviceType: string;
-  startTime: string;
-  endTime?: string;
-  notes?: string;
-  propertyName?: string;
-  actualStartTime?: number;
-  actualEndTime?: number;
-  wasRejected?: boolean; 
-  fixWorkPayment?: number;
-  decidedBy?: string;
-  isPublished?: boolean; 
-  excludeLaundry?: boolean;
-  checkoutPhotos?: {
-    keyInBox?: AttributedPhoto[];
-    boxClosed?: AttributedPhoto[];
-  };
-  tasks?: CleaningTask[]; 
-  messReport?: {
-    description: string;
-    photos: string[];
-    status: 'pending' | 'approved' | 'rejected';
-    extraHoursApproved?: number;
-    adminReason?: string;
-  };
-  maintenanceReports?: SpecialReport[];
-  damageReports?: SpecialReport[];
-  missingReports?: SpecialReport[];
-  // Supervisor Inspection
-  inspectionPhotos?: string[];
-  // Previous data for remedial
-  originalCleaningPhotos?: string[];
-  // Logistics fields
-  isDelivered?: boolean;
-  isCollected?: boolean;
-  keysHandled?: boolean; // Keys from Office
-  keysAtOffice?: boolean; // Keys returned
-  keyLocationReason?: string;
-  // Replacement tracking
-  replacedUserId?: string;
-  // Laundry tracking
-  isLaundryPrepared?: boolean;
-  isLaundryPickedUp?: boolean;
-  // Finance
-  paid?: boolean;
-  payoutDate?: string;
-}
-
-export interface User {
-  id: string;
-  name: string;
-  role: UserRole;
-  email: string;
-  phone?: string;
-  photoUrl?: string; // Added photoUrl
-  whatsappNumber?: string;
-  address?: string;
-  dateOfBirth?: string;
-  status: 'pending' | 'active' | 'inactive';
-  password?: string;
-  idPassportNumber?: string;
-  niNumber?: string;
-  maritalStatus?: string;
-  employmentType?: EmploymentType;
-  paymentType?: PaymentType;
-  isParent?: boolean;
-  payRate?: number;
-  iban?: string;
-  taxId?: string;
-  activationDate?: string;
-  // Resource fields
-  assignedVehicle?: string;
-  vehicleStatus?: 'pending' | 'verified';
-  // Compliance Docs
-  hasID?: boolean;
-  hasContract?: boolean;
-  hasPhoto?: boolean;
-  // Invites
-  activationToken?: string;
 }
 
 export interface CleaningTask {
@@ -324,45 +45,296 @@ export interface CleaningTask {
   photos: AttributedPhoto[];
 }
 
-export interface Message {
+export interface SpecialReport {
   id: string;
-  sender: string;
-  text: string;
+  description: string;
+  photos: string[];
+  timestamp: number;
+  status: 'open' | 'resolved' | 'assigned' | 'pending';
+  category?: 'laundry' | 'apartment';
+  assignedTo?: string;
+  assignedToName?: string;
+  assignedAt?: number;
+  assignmentNotes?: string;
+  cost?: number;
+  invoiceRef?: string;
+  vendorNotes?: string;
+}
+
+export interface SupplyItem {
+  id: string;
+  name: string;
+  unit: string;
+  category: 'spray' | 'basic' | 'linen' | 'pack';
+  explanation: string;
+  photo: string;
+  type: 'cleaning' | 'laundry' | 'welcome pack' | 'other';
+}
+
+export interface ManualTask {
+  id: string;
+  propertyId: string;
+  propertyName: string;
+  taskName: string;
+  userId: string;
+  userName: string;
+  date: string;
+  status: 'pending' | 'completed';
+  isBillable?: boolean;
+  billablePrice?: number;
+}
+
+export interface SupplyRequest {
+  id: string;
+  itemId: string;
+  itemName: string;
+  quantity: number;
+  userId: string;
+  userName: string;
+  date: string;
+  status: 'pending' | 'approved' | 'rejected';
+}
+
+export interface TimeEntry {
+  id: string;
+  userId: string;
+  type: 'in' | 'out';
   timestamp: string;
-  isAi?: boolean;
 }
 
 export interface Announcement {
   id: string;
   title: string;
   content: string;
-  date: string;
+  category: 'Company' | 'Safety' | 'Procedure' | 'Social';
   author: string;
-  category: 'Safety' | 'Procedure' | 'Company' | 'Social';
+  date: string;
   timestamp: number;
 }
 
-export interface MaintenanceTicket {
-  id: string;
-  propertyId: string;
-  propertyName: string;
-  type: string;
+export interface InvoiceItem {
   description: string;
-  status: 'reported' | 'assigned' | 'completed';
-  severity: 'low' | 'medium' | 'high';
-  assignmentType: 'internal' | 'outsourced';
-  assignedUserId?: string;
-  vendorName?: string;
-  quotedCost?: number;
+  date: string;
+  amount: number;
+}
+
+export interface OrganizationSettings {
+  id: string;
+  name: string;
+  address: string;
+  email: string;
+  phone: string;
+  website?: string;
+  legalEntity?: string;
+  taxId?: string;
+  peNumber?: string;
+  regNumber?: string;
+}
+
+export type LeaveType = 'Day Off' | 'Sick Leave' | 'Vacation Leave';
+
+export interface LeaveRequest {
+  id: string;
+  userId: string;
+  userName: string;
+  type: LeaveType;
+  startDate: string;
+  endDate: string;
+  status: 'pending' | 'approved' | 'rejected';
+}
+
+export interface AuditReport {
+  id: string;
+  shiftId: string;
+  inspectorId: string;
+  status: 'passed' | 'failed';
+  notes: string;
   timestamp: number;
 }
 
 export interface AppNotification {
   id: string;
-  type: 'alert' | 'success' | 'warning' | 'info';
   title: string;
   message: string;
-  timestamp: number | string;
+  type: 'info' | 'alert' | 'success' | 'warning';
+  timestamp: number;
   linkTab?: TabType;
   linkId?: string;
+}
+
+export interface Tutorial {
+  id: string;
+  title: string;
+  category: 'setup' | 'cleaning' | 'safety' | string;
+  description: string;
+  videoUrl: string;
+  thumbnail: string;
+}
+
+export interface MaintenanceTicket {
+  id: string;
+  propertyName: string;
+  description: string;
+  status: 'pending' | 'in-progress' | 'resolved';
+  timestamp: number;
+}
+
+export interface Property {
+  id: string;
+  name: string;
+  type: 'Villa' | 'Penthouse' | 'Studio' | 'Apartment' | 'Townhouse';
+  clientId: string;
+  address: string;
+  lat?: number;
+  lng?: number;
+  apartmentNumber?: string;
+  floorNumber?: string;
+  entrancePhoto: string;
+  keyboxPhoto?: string;
+  kitchenPhoto?: string;
+  livingRoomPhoto?: string;
+  welcomePackPhoto?: string;
+  roomPhotos?: string[];
+  bathroomPhotos?: string[];
+  keyboxCode: string;
+  mainEntranceCode?: string;
+  accessNotes: string;
+  rooms: number;
+  bathrooms: number;
+  halfBaths: number;
+  doubleBeds: number;
+  singleBeds: number;
+  sofaBeds: number;
+  sofaBed?: 'none' | 'single' | 'double';
+  foldableBeds?: number;
+  babyCots?: number;
+  pillows: number;
+  hasBabyCot?: boolean;
+  capacity: number;
+  hasDishwasher: boolean;
+  hasCoffeeMachine: boolean;
+  coffeeMachineType?: string;
+  clientPrice: number;
+  clientPriceType?: 'Fixed' | 'Per Hour';
+  clientRefreshPrice?: number;
+  clientMidStayPrice?: number;
+  clientServiceRates?: Record<string, number>;
+  cleanerPrice: number;
+  cleanerRefreshPrice?: number;
+  cleanerMidStayPrice?: number;
+  cleanerAuditPrice?: number;
+  cleanerCommonAreaPrice?: number;
+  cleanerBedsOnlyPrice?: number;
+  serviceRates?: Record<string, number>;
+  status: 'active' | 'disabled';
+  specialRequests: string[];
+  packType?: string;
+  packNotes?: string;
+}
+
+export type EmploymentType = 'Full-Time' | 'Part-Time' | 'Casual' | 'Contractor';
+export type PaymentType = 'Per Clean' | 'Per Hour' | 'Fixed Wage';
+
+export interface User {
+  id: string;
+  name: string;
+  role: UserRole;
+  email: string;
+  phone?: string;
+  status: 'active' | 'inactive' | 'pending';
+  hasID?: boolean;
+  hasContract?: boolean;
+  contractFileUrl?: string;
+  idFileUrl?: string;
+  payRate?: number;
+  paymentType?: PaymentType;
+  maritalStatus?: string;
+  isParent?: boolean;
+  photoUrl?: string;
+  idPassportNumber?: string;
+  niNumber?: string;
+  iban?: string;
+  password?: string;
+  activationToken?: string;
+  employmentType?: EmploymentType;
+  activationDate?: string;
+  homeAddress?: string;
+  dateOfBirth?: string;
+}
+
+export interface Shift {
+  id: string;
+  propertyId: string;
+  propertyName: string;
+  userIds: string[];
+  date: string;
+  startTime: string;
+  endTime?: string;
+  serviceType: string;
+  status: 'pending' | 'active' | 'completed';
+  approvalStatus: 'pending' | 'approved' | 'rejected';
+  isPublished: boolean;
+  actualStartTime?: number;
+  actualEndTime?: number;
+  tasks?: CleaningTask[];
+  wasRejected?: boolean;
+  approvalComment?: string;
+  checkoutPhotos?: {
+    keyInBox: AttributedPhoto[];
+    boxClosed: AttributedPhoto[];
+  };
+  correctionStatus?: 'none' | 'fixing' | 'pending';
+  excludeLaundry?: boolean;
+  isDelivered?: boolean;
+  isCollected?: boolean;
+  keysHandled?: boolean;
+  keysAtOffice?: boolean;
+  keyLocationReason?: string;
+  replacedUserId?: string;
+  notes?: string;
+  decidedBy?: string;
+  paid?: boolean;
+  payoutDate?: string;
+  fixWorkPayment?: number;
+  isLaundryPrepared?: boolean;
+  isLaundryPickedUp?: boolean;
+  originalCleaningPhotos?: string[];
+  maintenanceReports?: SpecialReport[];
+  damageReports?: SpecialReport[];
+  missingReports?: SpecialReport[];
+  messReport?: {
+    description: string;
+    photos: string[];
+    status: 'pending' | 'approved' | 'rejected';
+    decisionNote?: string;
+  };
+  inspectionPhotos?: string[];
+}
+
+export interface Client {
+  id: string;
+  name: string;
+  contactEmail: string;
+  phone: string;
+  billingAddress: string;
+  status: 'active' | 'inactive';
+  vatNumber?: string;
+  propertyIds?: string[];
+}
+
+export interface Invoice {
+  id: string;
+  invoiceNumber: string;
+  clientId: string;
+  clientName: string;
+  issueDate: string;
+  totalAmount: number;
+  status: 'draft' | 'sent' | 'paid' | 'overdue';
+  dueDate: string;
+  periodStart?: string;
+  periodEnd?: string;
+  items: InvoiceItem[];
+  subtotal?: number;
+  discount?: number;
+  vat?: number;
 }

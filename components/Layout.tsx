@@ -1,158 +1,183 @@
 
-import React from 'react';
-import { TabType, UserRole, AppNotification } from '../types';
-import { Icons } from '../constants';
+import React, { useState } from 'react';
+import { TabType, UserRole } from '../types';
 
 interface LayoutProps {
-  children?: React.ReactNode;
+  children: React.ReactNode;
   activeTab: TabType;
   setActiveTab: (tab: TabType) => void;
-  role: UserRole;
+  role: UserRole; // This is the user's actual role
+  effectiveRole: UserRole; // This is the simulated role for UI testing
   onLogout: () => void;
-  currentUserId?: string;
-  notifications?: AppNotification[];
-  onOpenActivityCenter?: () => void;
-  authorizedLaundryUserIds?: string[];
+  onSimulateRole: (role: UserRole) => void;
 }
 
-const Layout = ({ 
-  children, 
-  activeTab, 
-  setActiveTab, 
-  role, 
-  onLogout, 
-  notifications = [],
-  onOpenActivityCenter,
-  authorizedLaundryUserIds = []
-}: LayoutProps) => {
-  
-  const hasUnread = notifications.some(n => {
-      const ts = typeof n.timestamp === 'string' ? new Date(n.timestamp).getTime() : n.timestamp;
-      return Date.now() - ts < 24 * 60 * 60 * 1000; 
-  });
+const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role, effectiveRole, onLogout, onSimulateRole }) => {
+  const [showMenu, setShowMenu] = useState(false);
+  const isAdmin = role === 'admin';
 
-  const allNavItems: { id: TabType; label: string; icon: React.FC<any>; roles: UserRole[] }[] = [
-    { 
-      id: 'dashboard', 
-      label: 'DASHBOARD', 
-      icon: Icons.Dashboard, 
-      roles: ['cleaner', 'driver', 'supervisor', 'admin', 'housekeeping', 'maintenance', 'hr', 'finance', 'laundry', 'client', 'outsourced_maintenance'] 
-    },
-    { 
-      id: 'shifts', 
-      label: 'SCHEDULE', 
-      icon: Icons.Calendar, 
-      roles: ['cleaner', 'admin', 'supervisor', 'housekeeping', 'maintenance'] 
-    },
-    { 
-      id: 'logistics', 
-      label: 'LOGISTICS', 
-      icon: Icons.Truck, 
-      roles: ['driver', 'admin', 'housekeeping'] 
-    },
-    {
-        id: 'ai',
-        label: 'INTEL',
-        icon: Icons.Sparkles,
-        roles: ['cleaner', 'driver', 'supervisor', 'admin', 'housekeeping', 'maintenance', 'hr', 'finance', 'laundry', 'client']
-    },
-    { 
-      id: 'manual' as TabType, 
-      label: 'GUIDE', 
-      icon: Icons.Settings,
-      roles: ['admin', 'housekeeping', 'hr'] 
-    },
+  const navItems: { id: TabType; label: string; icon: string; roles: UserRole[] }[] = [
+    { id: 'dashboard', label: 'Dashboard', icon: '📊', roles: ['admin', 'cleaner', 'driver', 'housekeeping', 'supervisor', 'hr', 'finance', 'client'] },
+    { id: 'shifts', label: 'Schedule', icon: '🗓️', roles: ['admin', 'cleaner', 'housekeeping', 'supervisor'] }, // Driver removed
+    { id: 'logistics', label: 'Deliveries', icon: '📦', roles: ['admin', 'driver', 'housekeeping'] },
+    { id: 'tutorials', label: 'Guidelines', icon: '📚', roles: ['admin', 'cleaner', 'driver', 'housekeeping', 'supervisor'] },
+    { id: 'properties', label: 'Properties', icon: '🏠', roles: ['admin', 'housekeeping'] },
+    { id: 'clients', label: 'Clients', icon: '🏢', roles: ['admin', 'finance'] },
+    { id: 'finance', label: 'Finance', icon: '💳', roles: ['admin', 'finance'] },
+    { id: 'reports', label: 'Reports', icon: '📈', roles: ['admin', 'hr', 'housekeeping'] },
+    { id: 'users', label: 'Team', icon: '👥', roles: ['admin', 'hr'] },
+    { id: 'settings', label: 'Settings', icon: '⚙️', roles: ['admin'] },
   ];
 
-  const desktopNavItems = [
-    ...allNavItems,
-    { id: 'users' as TabType, label: 'TEAM', icon: Icons.Dashboard, roles: ['admin', 'hr'] },
-    { id: 'settings' as TabType, label: 'CORE', icon: Icons.Settings, roles: ['admin'] }
-  ].filter(item => (item.roles as string[]).includes(role));
-
-  const mobileNavItems = allNavItems.filter(item => (item.roles as string[]).includes(role));
+  // Filters navigation based on the SIMULATED role
+  const visibleItems = navItems.filter(item => item.roles.includes(effectiveRole));
+  const mobilePrimary = visibleItems.filter(i => ['dashboard', 'shifts', 'logistics'].includes(i.id));
 
   return (
-    <div className="flex h-screen overflow-hidden bg-white text-[#1A1A1A]">
-      
-      {/* SIDEBAR (Desktop) */}
-      <aside className="hidden md:flex flex-col w-72 bg-[#1A1A1A] text-white z-20 shadow-2xl">
-        <div className="p-10">
-          <div className="flex flex-col">
-             <span className="text-[#C5A059] text-[10px] font-black tracking-[0.4em] mb-1">RESET</span>
-             <h1 className="font-serif-brand font-bold text-2xl tracking-tighter leading-none">STUDIO</h1>
-          </div>
+    <div className="flex h-screen bg-white overflow-hidden">
+      {/* TEAL SIDEBAR */}
+      <aside className="hidden md:flex flex-col w-64 bg-[#0D9488] text-white shrink-0">
+        <div className="p-8">
+          <h1 className="font-brand text-2xl text-white tracking-tighter uppercase leading-none">RESET</h1>
+          <p className="text-[9px] font-bold text-teal-100 uppercase tracking-[0.25em] mt-2">HOSPITALITY STUDIO</p>
         </div>
         
-        <nav className="flex-1 px-6 py-4 space-y-2 overflow-y-auto custom-scrollbar">
-          {desktopNavItems.map((item) => (
+        {/* SIMULATION INDICATOR */}
+        {role !== effectiveRole && (
+          <div className="mx-4 mb-4 px-4 py-2 bg-red-600 rounded-xl border border-red-400 animate-pulse">
+            <p className="text-[8px] font-black uppercase tracking-widest text-white">SIMULATING: {effectiveRole.toUpperCase()}</p>
+          </div>
+        )}
+
+        <nav className="flex-1 overflow-y-auto px-4 space-y-1 custom-scrollbar">
+          {visibleItems.map(item => (
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-2xl transition-all duration-300 ${
-                activeTab === item.id
-                  ? 'bg-[#C5A059] text-black font-black shadow-xl scale-[1.02]' 
-                  : 'text-white/40 hover:text-white hover:bg-white/5 font-bold' 
+              className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-2xl text-sm font-semibold transition-all ${
+                activeTab === item.id ? 'bg-white text-[#0D9488] shadow-lg' : 'text-teal-50 hover:bg-white/10'
               }`}
             >
-              <item.icon />
-              <span className="text-[10px] tracking-[0.2em] uppercase">{item.label}</span>
+              <span className="text-xl">{item.icon}</span>
+              <span>{item.label}</span>
             </button>
           ))}
         </nav>
 
-        <div className="p-8 border-t border-white/5">
-          <button 
-            onClick={onLogout}
-            className="w-full flex items-center gap-4 px-5 py-3 text-white/20 font-black rounded-xl text-[9px] uppercase tracking-widest hover:text-red-500 transition-all"
-          >
-            EXIT STUDIO
+        <div className="p-4 border-t border-teal-700/50 space-y-4">
+          {isAdmin && (
+            <div className="px-2">
+              <p className="text-[7px] font-black text-teal-200 uppercase tracking-[0.3em] mb-2">Simulate UI View:</p>
+              <select 
+                className="w-full bg-teal-800 text-[9px] font-black uppercase border border-teal-600 rounded-lg p-2 outline-none focus:border-white transition-colors"
+                value={effectiveRole}
+                onChange={(e) => onSimulateRole(e.target.value as UserRole)}
+              >
+                <option value="admin">ADMIN (FULL)</option>
+                <option value="cleaner">CLEANER VIEW</option>
+                <option value="driver">DRIVER VIEW</option>
+                <option value="supervisor">SUPERVISOR VIEW</option>
+                <option value="housekeeping">HOUSEKEEPING VIEW</option>
+              </select>
+            </div>
+          )}
+          
+          <button onClick={onLogout} className="w-full flex items-center gap-4 px-5 py-3 text-teal-100 text-xs font-bold uppercase hover:bg-white/10 rounded-2xl transition-colors">
+             <span>🚪</span>
+             <span>Log out</span>
           </button>
         </div>
       </aside>
 
       {/* MAIN CONTENT */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
-        {/* Mobile Header */}
-        <header className="md:hidden sticky top-0 bg-white/80 backdrop-blur-md border-b border-black/5 flex justify-between items-center px-6 py-4 z-50 pt-[calc(1rem+env(safe-area-inset-top))]">
-          <div className="flex flex-col">
-             <span className="text-[#C5A059] text-[8px] font-black tracking-[0.3em] leading-none">RESET</span>
-             <h1 className="font-serif-brand font-bold text-lg tracking-tighter leading-none">STUDIO</h1>
-          </div>
-          <button 
-            onClick={onOpenActivityCenter}
-            className="w-10 h-10 flex items-center justify-center rounded-full bg-black/5 text-black relative transition-colors"
-          >
-             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-             {hasUnread && <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-[#C5A059] rounded-full border-2 border-white"></span>}
-          </button>
+      <main className="flex-1 flex flex-col min-w-0 relative">
+        <header className="md:hidden bg-white border-b border-slate-100 px-6 py-4 flex justify-between items-center sticky top-0 z-40">
+           <div className="flex flex-col">
+              <h2 className="font-brand font-bold text-[#0D9488] text-xl leading-none">RESET</h2>
+              <span className="text-[7px] font-black text-[#0D9488] uppercase tracking-widest mt-0.5">
+                {role !== effectiveRole ? `PREVIEW: ${effectiveRole.toUpperCase()}` : 'HOSPITALITY STUDIO'}
+              </span>
+           </div>
+           <div className={`w-9 h-9 rounded-full border flex items-center justify-center text-[10px] font-bold uppercase ${role !== effectiveRole ? 'bg-red-50 border-red-200 text-red-600' : 'bg-teal-50 border border-teal-100 text-[#0D9488]'}`}>
+            {effectiveRole.charAt(0)}
+           </div>
         </header>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar bg-white">
-          <div className="max-w-6xl mx-auto w-full p-6 md:p-12 pb-32 md:pb-12">
+        {/* MOBILE SIMULATION TOGGLE */}
+        {isAdmin && role !== effectiveRole && (
+          <div className="md:hidden bg-red-600 text-white px-6 py-1.5 flex justify-between items-center text-[8px] font-black uppercase tracking-widest">
+            <span>Simulation Mode Active</span>
+            <button onClick={() => onSimulateRole('admin')} className="underline">Exit Preview</button>
+          </div>
+        )}
+
+        <div className="flex-1 overflow-y-auto p-6 md:p-10 pb-28 md:pb-10 custom-scrollbar">
+          <div className="max-w-7xl mx-auto">
             {children}
           </div>
         </div>
 
-        {/* BOTTOM NAV (Mobile) */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-black/5 flex items-center justify-around px-4 py-2 pb-[calc(1rem+env(safe-area-inset-bottom))] z-50 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
-          {mobileNavItems.map((item) => (
-            <button
-              key={item.id}
+        {/* MOBILE DOCK */}
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 glass-dock px-2 py-3 flex justify-around items-center z-50">
+           {mobilePrimary.map(item => (
+             <button 
+              key={item.id} 
               onClick={() => setActiveTab(item.id)}
-              className={`flex flex-col items-center gap-1.5 p-2 rounded-2xl transition-all flex-1 relative ${
-                activeTab === item.id ? 'text-[#C5A059]' : 'text-black/20'
-              }`}
-            >
-              {activeTab === item.id && <div className="nav-active-indicator" />}
-              <item.icon />
-              <span className={`text-[8px] font-black tracking-widest ${activeTab === item.id ? 'text-black' : 'text-black/20'}`}>
-                {item.label}
-              </span>
-            </button>
-          ))}
+              className={`flex flex-col items-center gap-1 flex-1 transition-all ${activeTab === item.id ? 'text-[#0D9488]' : 'text-slate-400'}`}
+             >
+                <span className="text-2xl">{item.icon}</span>
+                <span className="text-[10px] font-bold uppercase tracking-tighter">{item.label}</span>
+             </button>
+           ))}
+           <button 
+            onClick={() => setShowMenu(true)}
+            className="flex flex-col items-center gap-1 flex-1 text-slate-400"
+           >
+              <span className="text-2xl">☰</span>
+              <span className="text-[10px] font-bold uppercase tracking-tighter">More</span>
+           </button>
         </nav>
+
+        {/* MENU MODAL */}
+        {showMenu && (
+          <div className="fixed inset-0 bg-white z-[100] p-8 animate-in slide-in-from-bottom duration-300">
+             <div className="flex justify-between items-center mb-10">
+                <div className="flex flex-col text-left">
+                  <h2 className="text-2xl font-brand font-bold text-[#0D9488] leading-none">RESET</h2>
+                  <span className="text-[8px] font-black text-[#0D9488] uppercase tracking-[0.3em]">HOSPITALITY STUDIO</span>
+                </div>
+                <button onClick={() => setShowMenu(false)} className="w-10 h-10 flex items-center justify-center bg-slate-100 rounded-full text-2xl text-slate-500">&times;</button>
+             </div>
+             <div className="grid grid-cols-2 gap-4">
+                {visibleItems.map(item => (
+                  <button 
+                    key={item.id} 
+                    onClick={() => { setActiveTab(item.id); setShowMenu(false); }}
+                    className={`flex flex-col items-center justify-center p-6 rounded-3xl transition-all gap-3 border ${activeTab === item.id ? 'bg-teal-50 border-[#0D9488] text-[#0D9488]' : 'bg-slate-50 border-slate-100 text-slate-600'}`}
+                  >
+                    <span className="text-3xl">{item.icon}</span>
+                    <span className="text-xs font-bold uppercase tracking-widest">{item.label}</span>
+                  </button>
+                ))}
+                {isAdmin && (
+                  <div className="col-span-2 mt-6 pt-6 border-t border-slate-100">
+                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-4">Simulation Control:</p>
+                    <div className="grid grid-cols-2 gap-2">
+                       {['admin', 'cleaner', 'driver', 'supervisor', 'housekeeping'].map(r => (
+                         <button 
+                          key={r}
+                          onClick={() => { onSimulateRole(r as UserRole); setShowMenu(false); }}
+                          className={`py-3 rounded-xl text-[8px] font-black uppercase tracking-widest border transition-all ${effectiveRole === r ? 'bg-red-600 text-white border-red-600' : 'bg-white text-slate-400 border-slate-200'}`}
+                         >
+                           {r}
+                         </button>
+                       ))}
+                    </div>
+                  </div>
+                )}
+             </div>
+          </div>
+        )}
       </main>
     </div>
   );

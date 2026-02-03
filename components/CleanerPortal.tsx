@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Property, CleaningTask, Shift, User, AttributedPhoto, SpecialReport, SupplyItem } from '../types';
 import { uploadFile } from '../services/storageService';
@@ -16,15 +17,16 @@ const getLocalISO = (d: Date) => {
 };
 
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-  const R = 6371; // Radius of the earth in km
+  const R = 6371; 
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
   const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c; // Distance in km
+  return R * c; 
 };
 
 interface CleanerPortalProps {
+  user: User;
   shifts: Shift[];
   setShifts: React.Dispatch<React.SetStateAction<Shift[]>>;
   properties: Property[];
@@ -38,17 +40,13 @@ interface CleanerPortalProps {
 }
 
 const CleanerPortal: React.FC<CleanerPortalProps> = ({ 
-  shifts, setShifts, properties, users, initialSelectedShiftId, onConsumedDeepLink, authorizedInspectorIds = [], onClosePortal,
+  user, shifts, setShifts, properties, users, initialSelectedShiftId, onConsumedDeepLink, authorizedInspectorIds = [], onClosePortal,
   inventoryItems = [], onAddSupplyRequest
 }) => {
-  const currentUser = JSON.parse(localStorage.getItem('current_user_obj') || '{}');
-  const isAdmin = currentUser.role === 'admin';
-  const isHousekeeping = currentUser.role === 'housekeeping';
-  const isManagement = isAdmin || isHousekeeping;
-  
   const [selectedShiftId, setSelectedShiftId] = useState<string | null>(initialSelectedShiftId || null);
   const [currentStep, setCurrentStep] = useState<'list' | 'overview' | 'active' | 'review' | 'inspection'>('list');
   const [tasks, setTasks] = useState<CleaningTask[]>([]);
+  const [completedSpecialRequests, setCompletedSpecialRequests] = useState<Record<string, boolean>>({});
   const [timer, setTimer] = useState(0);
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
   
@@ -56,12 +54,11 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   const [isVerifying, setIsVerifying] = useState(false);
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
+  const [attemptedNext, setAttemptedNext] = useState(false);
   
-  // Checkout Key states
   const [keyInBoxPhotos, setKeyInBoxPhotos] = useState<AttributedPhoto[]>([]);
   const [boxClosedPhotos, setBoxClosedPhotos] = useState<AttributedPhoto[]>([]);
 
-  // Reporting modals state
   const [showMessReport, setShowMessReport] = useState(false);
   const [messDescription, setMessDescription] = useState('');
   const [messPhotos, setMessPhotos] = useState<string[]>([]);
@@ -70,15 +67,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   const [reportDescription, setReportDescription] = useState('');
   const [reportPhotos, setReportPhotos] = useState<string[]>([]);
   const [missingCategory, setMissingCategory] = useState<'laundry' | 'apartment'>('apartment');
-
-  // Supply Request State
-  const [showSupplyModal, setShowSupplyModal] = useState(false);
-  const [selectedSupplyItems, setSelectedSupplyItems] = useState<Record<string, number>>({});
-
-  // Special Request Checkboxes state
-  const [completedSpecialRequests, setCompletedSpecialRequests] = useState<Record<string, boolean>>({});
-
-  // Notification State
+  
   const [notification, setNotification] = useState<{message: string, type: 'error' | 'success'} | null>(null);
 
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -88,8 +77,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [checkoutTarget, setCheckoutTarget] = useState<'keyInBox' | 'boxClosed' | null>(null);
-
-  // Prevent multiple triggers of geofence breach
   const hasTriggeredBreach = useRef(false);
 
   const realTodayISO = useMemo(() => getLocalISO(new Date()), []);
@@ -129,27 +116,12 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   const activeProperty = useMemo(() => activeShift ? properties.find(p => p.id === activeShift.propertyId) : null, [activeShift, properties]);
 
   const currentlyActiveShift = useMemo(() => {
-    if (isManagement) return null; 
-    return (shifts || []).find(s => s.status === 'active' && s.userIds.includes(currentUser.id));
-  }, [shifts, currentUser.id, isManagement]);
-
-  const canPerformAudit = useMemo(() => {
-    if (!currentUser.id) return false;
-    if (currentUser.role === 'supervisor') return true;
-    if (isAdmin) return true;
-    if (isManagement) return (authorizedInspectorIds.includes(currentUser.id) || (activeShift && activeShift.userIds.includes(currentUser.id)));
-    return false;
-  }, [currentUser, activeShift, authorizedInspectorIds, isAdmin, isManagement]);
+    return (shifts || []).find(s => s.status === 'active' && s.userIds.includes(user.id));
+  }, [shifts, user.id]);
 
   const activeQueue = useMemo(() => {
     return (shifts || [])
-      .filter(s => {
-        if (!s.isPublished) return false;
-        if (s.date !== viewedDateStr) return false;
-        if (s.userIds.includes(currentUser.id)) return true;
-        if (isManagement && s.status === 'completed' && s.approvalStatus === 'pending') return true;
-        return false;
-      })
+      .filter(s => s.isPublished && s.userIds.includes(user.id) && s.date === viewedDateStr)
       .sort((a, b) => {
         const isCompletedA = a.status === 'completed';
         const isCompletedB = b.status === 'completed';
@@ -157,7 +129,13 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
         if (!isCompletedA && isCompletedB) return -1;
         return parseTimeValue(a.startTime) - parseTimeValue(b.startTime);
       });
-  }, [shifts, currentUser.id, isManagement, viewedDateStr]);
+  }, [shifts, user.id, viewedDateStr]);
+
+  const categorizedQueue = useMemo(() => {
+    const cleanTasks = activeQueue.filter(s => s.serviceType !== 'TO CHECK APARTMENT');
+    const inspectionTasks = activeQueue.filter(s => s.serviceType === 'TO CHECK APARTMENT');
+    return { cleanTasks, inspectionTasks };
+  }, [activeQueue]);
 
   const generateDynamicTasks = (property: Property): CleaningTask[] => {
     const dynamicTasks: CleaningTask[] = [];
@@ -179,109 +157,59 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
 
   const handleForceClockOut = useCallback(() => {
     if (!selectedShiftId) return;
-    if (isManagement) return; 
     if (hasTriggeredBreach.current) return; 
-
     hasTriggeredBreach.current = true;
-
     setShifts(prev => prev.map(s => s.id === selectedShiftId ? ({ 
       ...s, 
       status: 'completed', 
       actualEndTime: Date.now(), 
       approvalStatus: 'pending', 
       wasRejected: false,
-      approvalComment: 'SYSTEM AUTO-STOP: Geofence Breach (User left property). Please verify actual hours.',
+      approvalComment: 'SYSTEM AUTO-STOP: Geofence Breach (User left property).',
       tasks: tasks 
     } as Shift) : s));
-
-    localStorage.removeItem(`shared_protocol_v8_${selectedShiftId}`);
-    localStorage.removeItem(`shared_special_reqs_v1_${selectedShiftId}`);
-    localStorage.removeItem(`shared_checkout_keys_v1_${selectedShiftId}`);
-    
+    localStorage.removeItem(`shared_protocol_v10_${selectedShiftId}`);
     setSelectedShiftId(null);
     setCurrentStep('list');
-    alert("⚠️ LOCATION ALERT: You have left the property area (150m+). Shift has been auto-stopped and sent for review.");
-  }, [selectedShiftId, setShifts, tasks, isManagement]);
+    alert("⚠️ LOCATION ALERT: You have left the property area (150m+). Shift auto-stopped.");
+  }, [selectedShiftId, setShifts, tasks]);
 
-  // GPS Monitor
   useEffect(() => {
     let watchId: number | null = null;
-    if (currentStep === 'active') {
-        hasTriggeredBreach.current = false;
-    }
-    if (currentStep === 'active' && activeProperty?.lat && activeProperty?.lng && !isManagement) {
+    if (currentStep === 'active') hasTriggeredBreach.current = false;
+    if (currentStep === 'active' && activeProperty?.lat && activeProperty?.lng) {
       const targetLat = activeProperty.lat;
       const targetLng = activeProperty.lng;
       watchId = navigator.geolocation.watchPosition(
         (position) => {
           const distanceKm = calculateDistance(targetLat, targetLng, position.coords.latitude, position.coords.longitude);
-          if (distanceKm > 0.15) { 
-            handleForceClockOut();
-          }
+          if (distanceKm > 0.15) handleForceClockOut();
         },
         (error) => console.warn("Geolocation watch error:", error),
         { enableHighAccuracy: true, maximumAge: 10000, timeout: 10000 }
       );
     }
     return () => { if (watchId !== null) navigator.geolocation.clearWatch(watchId); };
-  }, [currentStep, activeProperty, handleForceClockOut, isManagement]);
+  }, [currentStep, activeProperty, handleForceClockOut]);
 
-  useEffect(() => {
-    if (initialSelectedShiftId) {
-      const shift = (shifts || []).find(s => s.id === initialSelectedShiftId);
-      if (shift) {
-        setSelectedShiftId(shift.id);
-        const needsVerification = shift.status === 'completed' && shift.approvalStatus === 'pending';
-        const isExplicitAudit = shift.serviceType === 'TO CHECK APARTMENT';
-        if (canPerformAudit && (isExplicitAudit || needsVerification)) {
-          setCurrentStep('inspection');
-        } else {
-          setCurrentStep(shift.status === 'active' ? 'active' : 'overview');
-        }
-        if (onConsumedDeepLink) onConsumedDeepLink();
-      }
-    }
-  }, [initialSelectedShiftId, shifts, onConsumedDeepLink, canPerformAudit]);
-
-  // Load Saved State
   useEffect(() => {
     if (selectedShiftId && currentStep === 'active' && activeProperty) {
-      const storageKey = `shared_protocol_v8_${selectedShiftId}`;
-      const specialReqKey = `shared_special_reqs_v1_${selectedShiftId}`;
-      const checkoutKey = `shared_checkout_keys_v1_${selectedShiftId}`;
-      try {
-        const savedTasks = localStorage.getItem(storageKey);
-        if (savedTasks) setTasks(JSON.parse(savedTasks));
-        else {
-          if (activeShift?.serviceType === 'TO FIX') setTasks([{ id: 'remedial-proof', label: 'Proof of Correction (Required)', isMandatory: true, minPhotos: 1, photos: [] }]);
-          else setTasks(generateDynamicTasks(activeProperty));
-        }
-        const savedSpecial = localStorage.getItem(specialReqKey);
-        if (savedSpecial) setCompletedSpecialRequests(JSON.parse(savedSpecial));
-        const savedCheckout = localStorage.getItem(checkoutKey);
-        if (savedCheckout) {
-          const parsed = JSON.parse(savedCheckout);
-          setKeyInBoxPhotos(parsed.keyInBox || []);
-          setBoxClosedPhotos(parsed.boxClosed || []);
-        }
-      } catch (e) { console.error(e); }
+      const storageKey = `shared_protocol_v10_${selectedShiftId}`;
+      const savedTasks = localStorage.getItem(storageKey);
+      if (savedTasks) setTasks(JSON.parse(savedTasks));
+      else {
+        if (activeShift?.serviceType === 'TO FIX') setTasks([{ id: 'remedial-proof', label: 'Proof of Correction (Required)', isMandatory: true, minPhotos: 1, photos: [] }]);
+        else setTasks(generateDynamicTasks(activeProperty));
+      }
     }
   }, [selectedShiftId, currentStep, activeProperty, activeShift?.serviceType]);
 
-  // Persist State
   useEffect(() => {
     if (selectedShiftId && tasks.length > 0) {
-      try { localStorage.setItem(`shared_protocol_v8_${selectedShiftId}`, JSON.stringify(tasks)); } catch (e) { console.warn(e); }
+      localStorage.setItem(`shared_protocol_v10_${selectedShiftId}`, JSON.stringify(tasks));
     }
-    if (selectedShiftId) {
-      try { 
-        localStorage.setItem(`shared_special_reqs_v1_${selectedShiftId}`, JSON.stringify(completedSpecialRequests));
-        localStorage.setItem(`shared_checkout_keys_v1_${selectedShiftId}`, JSON.stringify({ keyInBox: keyInBoxPhotos, boxClosed: boxClosedPhotos }));
-      } catch (e) { console.warn(e); }
-    }
-  }, [tasks, completedSpecialRequests, keyInBoxPhotos, boxClosedPhotos, selectedShiftId]);
+  }, [tasks, selectedShiftId]);
 
-  // Timer
   useEffect(() => {
     let interval: any;
     if ((currentStep === 'active' || currentStep === 'review' || currentStep === 'inspection') && activeShift?.actualStartTime) {
@@ -295,7 +223,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
 
   const verifyLocation = () => {
     if (!activeProperty || !activeProperty.lat || !activeProperty.lng) {
-        showNotification("Property coordinates missing. Proceeding with caution.", 'success');
+        showNotification("Property coordinates missing. Manual override required.", 'success');
         setIsLocationVerified(true);
         return;
     }
@@ -303,47 +231,39 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     navigator.geolocation.getCurrentPosition(
         (position) => {
             const distance = calculateDistance(activeProperty.lat!, activeProperty.lng!, position.coords.latitude, position.coords.longitude);
-            if (distance <= 0.2) {
+            if (distance <= 0.15) {
                 setIsLocationVerified(true);
                 showNotification("Location Verified Successfully", 'success');
             } else {
-                showNotification(`Location Error: You are ${distance.toFixed(2)}km away. Must be closer.`, 'error');
+                showNotification(`Location Error: You are ${Math.round(distance * 1000)}m away. 150m radius required.`, 'error');
             }
             setIsVerifying(false);
         },
-        (error) => { showNotification("GPS Signal Required. Please enable location services.", 'error'); setIsVerifying(false); },
+        (error) => { showNotification("GPS Access Required.", 'error'); setIsVerifying(false); },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   };
   
   const setSelectedIdAndStart = (shift: Shift) => {
     if (currentlyActiveShift && currentlyActiveShift.id !== shift.id) {
-        showNotification(`ACTIVE SHIFT ALERT: You must clock out of ${currentlyActiveShift.propertyName} first.`, 'error');
+        showNotification(`ACTIVE SHIFT ALERT: Finish ${currentlyActiveShift.propertyName} first.`, 'error');
         return;
     }
-    const isCompleted = shift.status === 'completed';
-    const canEnter = !isCompleted || (isManagement && shift.approvalStatus === 'pending');
-    if (!canEnter) return;
-
     setSelectedShiftId(shift.id);
     setIsLocationVerified(false);
-    const needsVerification = shift.status === 'completed' && shift.approvalStatus === 'pending';
-    const isExplicitAudit = shift.serviceType === 'TO CHECK APARTMENT';
-    if (canPerformAudit && (isExplicitAudit || needsVerification)) setCurrentStep('inspection');
-    else {
-      if (shift.status === 'active') setCurrentStep('active');
-      else setCurrentStep('overview');
-    }
+    setAttemptedNext(false);
+    if (shift.status === 'active') setCurrentStep('active');
+    else setCurrentStep('overview');
   };
 
   const handleCapture = async (e: React.ChangeEvent<HTMLInputElement>, target: 'task' | 'mess' | 'report' | 'checkout') => {
     const file = e.target.files?.[0];
-    if (!file || !currentUser.id || isProcessingPhoto) return;
+    if (!file || isProcessingPhoto) return;
     setIsProcessingPhoto(true);
     try {
       const url = await uploadFile(file);
       if (url) {
-        const attributed: AttributedPhoto = { url: url, userId: currentUser.id };
+        const attributed: AttributedPhoto = { url: url, userId: user.id };
         if (target === 'mess') setMessPhotos(prev => [...prev, url]);
         else if (target === 'report') setReportPhotos(prev => [...prev, url]);
         else if (target === 'checkout') {
@@ -354,10 +274,9 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
           const tId = activeTaskId || tasks[0].id;
           const newTasks = tasks.map(t => t.id === tId ? { ...t, photos: [...t.photos, attributed] } : t);
           setTasks(newTasks);
-          if (selectedShiftId) setShifts(prev => prev.map(s => s.id === selectedShiftId ? { ...s, tasks: newTasks } : s));
         }
       }
-    } catch (error) { showNotification("Photo upload failed.", 'error'); } finally { setIsProcessingPhoto(false); }
+    } catch (error) { showNotification("Upload failed.", 'error'); } finally { setIsProcessingPhoto(false); }
   };
 
   const handleStartShift = () => {
@@ -368,9 +287,10 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
 
   const missingTasks = useMemo(() => tasks.filter(t => t.isMandatory && t.photos.length < t.minPhotos), [tasks]);
 
-  const handleProceedToClockOut = () => {
+  const handleProceedToHandover = () => {
     if (missingTasks.length > 0) {
-      showNotification(`MANDATORY ACTION REQUIRED: Please verify ${missingTasks[0].label} with a photo.`, 'error');
+      setAttemptedNext(true);
+      showNotification(`INCOMPLETE CHECKLIST: Evidence Missing.`, 'error');
       return;
     }
     setCurrentStep('review');
@@ -380,7 +300,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   const handleFinishShift = () => {
     if (!selectedShiftId || isFinishing) return;
     if (keyInBoxPhotos.length < 1 || boxClosedPhotos.length < 1) {
-      showNotification("SECURITY PROTOCOL: Keybox evidence photos are required.", 'error');
+      showNotification("SECURITY EVIDENCE REQUIRED.", 'error');
       return;
     }
     setIsFinishing(true);
@@ -392,58 +312,37 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
         tasks: tasks,
         checkoutPhotos: { keyInBox: keyInBoxPhotos, boxClosed: boxClosedPhotos }
     } as Shift) : s));
-    
-    localStorage.removeItem(`shared_protocol_v8_${selectedShiftId}`);
-    localStorage.removeItem(`shared_special_reqs_v1_${selectedShiftId}`);
-    localStorage.removeItem(`shared_checkout_keys_v1_${selectedShiftId}`);
-    
+    localStorage.removeItem(`shared_protocol_v10_${selectedShiftId}`);
     setTimeout(() => {
         setIsFinishing(false);
-        if (isManagement && onClosePortal) onClosePortal();
+        if (onClosePortal) onClosePortal();
         else { setCurrentStep('list'); setSelectedShiftId(null); }
     }, 500);
   };
 
-  const handleForceFinish = () => {
-    if (!selectedShiftId) return;
-    setShifts(prev => prev.map(s => s.id === selectedShiftId ? ({ 
-        ...s, 
-        status: 'completed', 
-        actualEndTime: Date.now(), 
-        approvalStatus: 'pending', 
-        approvalComment: 'ADMIN FORCE CHECKOUT',
-        tasks: tasks,
-        checkoutPhotos: { keyInBox: keyInBoxPhotos, boxClosed: boxClosedPhotos }
-    } as Shift) : s));
-    localStorage.removeItem(`shared_protocol_v8_${selectedShiftId}`);
-    localStorage.removeItem(`shared_special_reqs_v1_${selectedShiftId}`);
-    localStorage.removeItem(`shared_checkout_keys_v1_${selectedShiftId}`);
-    if (isManagement && onClosePortal) onClosePortal();
-    else { setCurrentStep('list'); setSelectedShiftId(null); }
-  };
-
   const handleSubmitMessReport = () => {
     if (!selectedShiftId) return;
+    if (!messDescription.trim() || messPhotos.length === 0) {
+        showNotification("Description and Photo required.", 'error');
+        return;
+    }
     setShifts(prev => prev.map(s => {
       if (s.id === selectedShiftId) {
-        return {
-          ...s,
-          messReport: { description: messDescription, photos: messPhotos, status: 'pending' }
-        };
+        return { ...s, messReport: { description: messDescription, photos: messPhotos, status: 'pending' } };
       }
       return s;
     }));
     setShowMessReport(false);
     setMessDescription('');
     setMessPhotos([]);
-    showNotification("Request for extra time submitted.", 'success');
+    showNotification("Request submitted for review.", 'success');
   };
 
-  const handleReportSubmit = () => {
+  const handleIncidentSubmit = () => {
     if (!selectedShiftId || !reportModalType) return;
-    if (!reportDescription.trim()) { showNotification("Please describe the issue.", 'error'); return; }
+    if (!reportDescription.trim()) { showNotification("Description required.", 'error'); return; }
     if ((reportModalType === 'maintenance' || reportModalType === 'damage') && reportPhotos.length === 0) {
-        showNotification("A photo is required.", 'error');
+        showNotification("Camera photo required.", 'error');
         return;
     }
     const report: SpecialReport = { id: `rep-${Date.now()}`, description: reportDescription, photos: reportPhotos, timestamp: Date.now(), status: 'open', category: reportModalType === 'missing' ? missingCategory : undefined };
@@ -458,60 +357,83 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     setReportModalType(null);
     setReportDescription('');
     setReportPhotos([]);
-    showNotification("Incident reported.", 'success');
+    showNotification("Incident successfully logged.", 'success');
+  };
+
+  const renderShiftCard = (shift: Shift) => {
+    const isActive = shift.status === 'active';
+    const isCompleted = shift.status === 'completed';
+    const isPendingReview = isCompleted && shift.approvalStatus === 'pending';
+    return (
+      <div key={shift.id} onClick={() => setSelectedIdAndStart(shift)} className={`p-6 rounded-[32px] border transition-all relative overflow-hidden group active:scale-[0.98] ${isPendingReview ? 'bg-blue-50 border-blue-200 shadow-md cursor-pointer' : isActive ? 'bg-teal-50 border-teal-600 shadow-lg ring-2 ring-teal-600/20 cursor-pointer' : isCompleted ? 'bg-gray-50 border-gray-200 opacity-60' : 'bg-white border-gray-200 hover:border-teal-600/40 cursor-pointer shadow-sm'}`}>
+        <div className="flex justify-between items-start">
+          <div className="space-y-1.5 text-left">
+            <h3 className="text-base font-bold text-black uppercase tracking-tight">{shift.propertyName}</h3>
+            <p className="text-[9px] font-black text-teal-600 uppercase tracking-widest">{shift.startTime} — {shift.endTime} • {shift.serviceType}</p>
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            {isActive ? <span className="text-[8px] font-black bg-teal-600 text-white px-3 py-1 rounded-full animate-pulse border border-teal-600 uppercase">Live</span> : isPendingReview ? <span className="text-[8px] font-black bg-blue-100 text-blue-700 px-3 py-1 rounded-full border border-blue-200 uppercase">Reviewing</span> : isCompleted ? <span className="text-[8px] font-black bg-gray-100 text-gray-500 px-3 py-1 rounded-full border border-gray-200 uppercase">Done</span> : <div className="w-8 h-8 rounded-full bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-400 group-hover:bg-teal-600 group-hover:text-white group-hover:border-teal-600 transition-all"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="9 18 15 12 9 6"/></svg></div>}
+          </div>
+        </div>
+      </div>
+    );
   };
 
   if (currentStep === 'list') {
+    const isSupervisor = user.role === 'supervisor' || user.role === 'admin';
+
     return (
-      <div className="space-y-8 animate-in fade-in duration-700 pb-32 max-w-2xl mx-auto px-2 text-left relative">
-        {notification && (
-          <div className={`fixed top-6 left-1/2 transform -translate-x-1/2 z-[1000] px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 min-w-[300px] max-w-[90vw] animate-in slide-in-from-top-4 duration-300 ${notification.type === 'error' ? 'bg-red-600 text-white' : 'bg-green-600 text-white'}`}>
-            <p className="text-xs font-bold leading-tight">{notification.message}</p>
-          </div>
-        )}
-        <header className="space-y-6">
+      <div className="space-y-8 animate-in fade-in duration-700 pb-32 max-w-6xl mx-auto px-2 text-left relative">
+        <header className="space-y-6 max-w-2xl mx-auto md:max-w-none">
           <div className="flex flex-col space-y-1">
-            <p className="text-[#C5A059] font-black uppercase tracking-[0.4em] text-[8px]">Field Operations</p>
-            <h1 className="text-2xl font-serif-brand text-black tracking-tight uppercase leading-none font-bold">Deployment Schedule</h1>
+            <p className="text-[#0D9488] font-black uppercase tracking-[0.4em] text-[8px]">Deployment Schedule</p>
+            <h1 className="text-2xl font-brand text-black tracking-tight uppercase leading-none font-bold">Field Ops</h1>
           </div>
           <div className="flex justify-between items-center gap-2 overflow-x-auto no-scrollbar pb-2">
             {weekDays.map((wd) => (
-              <button key={wd.iso} onClick={() => setViewedDateISO(wd.iso)} className={`flex flex-col items-center min-w-[60px] py-3 rounded-2xl border transition-all ${viewedDateISO === wd.iso ? 'bg-[#C5A059] border-[#C5A059] text-white shadow-lg scale-105' : 'bg-white border-gray-200 text-gray-400 hover:border-[#C5A059]/40'}`}>
+              <button key={wd.iso} onClick={() => setViewedDateISO(wd.iso)} className={`flex flex-col items-center min-w-[60px] py-3 rounded-2xl border transition-all ${viewedDateISO === wd.iso ? 'bg-teal-600 border-teal-600 text-white shadow-lg scale-105' : 'bg-white border-gray-200 text-gray-400 hover:border-teal-600/40'}`}>
                 <span className={`text-[8px] font-black uppercase mb-1 ${viewedDateISO === wd.iso ? 'text-white/80' : 'text-gray-300'}`}>{wd.dayName}</span>
                 <span className={`text-sm font-bold ${viewedDateISO === wd.iso ? 'text-white' : 'text-gray-600'}`}>{wd.dateNum}</span>
               </button>
             ))}
           </div>
         </header>
-        <div className="space-y-4">
-          <div className="flex items-center gap-3 px-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#C5A059] animate-pulse"></span>
-            <h2 className="text-[9px] font-black text-black/30 uppercase tracking-[0.4em]">ASSIGNED UNITS ({activeQueue.length})</h2>
+
+        {/* Dynamic Layout: Columns for Supervisor, Single List for Cleaner */}
+        <div className={`grid grid-cols-1 gap-8 ${isSupervisor ? 'md:grid-cols-2' : 'max-w-2xl mx-auto'}`}>
+          {/* Units to Clean Section */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 px-1">
+              <span className="text-sm">🧹</span>
+              <h2 className="text-[9px] font-black text-black/30 uppercase tracking-[0.4em]">UNITS TO CLEAN ({categorizedQueue.cleanTasks.length})</h2>
+            </div>
+            {categorizedQueue.cleanTasks.length === 0 ? (
+              <div className="py-10 text-center border border-dashed border-gray-200 rounded-[32px] opacity-40">
+                <p className="text-[10px] font-black uppercase text-black tracking-widest">No cleaning tasks today.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {categorizedQueue.cleanTasks.map(shift => renderShiftCard(shift))}
+              </div>
+            )}
           </div>
-          {activeQueue.length === 0 ? (
-            <div className="py-20 text-center border-2 border-dashed border-gray-100 rounded-[32px] opacity-40"><p className="text-[10px] font-black uppercase text-black tracking-widest">No deployments for this date.</p></div>
-          ) : (
+
+          {/* Units to Inspect Section (Only if Supervisor/Admin) */}
+          {isSupervisor && (
             <div className="space-y-4">
-              {activeQueue.map(shift => {
-                const isActive = shift.status === 'active';
-                const isCompleted = shift.status === 'completed';
-                const isPendingReview = isCompleted && shift.approvalStatus === 'pending';
-                return (
-                  <div key={shift.id} onClick={() => setSelectedIdAndStart(shift)} className={`p-6 rounded-[32px] border transition-all relative overflow-hidden group active:scale-[0.98] ${isPendingReview ? 'bg-blue-50 border-blue-200 shadow-md cursor-pointer' : isActive ? 'bg-[#FDF8EE] border-[#C5A059] shadow-lg ring-2 ring-[#C5A059]/20 cursor-pointer' : isCompleted ? 'bg-gray-50 border-gray-200 opacity-60 cursor-not-allowed' : 'bg-white border-gray-200 hover:border-[#C5A059]/40 cursor-pointer shadow-sm'}`}>
-                    {isActive && <div className="absolute top-0 left-0 w-1 h-full bg-[#C5A059]"></div>}
-                    <div className="flex justify-between items-start">
-                      <div className="space-y-1.5">
-                        <h3 className="text-base font-bold text-black uppercase tracking-tight">{shift.propertyName}</h3>
-                        <p className="text-[9px] font-black text-[#C5A059] uppercase tracking-widest">{shift.startTime} • {shift.serviceType}</p>
-                        {shift.correctionStatus === 'fixing' && <span className="inline-block bg-red-100 text-red-600 px-2 py-0.5 rounded text-[7px] font-black uppercase tracking-widest border border-red-200">Correction Required</span>}
-                      </div>
-                      <div className="flex flex-col items-end gap-2">
-                        {isActive ? <span className="text-[8px] font-black bg-[#C5A059] text-black px-3 py-1 rounded-full animate-pulse border border-[#C5A059]">IN PROGRESS</span> : isPendingReview ? <span className="text-[8px] font-black bg-blue-100 text-blue-700 px-3 py-1 rounded-full border border-blue-200">IN REVIEW</span> : isCompleted ? <span className="text-[8px] font-black bg-gray-100 text-gray-500 px-3 py-1 rounded-full border border-gray-200">DONE</span> : <div className="w-8 h-8 rounded-full bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-400 group-hover:bg-[#C5A059] group-hover:text-black group-hover:border-[#C5A059] transition-all"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="9 18 15 12 9 6"/></svg></div>}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+              <div className="flex items-center gap-3 px-1">
+                <span className="text-sm">📋</span>
+                <h2 className="text-[9px] font-black text-black/30 uppercase tracking-[0.4em]">UNITS TO INSPECT ({categorizedQueue.inspectionTasks.length})</h2>
+              </div>
+              {categorizedQueue.inspectionTasks.length === 0 ? (
+                <div className="py-10 text-center border border-dashed border-gray-200 rounded-[32px] opacity-40">
+                  <p className="text-[10px] font-black uppercase text-black tracking-widest">No inspections scheduled.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {categorizedQueue.inspectionTasks.map(shift => renderShiftCard(shift))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -519,122 +441,167 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     );
   }
 
+  // --- Step: Overview ---
   if (currentStep === 'overview' && activeShift) {
     return (
       <div className="space-y-8 animate-in slide-in-from-right-8 duration-500 pb-32 max-w-2xl mx-auto px-4 text-left">
-        <button onClick={() => { setSelectedShiftId(null); setCurrentStep('list'); }} className="text-black/40 hover:text-black flex items-center gap-2 text-[10px] font-black uppercase tracking-widest"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg> Back to Schedule</button>
+        <button onClick={() => { setSelectedShiftId(null); setCurrentStep('list'); }} className="text-black/40 hover:text-black flex items-center gap-2 text-[10px] font-black uppercase tracking-widest"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg> BACK</button>
         <div className="space-y-2">
-          <h1 className="text-3xl font-serif-brand font-bold text-black uppercase tracking-tight leading-tight">{activeShift.propertyName}</h1>
-          <p className="text-[10px] font-black text-[#C5A059] uppercase tracking-[0.3em]">Deployment Briefing</p>
+          <h1 className="text-3xl font-brand font-bold text-black uppercase tracking-tight leading-tight">{activeShift.propertyName}</h1>
+          <p className="text-[10px] font-black text-teal-600 uppercase tracking-[0.3em]">MISSION BRIEFING</p>
         </div>
-        <div className="bg-[#FDF8EE] border border-[#D4B476]/30 p-8 rounded-[40px] space-y-8 shadow-xl">
-           <div className="grid grid-cols-2 gap-8">
-              <div><p className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-widest mb-1">Protocol</p><p className="text-sm font-bold text-black uppercase">{activeShift.serviceType}</p></div>
-              <div><p className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-widest mb-1">Scheduled</p><p className="text-sm font-bold text-black uppercase">{activeShift.startTime}</p></div>
-           </div>
+        <div className="bg-white border border-teal-100 p-8 rounded-[40px] space-y-8 shadow-xl">
+           {activeProperty?.entrancePhoto && (
+             <div className="space-y-3">
+                <p className="text-[8px] font-black text-teal-600 uppercase tracking-widest">Building Reference</p>
+                <img src={activeProperty.entrancePhoto} className="w-full h-56 object-cover rounded-3xl border border-teal-50 shadow-md" alt="Entrance" />
+             </div>
+           )}
 
            <div className="space-y-4">
-              <p className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-widest">Navigation</p>
-              <div className="grid grid-cols-2 gap-3">
-                <a 
-                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activeProperty?.address || '')}`} 
-                  target="_blank" 
-                  className="bg-white border border-gray-200 rounded-2xl p-4 flex flex-col items-center justify-center gap-2 hover:border-[#C5A059] transition-all group"
-                >
-                  <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-all">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                  </div>
-                  <span className="text-[9px] font-black uppercase text-black/60 group-hover:text-black">Google Maps</span>
-                </a>
-                <a 
-                  href={`https://maps.apple.com/?q=${encodeURIComponent(activeProperty?.address || '')}`} 
-                  target="_blank" 
-                  className="bg-white border border-gray-200 rounded-2xl p-4 flex flex-col items-center justify-center gap-2 hover:border-[#C5A059] transition-all group"
-                >
-                  <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-black group-hover:bg-black group-hover:text-white transition-all">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                  </div>
-                  <span className="text-[9px] font-black uppercase text-black/60 group-hover:text-black">Apple Maps</span>
-                </a>
+              <div>
+                 <p className="text-[8px] font-black text-teal-600 uppercase tracking-widest mb-1">Target Address</p>
+                 <p className="text-sm font-bold text-black uppercase leading-relaxed">{activeProperty?.address}</p>
+              </div>
+              <div className="flex gap-2">
+                <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activeProperty?.address || '')}`} target="_blank" className="flex-1 bg-blue-50 text-blue-600 border border-blue-100 py-3 rounded-xl text-[9px] font-black uppercase text-center shadow-sm">Google Maps</a>
+                <a href={`https://maps.apple.com/?q=${encodeURIComponent(activeProperty?.address || '')}`} target="_blank" className="flex-1 bg-slate-50 text-slate-600 border border-slate-200 py-3 rounded-xl text-[9px] font-black uppercase text-center shadow-sm">Apple Maps</a>
               </div>
            </div>
 
-           {activeProperty?.accessNotes && (<div className="bg-white/60 p-5 rounded-2xl border border-[#D4B476]/10"><p className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-widest mb-2 flex items-center gap-2"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> Access Protocol</p><p className="text-xs text-black italic leading-relaxed">{activeProperty.accessNotes}</p></div>)}
-           {activeProperty?.keyboxCode && (<div className="flex gap-4"><div className="flex-1 bg-black text-[#C5A059] p-4 rounded-2xl text-center"><p className="text-[7px] font-black uppercase tracking-widest mb-1 opacity-60">Main Entrance</p><p className="text-xl font-mono font-bold tracking-widest">{activeProperty.mainEntranceCode || '---'}</p></div><div className="flex-1 bg-[#C5A059] text-black p-4 rounded-2xl text-center"><p className="text-[7px] font-black uppercase tracking-widest mb-1 opacity-60">Keybox Code</p><p className="text-xl font-mono font-bold tracking-widest">{activeProperty.keyboxCode}</p></div></div>)}
+           <div className="bg-teal-50 p-6 rounded-[32px] border border-teal-100 space-y-6">
+              <div className="flex justify-between items-center border-b border-teal-200/40 pb-4">
+                 <p className="text-[8px] font-black text-teal-700 uppercase tracking-widest">Digital Keys & Access</p>
+                 {!isLocationVerified && <span className="text-[7px] font-black bg-red-100 text-red-600 px-3 py-1 rounded-full uppercase animate-pulse">Redacted</span>}
+              </div>
+              <div className="space-y-6">
+                 <div className="grid grid-cols-2 gap-4">
+                    <div>
+                       <p className="text-[7px] font-black uppercase text-teal-800/40 mb-1">Level / Unit</p>
+                       <p className="text-lg font-bold text-black">{isLocationVerified ? `${activeProperty?.floorNumber || '0'} / ${activeProperty?.apartmentNumber || '---'}` : '• • •'}</p>
+                    </div>
+                    <div>
+                       <p className="text-[7px] font-black uppercase text-teal-800/40 mb-1">Entrance</p>
+                       <p className="text-lg font-mono font-bold text-black tracking-widest">{isLocationVerified ? activeProperty?.mainEntranceCode : '****'}</p>
+                    </div>
+                 </div>
+                 <div className="bg-white p-5 rounded-2xl border border-teal-100 text-center">
+                    <p className="text-[7px] font-black uppercase text-teal-800/40 mb-1">Keybox Secure Code</p>
+                    <p className="text-3xl font-mono font-bold text-teal-700 tracking-[0.2em]">{isLocationVerified ? activeProperty?.keyboxCode : '****'}</p>
+                 </div>
+                 <div className="space-y-1">
+                    <p className="text-[7px] font-black uppercase text-teal-800/40">Logistics Detail</p>
+                    <p className="text-[11px] text-black italic leading-relaxed">{activeProperty?.accessNotes || 'Standard entry protocol applies.'}</p>
+                 </div>
+              </div>
+           </div>
+
            <div className="pt-4 space-y-4">
-              <button onClick={verifyLocation} disabled={isVerifying || isLocationVerified} className={`w-full py-4 rounded-2xl font-black uppercase text-[10px] tracking-[0.3em] flex items-center justify-center gap-2 transition-all ${isLocationVerified ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-white border border-gray-200 text-black/60 hover:bg-gray-50'}`}>{isVerifying ? 'LOCATING...' : isLocationVerified ? 'LOCATION CONFIRMED' : 'VERIFY GPS LOCATION'}</button>
-              <button onClick={handleStartShift} disabled={!isLocationVerified && !isManagement} className={`w-full py-5 rounded-2xl font-black uppercase text-[11px] tracking-[0.4em] shadow-2xl transition-all active:scale-95 ${!isLocationVerified && !isManagement ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-black text-[#C5A059] hover:bg-zinc-900'}`}>START SHIFT</button>
+              {!isLocationVerified ? (
+                <button onClick={verifyLocation} disabled={isVerifying} className="w-full py-5 rounded-3xl bg-black text-[#C5A059] font-black uppercase text-[11px] tracking-[0.4em] shadow-2xl active:scale-95 transition-all">
+                  {isVerifying ? 'Locating...' : 'Verify GPS to Unlock'}
+                </button>
+              ) : (
+                <button onClick={handleStartShift} className="w-full py-5 rounded-3xl bg-teal-600 text-white font-black uppercase text-[11px] tracking-[0.4em] shadow-2xl active:scale-95 transition-all hover:bg-teal-700">
+                  Initialize deployment
+                </button>
+              )}
            </div>
         </div>
       </div>
     );
   }
 
+  // --- Step: Active Mission ---
   if (currentStep === 'active' && activeShift) {
+    const labelStyle = "text-[7px] font-black text-teal-700 uppercase tracking-[0.4em] opacity-80 mb-2 block px-1 text-left";
     return (
-      <div className="pb-40 px-4 pt-4 max-w-3xl mx-auto space-y-8 animate-in fade-in duration-500">
-         <header className="flex justify-between items-center sticky top-0 bg-[#F2F4F7]/95 backdrop-blur-sm py-4 z-40 border-b border-gray-200">
-            <div>
-               <h2 className="text-lg font-bold text-black uppercase tracking-tight">{activeShift.propertyName}</h2>
+      <div className="pb-40 animate-in fade-in duration-500 max-w-3xl mx-auto text-left">
+         <div className="bg-[#0D9488] p-10 mb-8 rounded-b-[60px] text-white shadow-2xl space-y-4">
+            <div className="space-y-1">
+               <h2 className="text-3xl font-bold uppercase tracking-tight leading-none">{activeShift.propertyName}</h2>
                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                  <p className="text-[9px] font-black text-green-600 uppercase tracking-widest">LIVE • {Math.floor(timer / 3600)}h {Math.floor((timer % 3600) / 60)}m</p>
+                  <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+                  <p className="text-[9px] font-black text-white/60 uppercase tracking-[0.3em]">Live Mission • {Math.floor(timer / 3600)}h {Math.floor((timer % 3600) / 60)}m</p>
                </div>
             </div>
-            <button onClick={() => setReportModalType('maintenance')} className="bg-red-50 text-red-600 p-3 rounded-full border border-red-100 shadow-sm active:scale-95"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></button>
-         </header>
-
-         <div className="space-y-6">
-            {tasks.map(task => {
-               const hasPhoto = task.photos.length > 0;
-               return (
-                  <div key={task.id} className={`bg-white border rounded-[28px] p-6 transition-all ${hasPhoto ? 'border-green-200 bg-green-50/30' : 'border-gray-200 shadow-sm'}`}>
-                     <div className="flex justify-between items-start mb-4">
-                        <div className="space-y-1">
-                           <p className="text-sm font-bold text-black uppercase leading-tight">{task.label}</p>
-                           {task.isMandatory && !hasPhoto && <span className="text-[7px] font-black bg-red-100 text-red-600 px-2 py-0.5 rounded uppercase tracking-widest">Action Required</span>}
-                        </div>
-                        {hasPhoto && <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center text-white"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg></div>}
-                     </div>
-                     <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
-                        {task.photos.map((p, i) => (<img key={i} src={p.url} className="w-16 h-16 rounded-xl object-cover border border-gray-100 shadow-sm" alt="Evidence" />))}
-                        <button onClick={() => { setActiveTaskId(task.id); cameraInputRef.current?.click(); }} className="w-16 h-16 rounded-xl bg-gray-50 border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 hover:border-[#C5A059] hover:text-[#C5A059] transition-all shrink-0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
-                     </div>
-                  </div>
-               );
-            })}
          </div>
+
+         <div className="px-4 space-y-12">
+            <div className="grid grid-cols-2 gap-3">
+               <button onClick={() => setShowMessReport(true)} className="bg-red-50 text-red-600 border border-red-100 p-5 rounded-[32px] flex flex-col items-center gap-3 transition-all hover:bg-red-100">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  <span className="text-[9px] font-black uppercase tracking-widest">Report Mess</span>
+               </button>
+               <button onClick={() => setReportModalType('maintenance')} className="bg-blue-50 text-blue-600 border border-blue-100 p-5 rounded-[32px] flex flex-col items-center gap-3 transition-all hover:bg-blue-100">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                  <span className="text-[9px] font-black uppercase tracking-widest">Fix required</span>
+               </button>
+               <button onClick={() => setReportModalType('damage')} className="bg-orange-50 text-orange-600 border border-orange-100 p-5 rounded-[32px] flex flex-col items-center gap-3 transition-all hover:bg-orange-100">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  <span className="text-[9px] font-black uppercase tracking-widest">Damages</span>
+               </button>
+               <button onClick={() => setReportModalType('missing')} className="bg-purple-50 text-purple-600 border border-purple-100 p-5 rounded-[32px] flex flex-col items-center gap-3 transition-all hover:bg-purple-100">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                  <span className="text-[9px] font-black uppercase tracking-widest">Missing item</span>
+               </button>
+            </div>
+
+            <div className="space-y-6">
+               <p className="text-[9px] font-black text-black/30 uppercase tracking-[0.4em] px-2 text-left">Main Checklist</p>
+               {tasks.map(task => {
+                  const hasPhoto = task.photos.length > 0;
+                  return (
+                     <div key={task.id} className={`bg-white border rounded-[32px] p-6 transition-all shadow-sm ${hasPhoto ? 'border-green-200 bg-green-50/10' : 'border-slate-200'}`}>
+                        <div className="flex justify-between items-start mb-4 text-left">
+                           <div className="space-y-1 flex-1">
+                              <p className="text-sm font-bold text-black uppercase leading-tight">{task.label}</p>
+                              {task.isMandatory && !hasPhoto && attemptedNext && <span className="text-[8px] font-black text-red-600 uppercase tracking-widest">Evidence required</span>}
+                           </div>
+                           {hasPhoto && <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center text-white shrink-0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg></div>}
+                        </div>
+                        <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                           {task.photos.map((p, i) => (<img key={i} src={p.url} className="w-20 h-20 rounded-2xl object-cover border border-slate-100 shadow-sm" alt="Evidence" />))}
+                           <button onClick={() => { setActiveTaskId(task.id); cameraInputRef.current?.click(); }} className="w-20 h-20 rounded-2xl bg-teal-50 border-2 border-dashed border-teal-200 flex flex-col items-center justify-center text-teal-400 hover:border-teal-600 hover:text-teal-600 transition-all shrink-0"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
+                        </div>
+                     </div>
+                  );
+               })}
+            </div>
+
+            <div className="pb-10 pt-4">
+               <button onClick={handleProceedToHandover} className="w-full bg-[#0D9488] text-white font-black py-6 rounded-[32px] text-xs uppercase tracking-[0.4em] shadow-2xl active:scale-95 transition-all">Next: Security Handover</button>
+            </div>
+         </div>
+         
          <input type="file" ref={cameraInputRef} className="hidden" accept="image/*" capture="environment" onChange={(e) => handleCapture(e, 'task')} />
 
-         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 pb-8 flex flex-col gap-3 z-50">
-            {missingTasks.length > 0 && (
-               <div className="bg-red-50 p-4 rounded-2xl border border-red-100 animate-in slide-in-from-bottom-2">
-                  <p className="text-[8px] font-black text-red-600 uppercase tracking-widest mb-2">Incomplete Checklist:</p>
-                  <ul className="space-y-1">
-                     {missingTasks.slice(0, 3).map(t => (<li key={t.id} className="text-[10px] font-bold text-red-700">• {t.label}</li>))}
-                     {missingTasks.length > 3 && <li className="text-[10px] font-bold text-red-700 italic">...and {missingTasks.length - 3} more</li>}
-                  </ul>
-               </div>
-            )}
-            <div className="flex gap-3">
-               <button onClick={() => setShowMessReport(true)} className="flex-1 bg-red-50 text-red-600 font-black py-4 rounded-2xl text-[9px] uppercase tracking-widest border border-red-100 active:scale-95">REQUEST TIME</button>
-               <button onClick={handleProceedToClockOut} className="flex-[2] bg-black text-[#C5A059] font-black py-4 rounded-2xl text-[10px] uppercase tracking-[0.3em] shadow-xl active:scale-95">NEXT: HANDOVER</button>
-            </div>
-         </div>
-
          {(reportModalType || showMessReport) && (
-            <div className="fixed inset-0 bg-black/80 z-[1000] flex items-end sm:items-center justify-center p-4 backdrop-blur-sm animate-in slide-in-from-bottom-10">
-               <div className="bg-white w-full max-w-md rounded-[40px] p-8 space-y-6">
-                  <h3 className="text-xl font-bold text-black uppercase text-center">{showMessReport ? 'Request Time' : `Report ${reportModalType}`}</h3>
-                  <textarea className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 text-sm font-medium outline-none focus:border-[#C5A059] h-32" placeholder="Description..." value={showMessReport ? messDescription : reportDescription} onChange={e => showMessReport ? setMessDescription(e.target.value) : setReportDescription(e.target.value)} />
-                  <div className="flex gap-2 overflow-x-auto">
-                     {(showMessReport ? messPhotos : reportPhotos).map((url, i) => (<img key={i} src={url} className="w-16 h-16 rounded-xl object-cover border border-gray-200" />))}
-                     <button onClick={() => (showMessReport ? messCameraRef : reportCameraRef).current?.click()} className="w-16 h-16 rounded-xl bg-gray-50 border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
+            <div className="fixed inset-0 bg-black/90 z-[1000] flex items-end sm:items-center justify-center p-4 backdrop-blur-sm animate-in slide-in-from-bottom-10">
+               <div className="bg-white w-full max-w-md rounded-[50px] p-10 space-y-8 shadow-2xl relative text-left">
+                  <div className="text-center space-y-1">
+                     <h3 className="text-2xl font-brand font-bold text-black uppercase tracking-tight">{showMessReport ? 'Extra hours request' : `Report ${reportModalType}`}</h3>
+                     <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.4em]">Field Intelligence Registry</p>
                   </div>
+                  
+                  <div className="space-y-2">
+                     <label className={labelStyle}>Detailed Description</label>
+                     <textarea className="w-full bg-slate-50 border border-slate-200 rounded-[32px] p-6 text-sm font-medium outline-none focus:border-teal-600 h-40 shadow-inner" placeholder="Provide full context..." value={showMessReport ? messDescription : reportDescription} onChange={e => showMessReport ? setMessDescription(e.target.value) : setReportDescription(e.target.value)} />
+                  </div>
+                  
+                  <div className="space-y-4">
+                     <p className={labelStyle}>Visual Proof (Camera mandatory)</p>
+                     <div className="flex gap-3 overflow-x-auto pb-2">
+                        {(showMessReport ? messPhotos : reportPhotos).map((url, i) => (<img key={i} src={url} className="w-20 h-20 rounded-2xl object-cover border border-slate-200 shadow-sm" />))}
+                        <button onClick={() => (showMessReport ? messCameraRef : reportCameraRef).current?.click()} className="w-20 h-20 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-300 hover:text-teal-500 transition-all"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
+                     </div>
+                  </div>
+
                   <input type="file" ref={showMessReport ? messCameraRef : reportCameraRef} className="hidden" accept="image/*" capture="environment" onChange={(e) => handleCapture(e, showMessReport ? 'mess' : 'report')} />
+                  
                   <div className="flex gap-3 pt-4">
-                     <button onClick={() => { setShowMessReport(false); setReportModalType(null); }} className="flex-1 py-4 bg-gray-100 text-black/40 font-black rounded-2xl text-[9px] uppercase">Cancel</button>
-                     <button onClick={showMessReport ? handleSubmitMessReport : handleReportSubmit} className="flex-[2] py-4 bg-black text-white font-black rounded-2xl text-[9px] uppercase">Submit</button>
+                     <button onClick={() => { setShowMessReport(false); setReportModalType(null); }} className="flex-1 py-5 bg-slate-100 text-black/30 font-black rounded-3xl text-[10px] uppercase">Cancel</button>
+                     <button onClick={showMessReport ? handleSubmitMessReport : handleIncidentSubmit} className="flex-[2] py-5 bg-black text-[#C5A059] font-black rounded-3xl text-[10px] uppercase tracking-[0.2em] shadow-xl">Submit Mission Report</button>
                   </div>
                </div>
             </div>
@@ -643,69 +610,50 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     );
   }
 
+  // --- Step: Review ---
   if (currentStep === 'review') {
     return (
-      <div className="pb-40 px-4 pt-10 max-w-2xl mx-auto text-left space-y-10 animate-in fade-in duration-500">
+      <div className="pb-40 px-4 pt-10 max-w-2xl mx-auto text-left space-y-12 animate-in fade-in duration-500">
          <div className="space-y-2">
-            <h2 className="text-2xl font-serif-brand font-bold text-black uppercase">Handover Protocols</h2>
-            <p className="text-[9px] font-black text-[#C5A059] uppercase tracking-[0.4em]">Final Security Step</p>
+            <h2 className="text-3xl font-brand font-bold text-black uppercase tracking-tight">Debriefing</h2>
+            <p className="text-[10px] font-black text-teal-600 uppercase tracking-[0.4em]">Final Secure Protocol</p>
          </div>
 
-         <div className="bg-[#FDF8EE] border border-[#D4B476]/30 p-8 rounded-[40px] space-y-8 shadow-xl">
-            <div className="bg-white/60 p-5 rounded-2xl border border-black/5">
-                <p className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-widest mb-1">Keybox Code</p>
-                <p className="text-2xl font-mono font-bold tracking-widest text-black">{activeProperty?.keyboxCode || '---'}</p>
+         <div className="bg-white border border-teal-100 p-10 rounded-[50px] space-y-10 shadow-2xl">
+            <div className="bg-teal-50 p-6 rounded-[32px] border border-teal-100 text-center">
+                <p className="text-[9px] font-black text-teal-600 uppercase tracking-[0.3em] mb-1">Confirmation: Secure Code</p>
+                <p className="text-3xl font-mono font-bold tracking-widest text-black">{activeProperty?.keyboxCode || '---'}</p>
             </div>
 
-            <div className="space-y-4">
-               <p className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-widest">1. Key in Box Photo</p>
-               <div className="flex gap-3 overflow-x-auto pb-2">
-                  {keyInBoxPhotos.map((p, i) => <img key={i} src={p.url} className="w-20 h-20 rounded-xl object-cover border border-[#D4B476]/20" />)}
-                  <button onClick={() => { setCheckoutTarget('keyInBox'); checkoutKeyRef.current?.click(); }} className="w-20 h-20 rounded-xl bg-white border-2 border-dashed border-[#D4B476]/40 flex items-center justify-center text-[#C5A059] hover:bg-[#C5A059]/10 transition-all"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
+            <div className="space-y-6">
+               <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.4em]">Step 1: Key inside open lockbox</p>
+               <div className="flex gap-4 overflow-x-auto pb-2">
+                  {keyInBoxPhotos.map((p, i) => <img key={i} src={p.url} className="w-24 h-24 rounded-3xl object-cover border border-teal-100 shadow-md" />)}
+                  <button onClick={() => { setCheckoutTarget('keyInBox'); checkoutKeyRef.current?.click(); }} className="w-24 h-24 rounded-3xl bg-teal-50 border-2 border-dashed border-teal-200 flex items-center justify-center text-teal-300 hover:bg-teal-100 hover:text-teal-500 transition-all shadow-sm"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
                </div>
             </div>
 
-            <div className="space-y-4">
-               <p className="text-[8px] font-black text-[#8B6B2E] uppercase tracking-widest">2. Box Closed Photo</p>
-               <div className="flex gap-3 overflow-x-auto pb-2">
-                  {boxClosedPhotos.map((p, i) => <img key={i} src={p.url} className="w-20 h-20 rounded-xl object-cover border border-[#D4B476]/20" />)}
-                  <button onClick={() => { setCheckoutTarget('boxClosed'); checkoutKeyRef.current?.click(); }} className="w-20 h-20 rounded-xl bg-white border-2 border-dashed border-[#D4B476]/40 flex items-center justify-center text-[#C5A059] hover:bg-[#C5A059]/10 transition-all"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
+            <div className="space-y-6">
+               <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.4em]">Step 2: Lockbox Closed & Scrambled</p>
+               <div className="flex gap-4 overflow-x-auto pb-2">
+                  {boxClosedPhotos.map((p, i) => <img key={i} src={p.url} className="w-24 h-24 rounded-3xl object-cover border border-teal-100 shadow-md" />)}
+                  <button onClick={() => { setCheckoutTarget('boxClosed'); checkoutKeyRef.current?.click(); }} className="w-24 h-24 rounded-3xl bg-teal-50 border-2 border-dashed border-teal-200 flex items-center justify-center text-teal-300 hover:bg-teal-100 hover:text-teal-500 transition-all shadow-sm"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
                </div>
             </div>
             <input type="file" ref={checkoutKeyRef} className="hidden" accept="image/*" capture="environment" onChange={(e) => handleCapture(e, 'checkout')} />
          </div>
 
-         <div className="flex gap-4">
-            <button onClick={() => setCurrentStep('active')} className="flex-1 py-5 bg-gray-100 text-black/40 font-black rounded-2xl text-[9px] uppercase tracking-widest">Back</button>
-            <button onClick={handleFinishShift} disabled={isFinishing} className={`flex-[2] py-5 font-black rounded-2xl uppercase text-[10px] tracking-[0.4em] shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3 ${isFinishing ? 'bg-gray-400 text-white' : 'bg-black text-[#C5A059] hover:bg-zinc-900'}`}>
-                {isFinishing ? 'FINISHING...' : 'CLOCK OUT'}
+         <div className="flex flex-col sm:flex-row gap-4">
+            <button onClick={() => setCurrentStep('active')} className="flex-1 py-6 bg-slate-50 text-black/40 font-black rounded-[32px] text-xs uppercase tracking-widest border border-slate-100">Go Back</button>
+            <button onClick={handleFinishShift} disabled={isFinishing} className={`flex-[2] py-6 font-black rounded-[32px] uppercase text-xs tracking-[0.4em] shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3 ${isFinishing ? 'bg-slate-300 text-white' : 'bg-teal-600 text-white hover:bg-teal-700'}`}>
+                {isFinishing ? 'Finalizing...' : 'Verify & Clock out'}
             </button>
          </div>
       </div>
     );
   }
 
-  if (currentStep === 'inspection' && activeShift) {
-     return (
-        <div className="p-8 max-w-2xl mx-auto space-y-8 animate-in fade-in text-left">
-           <h2 className="text-2xl font-serif-brand font-bold text-black uppercase">Quality Audit</h2>
-           <div className="bg-white border border-gray-200 p-6 rounded-[32px] space-y-6 shadow-xl">
-              <div className="space-y-4">
-                 <h4 className="text-[10px] font-black text-black/40 uppercase tracking-widest">Evidence Feed</h4>
-                 <div className="grid grid-cols-3 gap-2">
-                    {activeShift.tasks?.flatMap(t => t.photos).map((p, i) => (<img key={i} src={p.url} onClick={() => setZoomedImage(p.url)} className="w-full h-24 object-cover rounded-xl border border-gray-100 cursor-zoom-in" />))}
-                 </div>
-              </div>
-              <div className="flex gap-4">
-                 <button onClick={handleForceFinish} className="flex-1 bg-green-600 text-white font-black py-4 rounded-2xl uppercase text-[9px] tracking-widest">APPROVE</button>
-                 <button onClick={handleForceFinish} className="flex-1 bg-red-600 text-white font-black py-4 rounded-2xl uppercase text-[9px] tracking-widest">REJECT</button>
-              </div>
-           </div>
-        </div>
-     );
-  }
-
-  return <div className="p-20 text-center opacity-20 font-black uppercase tracking-widest">Loading Portal...</div>;
+  return <div className="p-20 text-center opacity-20 font-black uppercase tracking-widest">Loading environment...</div>;
 };
 
 export default CleanerPortal;
