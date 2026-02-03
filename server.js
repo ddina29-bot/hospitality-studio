@@ -87,35 +87,6 @@ const diskStorage = multer.diskStorage({
 });
 const upload = multer({ storage: diskStorage, limits: { fileSize: 25 * 1024 * 1024 } });
 
-// --- EMAILER ---
-const createTransporter = () => {
-  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
-    return nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT) || 587,
-      secure: false,
-      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-    });
-  }
-  return null;
-};
-
-const mergeArrays = (dbList, incomingList) => {
-    if (!incomingList) return dbList || [];
-    if (!dbList) return incomingList;
-    const mergedMap = new Map();
-    dbList.forEach(item => mergedMap.set(item.id, item));
-    incomingList.forEach(incomingItem => {
-        const existing = mergedMap.get(incomingItem.id);
-        if (existing && existing.status === 'completed' && incomingItem.status === 'active') {
-             mergedMap.set(incomingItem.id, { ...incomingItem, status: 'completed', actualEndTime: existing.actualEndTime || incomingItem.actualEndTime });
-             return;
-        }
-        mergedMap.set(incomingItem.id, incomingItem);
-    });
-    return Array.from(mergedMap.values());
-};
-
 // --- ROUTES ---
 
 app.post('/api/auth/signup', async (req, res) => {
@@ -123,7 +94,13 @@ app.post('/api/auth/signup', async (req, res) => {
   const existingOrg = findOrgByUserEmail(adminUser.email);
   if (existingOrg) return res.status(400).json({ error: 'Email already registered.' });
   const newOrgId = `org-${Date.now()}`;
-  const newOrg = { id: newOrgId, settings: organization, users: [{ ...adminUser, id: `admin-${Date.now()}`, role: 'admin', status: 'active' }], shifts: [], properties: [], clients: [], supplyRequests: [], inventoryItems: [], manualTasks: [], leaveRequests: [], invoices: [], tutorials: [], timeEntries: [] };
+  const newOrg = { 
+    id: newOrgId, 
+    settings: organization, 
+    users: [{ ...adminUser, id: `admin-${Date.now()}`, role: 'admin', status: 'active' }], 
+    shifts: [], properties: [], clients: [], supplyRequests: [], inventoryItems: [], 
+    manualTasks: [], leaveRequests: [], invoices: [], tutorials: [], timeEntries: [] 
+  };
   saveOrgToDb(newOrg);
   res.json({ success: true, user: newOrg.users[0], organization: newOrg });
 });
@@ -135,6 +112,13 @@ app.post('/api/auth/login', async (req, res) => {
   const user = org.users.find(u => u.email.toLowerCase() === email.toLowerCase());
   if (user.status !== 'pending' && user.password !== password) return res.status(401).json({ error: 'Invalid credentials.' });
   res.json({ success: true, user, organization: org });
+});
+
+app.get('/api/state', (req, res) => {
+  const { email } = req.query;
+  const org = findOrgByUserEmail(email);
+  if (!org) return res.status(404).json({ error: 'Data not found.' });
+  res.json({ success: true, organization: org });
 });
 
 app.post('/api/auth/invite', async (req, res) => {
@@ -151,7 +135,16 @@ app.post('/api/sync', async (req, res) => {
   const { orgId, data } = req.body;
   const org = getOrgById(orgId);
   if (!org) return res.status(404).json({ error: "Org not found" });
-  Object.keys(data).forEach(key => { if (Array.isArray(data[key])) org[key] = mergeArrays(org[key], data[key]); else org[key] = data[key]; });
+  
+  // Merge logic to prevent data loss
+  Object.keys(data).forEach(key => {
+    if (Array.isArray(data[key])) {
+      org[key] = data[key];
+    } else {
+      org[key] = data[key];
+    }
+  });
+  
   saveOrgToDb(org);
   res.json({ success: true });
 });
