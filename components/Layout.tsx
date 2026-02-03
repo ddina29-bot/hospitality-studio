@@ -8,9 +8,10 @@ interface LayoutProps {
   setActiveTab: (tab: TabType) => void;
   role: UserRole;
   onLogout: () => void;
+  onRoleChange?: (role: UserRole) => void;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role, onLogout }) => {
+const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role, onLogout, onRoleChange }) => {
   const [showMenu, setShowMenu] = useState(false);
 
   const navItems: { id: TabType; label: string; icon: string; roles: UserRole[] }[] = [
@@ -53,6 +54,22 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role
             </button>
           ))}
         </nav>
+
+        {/* SIMULATION SELECTOR */}
+        <div className="p-4 bg-black/20 mx-4 mb-4 rounded-2xl border border-white/5 space-y-2">
+           <p className="text-[7px] font-black uppercase tracking-widest text-slate-400 px-2">Simulation Mode</p>
+           <select 
+             value={role} 
+             onChange={(e) => onRoleChange?.(e.target.value as UserRole)}
+             className="w-full bg-[#334155] text-white text-[10px] font-bold uppercase rounded-xl px-2 py-2 border-none outline-none cursor-pointer hover:bg-[#475569] transition-colors"
+           >
+              <option value="admin">Admin</option>
+              <option value="housekeeping">Housekeeping</option>
+              <option value="supervisor">Supervisor</option>
+              <option value="cleaner">Cleaner</option>
+              <option value="driver">Driver</option>
+           </select>
+        </div>
 
         <div className="p-4 border-t border-slate-700/50">
           <button onClick={onLogout} className="w-full flex items-center gap-4 px-5 py-3 text-slate-400 text-xs font-bold uppercase hover:bg-white/5 rounded-2xl transition-colors hover:text-white">
@@ -123,6 +140,17 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role
                 <button onClick={() => setShowMenu(false)} className="w-10 h-10 flex items-center justify-center bg-white rounded-full text-2xl text-slate-400 border border-slate-100">&times;</button>
              </div>
              
+             <div className="mb-6 p-4 bg-teal-50 rounded-2xl border border-teal-100 space-y-2 shrink-0">
+                <p className="text-[7px] font-black uppercase text-teal-600 tracking-widest">Simulate Role</p>
+                <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+                   {['admin', 'housekeeping', 'supervisor', 'cleaner', 'driver'].map(r => (
+                     <button key={r} onClick={() => { onRoleChange?.(r as UserRole); setShowMenu(false); }} className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase whitespace-nowrap border ${role === r ? 'bg-[#0D9488] text-white border-[#0D9488]' : 'bg-white text-slate-500 border-slate-100'}`}>
+                        {r}
+                     </button>
+                   ))}
+                </div>
+             </div>
+
              <div className="grid grid-cols-2 gap-4 flex-1 mb-8">
                 {visibleItems.map(item => (
                   <button 

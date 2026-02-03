@@ -5,9 +5,10 @@ import { User } from '../types';
 interface LoginProps {
   onLogin: (user: User, orgData?: any) => void;
   onSignupClick: () => void;
+  onDemoLogin?: () => void;
 }
 
-const Login: React.FC<LoginProps> = ({ onLogin }) => {
+const Login: React.FC<LoginProps> = ({ onLogin, onDemoLogin }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -82,13 +83,25 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             </div>
           </div>
           
-          <button 
-            type="submit" 
-            disabled={isLoading}
-            className="w-full btn-teal py-5 shadow-2xl shadow-teal-900/20 text-xs uppercase tracking-[0.3em] disabled:opacity-50"
-          >
-            {isLoading ? 'Verifying...' : 'Initialize Session'}
-          </button>
+          <div className="space-y-4">
+            <button 
+              type="submit" 
+              disabled={isLoading}
+              className="w-full btn-teal py-5 shadow-2xl shadow-teal-900/20 text-xs uppercase tracking-[0.3em] disabled:opacity-50"
+            >
+              {isLoading ? 'Verifying...' : 'Initialize Session'}
+            </button>
+
+            {onDemoLogin && (
+              <button 
+                type="button"
+                onClick={onDemoLogin}
+                className="w-full bg-indigo-50 text-indigo-600 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest border border-indigo-100 hover:bg-indigo-100 transition-all active:scale-95"
+              >
+                PROCEED WITH DEMO DATA
+              </button>
+            )}
+          </div>
           
           <div className="pt-4 text-center">
              <p className="text-[8px] text-slate-300 font-bold uppercase tracking-[0.5em] animate-pulse">Session Encrypted • Production v1.0</p>

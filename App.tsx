@@ -11,7 +11,6 @@ import ReportsPortal from './components/ReportsPortal';
 import StudioSettings from './components/management/StudioSettings';
 import InventoryAdmin from './components/management/InventoryAdmin';
 import Login from './components/Login';
-import UserActivation from './components/UserActivation';
 import { TabType, Shift, User, Client, Property, Invoice, TimeEntry, Tutorial, UserRole, OrganizationSettings, SupplyItem, SupplyRequest, AnomalyReport } from './types';
 
 const load = <T,>(k: string, f: T): T => {
@@ -23,6 +22,7 @@ const load = <T,>(k: string, f: T): T => {
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(() => load('current_user_obj', null));
+  const [simulationRole, setSimulationRole] = useState<UserRole | null>(null);
   const [orgId, setOrgId] = useState<string | null>(() => localStorage.getItem('current_org_id'));
   const [activeTab, setActiveTab] = useState<TabType>(() => (localStorage.getItem('studio_active_tab') as TabType) || 'dashboard');
   
@@ -30,10 +30,9 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const isHydrating = useRef(false);
 
-  // Toast System State
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
 
-  // PRODUCTION STATE
+  // PRODUCTION STATE - Initialized with safe defaults
   const [users, setUsers] = useState<User[]>(() => load('studio_users', []));
   const [shifts, setShifts] = useState<Shift[]>(() => load('studio_shifts', []));
   const [properties, setProperties] = useState<Property[]>(() => load('studio_props', []));
@@ -51,7 +50,7 @@ const App: React.FC = () => {
 
   const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const currentRole = user?.role || 'admin';
+  const currentRole = simulationRole || user?.role || 'admin';
 
   const showToast = (message: string, type: 'success' | 'error' | 'info') => {
     setToast({ message, type });
@@ -77,16 +76,16 @@ const App: React.FC = () => {
           const org = data.organization;
           setOrgId(org.id);
           localStorage.setItem('current_org_id', org.id);
-          if (org.users) setUsers(org.users);
-          if (org.shifts) setShifts(org.shifts);
-          if (org.properties) setProperties(org.properties);
-          if (org.clients) setClients(org.clients);
-          if (org.invoices) setInvoices(org.invoices);
-          if (org.timeEntries) setTimeEntries(org.timeEntries);
-          if (org.tutorials) setTutorials(org.tutorials);
-          if (org.inventoryItems) setInventoryItems(org.inventoryItems);
-          if (org.supplyRequests) setSupplyRequests(org.supplyRequests);
-          if (org.anomalyReports) setAnomalyReports(org.anomalyReports);
+          setUsers(org.users ?? []);
+          setShifts(org.shifts ?? []);
+          setProperties(org.properties ?? []);
+          setClients(org.clients ?? []);
+          setInvoices(org.invoices ?? []);
+          setTimeEntries(org.timeEntries ?? []);
+          setTutorials(org.tutorials ?? []);
+          setInventoryItems(org.inventoryItems ?? []);
+          setSupplyRequests(org.supplyRequests ?? []);
+          setAnomalyReports(org.anomalyReports ?? []);
           if (org.settings) setOrganization(org.settings);
         }
       } catch (err) {
@@ -134,23 +133,6 @@ const App: React.FC = () => {
     return () => { if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current); };
   }, [users, shifts, properties, clients, invoices, timeEntries, tutorials, activeTab, user, orgId, organization, inventoryItems, supplyRequests, anomalyReports]);
 
-  const handleSupplyRequest = (batch: Record<string, number>) => {
-    if (!user) return;
-    const now = Date.now();
-    const newRequests: SupplyRequest[] = Object.entries(batch).map(([itemId, qty]) => ({
-        id: `sr-${now}-${itemId}`,
-        itemId,
-        itemName: inventoryItems.find(i => i.id === itemId)?.name || 'Unknown Item',
-        quantity: qty,
-        userId: user.id,
-        userName: user.name,
-        date: new Date().toISOString().split('T')[0],
-        status: 'pending'
-    }));
-    setSupplyRequests(prev => [...prev, ...newRequests]);
-    handleUpdateUser({ ...user, lastSupplyRequestDate: now });
-  };
-
   const handleUpdateUser = (updatedUser: User) => {
     setUser(updatedUser);
     setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
@@ -160,28 +142,29 @@ const App: React.FC = () => {
     setUser(u);
     if (organizationData) {
         setOrgId(organizationData.id);
-        if (organizationData.users) setUsers(organizationData.users);
-        if (organizationData.shifts) setShifts(organizationData.shifts);
-        if (organizationData.properties) setProperties(organizationData.properties);
-        if (organizationData.clients) setClients(organizationData.clients);
-        if (organizationData.settings) setOrganization(organizationData.settings);
+        setUsers(organizationData.users ?? []);
+        setShifts(organizationData.shifts ?? []);
+        setProperties(organizationData.properties ?? []);
+        setClients(organizationData.clients ?? []);
+        setOrganization(organizationData.settings ?? organization);
     }
-    // Redirect on login if necessary
-    if (u.role === 'supervisor') setActiveTab('shifts');
   };
 
   const handleLogout = () => {
     setUser(null);
+    setSimulationRole(null);
     setOrgId(null);
     localStorage.clear();
   };
 
   const renderContent = () => {
     if (!user) return null;
+    const effectiveUser = { ...user, role: currentRole };
+    
     switch (activeTab) {
       case 'dashboard': return (
         <Dashboard 
-          user={user} 
+          user={effectiveUser} 
           users={users} 
           setActiveTab={setActiveTab} 
           shifts={shifts} 
@@ -195,12 +178,12 @@ const App: React.FC = () => {
           onUpdateUser={handleUpdateUser} 
         />
       );
-      case 'properties': return <AdminPortal user={user} view="properties" properties={properties} setProperties={setProperties} clients={clients} setClients={setClients} setActiveTab={setActiveTab} setSelectedClientIdFilter={setSelectedClientIdFilter} selectedPropertyIdToEdit={selectedPropertyIdToEdit} setSelectedPropertyIdToEdit={setSelectedPropertyIdToEdit} onSelectPropertyToEdit={(id) => { setSelectedPropertyIdToEdit(id); setActiveTab('properties'); }} />;
-      case 'clients': return <AdminPortal user={user} view="clients" clients={clients} setClients={setClients} properties={properties} setActiveTab={setActiveTab} setSelectedClientIdFilter={setSelectedClientIdFilter} onSelectPropertyToEdit={(id) => { setSelectedPropertyIdToEdit(id); setActiveTab('properties'); }} />;
+      case 'properties': return <AdminPortal user={effectiveUser} view="properties" properties={properties} setProperties={setProperties} clients={clients} setClients={setClients} setActiveTab={setActiveTab} setSelectedClientIdFilter={setSelectedClientIdFilter} selectedPropertyIdToEdit={selectedPropertyIdToEdit} setSelectedPropertyIdToEdit={setSelectedPropertyIdToEdit} onSelectPropertyToEdit={(id) => { setSelectedPropertyIdToEdit(id); setActiveTab('properties'); }} />;
+      case 'clients': return <AdminPortal user={effectiveUser} view="clients" clients={clients} setClients={setClients} properties={properties} setActiveTab={setActiveTab} setSelectedClientIdFilter={setSelectedClientIdFilter} onSelectPropertyToEdit={(id) => { setSelectedPropertyIdToEdit(id); setActiveTab('properties'); }} />;
       case 'shifts': 
-        if (['admin', 'housekeeping'].includes(currentRole)) return <AdminPortal user={user} view="scheduling" shifts={shifts} setShifts={setShifts} properties={properties} users={users} setActiveTab={setActiveTab} setSelectedClientIdFilter={setSelectedClientIdFilter} />;
-        return <CleanerPortal user={user} shifts={shifts} setShifts={setShifts} properties={properties} users={users} inventoryItems={inventoryItems} onAddSupplyRequest={handleSupplyRequest} onUpdateUser={handleUpdateUser} />;
-      case 'logistics': return <DriverPortal user={user} shifts={shifts} setShifts={setShifts} properties={properties} users={users} setActiveTab={setActiveTab} timeEntries={timeEntries} setTimeEntries={setTimeEntries} initialOverrideId={targetLogisticsUserId} onResetOverrideId={() => setTargetLogisticsUserId(null)} />;
+        if (['admin', 'housekeeping'].includes(currentRole)) return <AdminPortal user={effectiveUser} view="scheduling" shifts={shifts} setShifts={setShifts} properties={properties} users={users} setActiveTab={setActiveTab} setSelectedClientIdFilter={setSelectedClientIdFilter} />;
+        return <CleanerPortal user={effectiveUser} shifts={shifts} setShifts={setShifts} properties={properties} users={users} inventoryItems={inventoryItems} onUpdateUser={handleUpdateUser} />;
+      case 'logistics': return <DriverPortal user={effectiveUser} shifts={shifts} setShifts={setShifts} properties={properties} users={users} setActiveTab={setActiveTab} timeEntries={timeEntries} setTimeEntries={setTimeEntries} initialOverrideId={targetLogisticsUserId} onResetOverrideId={() => setTargetLogisticsUserId(null)} />;
       case 'inventory_admin': return (
         <InventoryAdmin 
           inventoryItems={inventoryItems} 
@@ -214,11 +197,11 @@ const App: React.FC = () => {
         />
       );
       case 'tutorials': return <TutorialsHub tutorials={tutorials} setTutorials={setTutorials} userRole={currentRole} showToast={showToast} />;
-      case 'users': return <AdminPortal user={user} view="users" users={users} setUsers={setUsers} setActiveTab={setActiveTab} setSelectedClientIdFilter={setSelectedClientIdFilter} />;
+      case 'users': return <AdminPortal user={effectiveUser} view="users" users={users} setUsers={setUsers} setActiveTab={setActiveTab} setSelectedClientIdFilter={setSelectedClientIdFilter} />;
       case 'finance': return <FinanceDashboard setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} users={users} properties={properties} invoices={invoices} setInvoices={setInvoices} clients={clients} organization={organization} />;
       case 'reports': return <ReportsPortal auditReports={[]} users={users} shifts={shifts} userRole={currentRole} anomalyReports={anomalyReports} />;
       case 'settings': return <StudioSettings organization={organization} setOrganization={setOrganization} userCount={users.length} propertyCount={properties.length} currentOrgId={orgId} />;
-      default: return <Dashboard user={user} users={users} setActiveTab={setActiveTab} shifts={shifts} setShifts={setShifts} invoices={invoices} timeEntries={timeEntries} supplyRequests={supplyRequests} setSupplyRequests={setSupplyRequests} onLogisticsAlertClick={(uid) => { setTargetLogisticsUserId(uid); setActiveTab('logistics'); }} onLogout={handleLogout} onUpdateUser={handleUpdateUser} />;
+      default: return <Dashboard user={effectiveUser} users={users} setActiveTab={setActiveTab} shifts={shifts} setShifts={setShifts} invoices={invoices} timeEntries={timeEntries} supplyRequests={supplyRequests} setSupplyRequests={setSupplyRequests} onLogisticsAlertClick={(uid) => { setTargetLogisticsUserId(uid); setActiveTab('logistics'); }} onLogout={handleLogout} onUpdateUser={handleUpdateUser} />;
     }
   };
 
@@ -226,18 +209,23 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-[#F0FDFA] overflow-hidden">
-      {isLoading && properties.length === 0 ? (
+      {isLoading ? (
         <div className="flex-1 flex flex-col items-center justify-center py-40 animate-pulse">
            <div className="w-12 h-12 border-4 border-teal-50 border-t-teal-600 rounded-full animate-spin"></div>
            <p className="text-[10px] font-black uppercase tracking-widest mt-6 text-teal-600">Synchronizing Session Core...</p>
         </div>
       ) : (
-        <Layout activeTab={activeTab} setActiveTab={setActiveTab} role={currentRole} onLogout={handleLogout}>
+        <Layout 
+          activeTab={activeTab} 
+          setActiveTab={setActiveTab} 
+          role={currentRole} 
+          onLogout={handleLogout}
+          onRoleChange={(r) => setSimulationRole(r)}
+        >
           {renderContent()}
         </Layout>
       )}
 
-      {/* Global Toast Component */}
       {toast && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[9999] animate-in slide-in-from-top-4 duration-300">
            <div className={`px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-4 border ${
