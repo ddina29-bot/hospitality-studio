@@ -1,16 +1,3 @@
-
-import React from 'react';
-
-// This file is deprecated and should be deleted.
-// Please use the App.tsx in the root directory.
-const App = () => {
-  return (
-    <div style={{ padding: 20, textAlign: 'center', color: 'red' }}>
-      <h1>Configuration Error</h1>
-      <p>Please delete the file <code>components/App.tsx</code> and restart the server.</p>
-      <p>The application should run from the root <code>App.tsx</code>.</p>
-    </div>
-  );
-};
-
-export default App;
+// This file has been moved to the root directory as App.tsx.
+// The content here is intentionally left empty to resolve the configuration conflict.
+export default () => null;

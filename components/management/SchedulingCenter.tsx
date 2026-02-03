@@ -1151,7 +1151,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
       {reviewShift && (
         <div className="fixed inset-0 bg-black/70 z-[500] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in" onClick={handleCloseMonitor}>
            <div className="bg-white border border-slate-200 rounded-[40px] w-full max-w-4xl p-8 md:p-10 space-y-8 shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar" onClick={e => e.stopPropagation()}>
-              <button onClick={handleCloseMonitor} className="absolute top-8 right-8 text-slate-400 hover:text-slate-600 transition-colors"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+              <button onClick={handleCloseMonitor} className="absolute top-8 right-8 text-slate-400 hover:text-slate-600 transition-colors no-print"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
               
               <div className="space-y-1">
                  <h2 className="text-2xl font-serif-brand font-bold uppercase text-slate-900">{reviewShift.propertyName}</h2>
@@ -1161,7 +1161,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                  <div className="space-y-6">
                     <div className="bg-teal-50 p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
-                       <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.4em]">Completed Checklist</p>
+                       <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.4em]">Deployment Evidence</p>
                        <div className="grid grid-cols-3 gap-2">
                           {getShiftAttributedPhotos(reviewShift).map((p, i) => (
                              <img key={i} src={p.url} onClick={() => setZoomedImage(p.url)} className="aspect-square rounded-xl object-cover border border-slate-100 cursor-zoom-in hover:opacity-80 transition-opacity" />
@@ -1174,63 +1174,118 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
                  </div>
 
                  <div className="space-y-6">
-                    <div className="bg-white border border-slate-200 p-4 rounded-2xl">
-                        <div className="flex justify-between items-center mb-3">
-                            <label className="text-[8px] font-black text-black uppercase tracking-[0.4em]">Time Logs (Adjust if needed)</label>
-                            <span className="text-[9px] font-bold text-[#1A1A1A] uppercase">
-                                Duration: {reviewDuration.toFixed(1)} hrs
-                            </span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="text-[7px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Actual Start</label>
-                                <input 
-                                    type="time" 
-                                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-700"
-                                    value={getTimeFromTimestamp(reviewShift.actualStartTime)}
-                                    onChange={(e) => setReviewShift({...reviewShift, actualStartTime: updateTimestampWithTime(reviewShift.actualStartTime || Date.now(), e.target.value, reviewShift.date)})}
-                                />
-                            </div>
-                            <div>
-                                <label className="text-[7px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Actual End</label>
-                                <input 
-                                    type="time" 
-                                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-700"
-                                    value={getTimeFromTimestamp(reviewShift.actualEndTime)}
-                                    onChange={(e) => setReviewShift({...reviewShift, actualEndTime: updateTimestampWithTime(reviewShift.actualEndTime || Date.now(), e.target.value, reviewShift.date)})}
-                                />
-                            </div>
-                        </div>
-                    </div>
+                    {reviewShift.approvalStatus !== 'pending' ? (
+                        /* READ-ONLY SUMMARY VIEW */
+                        <div className={`p-8 rounded-3xl border space-y-8 animate-in slide-in-from-right-4 ${reviewShift.approvalStatus === 'approved' ? 'bg-emerald-50 border-emerald-100' : 'bg-rose-50 border-rose-100'}`}>
+                           <div className="flex items-center justify-between border-b border-black/5 pb-4">
+                              <div className="space-y-1">
+                                 <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.4em]">FINAL DECISION</p>
+                                 <p className={`text-xl font-black uppercase tracking-tight ${reviewShift.approvalStatus === 'approved' ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                    {reviewShift.approvalStatus === 'approved' ? 'QUALITY AUTHORIZED' : 'WORK REPORTED'}
+                                 </p>
+                              </div>
+                              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white text-2xl font-bold shadow-lg ${reviewShift.approvalStatus === 'approved' ? 'bg-emerald-600' : 'bg-rose-600'}`}>
+                                 {reviewShift.approvalStatus === 'approved' ? '✓' : '!'}
+                              </div>
+                           </div>
 
-                    <div>
-                       <label className="text-[8px] font-black text-black uppercase tracking-[0.4em] mb-1.5 block px-1 opacity-80">Feedback / Reason</label>
-                       <textarea 
-                         value={rejectionReason} 
-                         onChange={(e) => setRejectionReason(e.target.value)}
-                         className="w-full bg-teal-50 border border-slate-100 rounded-xl p-4 text-[10px] font-medium outline-none focus:border-teal-600 h-24 placeholder:text-slate-200 italic"
-                         placeholder="Required for reporting issues. Optional for approval."
-                       />
-                    </div>
-                    <div className="flex flex-col gap-3">
-                       <div className="flex gap-3">
-                          <button onClick={() => handleReviewDecision('approved')} className="flex-1 bg-emerald-600 text-white font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-lg shadow-emerald-100 hover:bg-emerald-700 active:scale-95 transition-all">
-                             APPROVE CLEAN
-                          </button>
-                          <button onClick={() => handleReviewDecision('rejected')} className="flex-1 bg-rose-600 text-white font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-lg shadow-rose-100 hover:bg-rose-700 active:scale-95 transition-all">
-                             REPORT ISSUES
-                          </button>
-                       </div>
-                       
-                       <div className="flex gap-3">
-                           <button onClick={() => { if (!rejectionReason) { alert("Reason required for fix schedule"); return; } handleReviewDecision('rejected'); handleRescheduleFix(reviewShift, rejectionReason); }} className="flex-1 bg-amber-50 text-amber-800 border-2 border-amber-200 font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-sm hover:border-amber-400 active:scale-95 transition-all">
-                              REPORT & FIX
-                           </button>
-                           <button onClick={() => handleSendSupervisor(reviewShift)} className="flex-1 bg-slate-50 text-slate-700 border-2 border-slate-200 font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-sm hover:border-slate-400 active:scale-95 transition-all">
-                              SEND SUPERVISOR
-                           </button>
-                       </div>
-                    </div>
+                           <div className="grid grid-cols-2 gap-8">
+                              <div>
+                                 <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Personnel</p>
+                                 <p className="text-[11px] font-bold text-slate-900 uppercase leading-tight">
+                                    {reviewShift.userIds.map(id => users.find(u => u.id === id)?.name).join(' & ')}
+                                 </p>
+                              </div>
+                              <div>
+                                 <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Deployment Date</p>
+                                 <p className="text-[11px] font-bold text-slate-900 uppercase">{reviewShift.date}</p>
+                              </div>
+                              <div>
+                                 <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Total Duration</p>
+                                 <p className="text-sm font-black text-slate-900">{reviewDuration.toFixed(1)} <span className="text-[8px] opacity-40">HRS</span></p>
+                              </div>
+                              <div>
+                                 <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Verified By</p>
+                                 <p className="text-[11px] font-bold text-slate-500 uppercase">{reviewShift.decidedBy || 'SYSTEM'}</p>
+                              </div>
+                           </div>
+
+                           {reviewShift.approvalComment && (
+                              <div className="pt-6 border-t border-black/5">
+                                 <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-2">Decision Log / Feedback</p>
+                                 <div className="bg-white/60 p-4 rounded-xl border border-black/5 italic text-[10px] text-slate-600 font-medium leading-relaxed">
+                                    "{reviewShift.approvalComment}"
+                                 </div>
+                              </div>
+                           )}
+
+                           <div className="pt-4 flex justify-end no-print">
+                              <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] italic">Record locked — No further changes authorized.</p>
+                           </div>
+                        </div>
+                    ) : (
+                        /* INTERACTIVE REVIEW VIEW */
+                        <>
+                            <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
+                                <div className="flex justify-between items-center mb-3">
+                                    <label className="text-[8px] font-black text-black uppercase tracking-[0.4em]">Time Logs (Verification Required)</label>
+                                    <span className="text-[9px] font-bold text-[#1A1A1A] uppercase">
+                                        Duration: {reviewDuration.toFixed(1)} hrs
+                                    </span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="text-[7px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Actual Start</label>
+                                        <input 
+                                            type="time" 
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-700"
+                                            value={getTimeFromTimestamp(reviewShift.actualStartTime)}
+                                            onChange={(e) => setReviewShift({...reviewShift, actualStartTime: updateTimestampWithTime(reviewShift.actualStartTime || Date.now(), e.target.value, reviewShift.date)})}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[7px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Actual End</label>
+                                        <input 
+                                            type="time" 
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-700"
+                                            value={getTimeFromTimestamp(reviewShift.actualEndTime)}
+                                            onChange={(e) => setReviewShift({...reviewShift, actualEndTime: updateTimestampWithTime(reviewShift.actualEndTime || Date.now(), e.target.value, reviewShift.date)})}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                               <label className="text-[8px] font-black text-black uppercase tracking-[0.4em] mb-1.5 block px-1 opacity-80">Feedback / Reason</label>
+                               <textarea 
+                                 value={rejectionReason} 
+                                 onChange={(e) => setRejectionReason(e.target.value)}
+                                 className="w-full bg-teal-50 border border-slate-100 rounded-xl p-4 text-[10px] font-medium outline-none focus:border-teal-600 h-24 placeholder:text-slate-200 italic shadow-inner"
+                                 placeholder="Reason is mandatory for reporting issues. Optional for approval."
+                               />
+                            </div>
+
+                            <div className="flex flex-col gap-3 pt-2">
+                               <div className="flex gap-3">
+                                  <button onClick={() => handleReviewDecision('approved')} className="flex-1 bg-emerald-600 text-white font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-lg shadow-emerald-100 hover:bg-emerald-700 active:scale-95 transition-all">
+                                     APPROVE CLEAN
+                                  </button>
+                                  <button onClick={() => handleReviewDecision('rejected')} className="flex-1 bg-rose-600 text-white font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-lg shadow-rose-100 hover:bg-rose-700 active:scale-95 transition-all">
+                                     REPORT ISSUES
+                                  </button>
+                               </div>
+                               
+                               <div className="flex gap-3">
+                                   <button onClick={() => { if (!rejectionReason) { alert("Reason required for fix schedule"); return; } handleReviewDecision('rejected'); handleRescheduleFix(reviewShift, rejectionReason); }} className="flex-1 bg-amber-50 text-amber-800 border-2 border-amber-200 font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-sm hover:border-amber-400 active:scale-95 transition-all">
+                                      REPORT & FIX
+                                   </button>
+                                   <button onClick={() => handleSendSupervisor(reviewShift)} className="flex-1 bg-slate-50 text-slate-700 border-2 border-slate-200 font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-sm hover:border-slate-400 active:scale-95 transition-all">
+                                      SEND SUPERVISOR
+                                   </button>
+                               </div>
+                            </div>
+                        </>
+                    )}
                  </div>
               </div>
            </div>
@@ -1239,7 +1294,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
 
       {zoomedImage && (
         <div className="fixed inset-0 bg-black/90 z-[500] flex items-center justify-center p-4 cursor-pointer" onClick={() => setZoomedImage(null)}>
-          <img src={zoomedImage} className="max-w-full max-h-full object-contain rounded-3xl" alt="Preview" />
+          <img src={zoomedImage} className="max-w-full max-h-full object-contain rounded-3xl shadow-2xl" alt="Preview" />
         </div>
       )}
     </div>
