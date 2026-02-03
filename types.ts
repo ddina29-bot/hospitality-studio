@@ -321,8 +321,6 @@ export interface Shift {
     decisionNote?: string;
   };
   inspectionPhotos?: string[];
-  partialProgress?: boolean;
-  waitingForLinen?: boolean;
 }
 
 export interface Client {

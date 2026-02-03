@@ -79,6 +79,50 @@ const App: React.FC = () => {
     setNotifications(prev => [fullNotif, ...prev]);
   };
 
+  // HYDRATE STATE FROM SERVER
+  useEffect(() => {
+    const hydrateState = async () => {
+      if (!user || isHydrating.current) return;
+      isHydrating.current = true;
+      setIsLoading(true);
+      try {
+        const response = await fetch(`/api/state?email=${encodeURIComponent(user.email)}`);
+        if (response.status === 404) {
+          setIsLoading(false);
+          isHydrating.current = false;
+          return;
+        }
+        if (!response.ok) throw new Error("Sync server connection interrupted.");
+        const data = await response.json();
+        if (data.success && data.organization) {
+          const org = data.organization;
+          setOrgId(org.id);
+          localStorage.setItem('current_org_id', org.id);
+          if (org.users) setUsers(org.users);
+          if (org.shifts) setShifts(org.shifts);
+          if (org.properties) setProperties(org.properties);
+          if (org.clients) setClients(org.clients);
+          if (org.invoices) setInvoices(org.invoices);
+          if (org.timeEntries) setTimeEntries(org.timeEntries);
+          if (org.tutorials) setTutorials(org.tutorials);
+          if (org.inventoryItems) setInventoryItems(org.inventoryItems);
+          if (org.supplyRequests) setSupplyRequests(org.supplyRequests);
+          if (org.anomalyReports) setAnomalyReports(org.anomalyReports);
+          if (org.manualTasks) setManualTasks(org.manualTasks);
+          if (org.leaveRequests) setLeaveRequests(org.leaveRequests);
+          if (org.settings) setOrganization(org.settings);
+          if (org.authorizedLaundryUserIds) setAuthorizedLaundryUserIds(org.authorizedLaundryUserIds);
+        }
+      } catch (err) {
+        console.error("Sync Negotiation Failed:", err);
+      } finally {
+        setIsLoading(false);
+        setTimeout(() => { isHydrating.current = false; }, 500);
+      }
+    };
+    hydrateState();
+  }, [user?.email]);
+
   // AUTO-SYNC
   useEffect(() => {
     if (!user || !orgId || isHydrating.current) return;
@@ -100,6 +144,24 @@ const App: React.FC = () => {
     localStorage.setItem('studio_org_settings', JSON.stringify(organization));
     localStorage.setItem('current_user_obj', JSON.stringify(user));
     localStorage.setItem('studio_auth_laundry_ids', JSON.stringify(authorizedLaundryUserIds));
+
+    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    syncTimeoutRef.current = setTimeout(async () => {
+      try {
+        await fetch('/api/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orgId,
+            data: { 
+              users, shifts, properties, clients, invoices, timeEntries, 
+              tutorials, inventoryItems, supplyRequests, anomalyReports, manualTasks, leaveRequests,
+              settings: organization, authorizedLaundryUserIds, notifications 
+            }
+          })
+        });
+      } catch (err) { console.error("Sync error:", err); }
+    }, 2000);
 
     return () => { if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current); };
   }, [users, shifts, properties, clients, invoices, timeEntries, tutorials, activeTab, user, orgId, organization, inventoryItems, supplyRequests, anomalyReports, authorizedLaundryUserIds, manualTasks, leaveRequests, notifications]);
@@ -130,6 +192,7 @@ const App: React.FC = () => {
     const leave = leaveRequests.find(l => l.id === id);
     setLeaveRequests(prev => prev.map(l => l.id === id ? { ...l, status } : l));
     
+    // Notify the user that their leave was processed
     if (leave) {
       addNotification({
         title: `Leave ${status.toUpperCase()}`,
@@ -138,6 +201,8 @@ const App: React.FC = () => {
         linkTab: 'settings'
       });
     }
+
+    // Clear notification for the admin
     setNotifications(prev => prev.filter(n => n.linkId !== id));
     showToast(`LEAVE REQUEST ${status.toUpperCase()}`, status === 'approved' ? 'success' : 'error');
   };
@@ -156,6 +221,7 @@ const App: React.FC = () => {
     };
     setLeaveRequests(prev => [...prev, newRequest]);
 
+    // Create App-wide Notification for Management
     addNotification({
       title: 'New Leave Request',
       message: `${user.name} requested ${type} (${start} to ${end})`,
@@ -180,6 +246,7 @@ const App: React.FC = () => {
         if (organizationData.authorizedLaundryUserIds) setAuthorizedLaundryUserIds(organizationData.authorizedLaundryUserIds);
         if (organizationData.notifications) setNotifications(organizationData.notifications);
     }
+    // Redirect on login if necessary
     if (u.role === 'supervisor') setActiveTab('shifts');
     else if (u.role === 'laundry') setActiveTab('laundry');
     else setActiveTab('dashboard');
@@ -218,6 +285,7 @@ const App: React.FC = () => {
     if (!user) return null;
     const effectiveUser = { ...user, role: currentRole };
     
+    // Virtual "settings" tab acts as the User Profile for all roles
     if (activeTab === 'settings') {
       return (
         <PersonnelProfile 
@@ -318,6 +386,7 @@ const App: React.FC = () => {
         </Layout>
       )}
 
+      {/* Global Activity Center */}
       {showActivityCenter && (
         <div className="fixed inset-0 z-[2000] flex justify-end">
           <ActivityCenter 
@@ -328,6 +397,7 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {/* Global Toast Component */}
       {toast && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[9999] animate-in slide-in-from-top-4 duration-300">
            <div className={`px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-4 border ${
