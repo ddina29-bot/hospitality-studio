@@ -61,6 +61,16 @@ export interface SpecialReport {
   vendorNotes?: string;
 }
 
+export interface AnomalyReport {
+  id: string;
+  userId: string;
+  userName: string;
+  type: 'high_usage' | 'hygiene_risk';
+  message: string;
+  timestamp: number;
+  status: 'filed' | 'investigating' | 'resolved';
+}
+
 export interface SupplyItem {
   id: string;
   name: string;
@@ -260,6 +270,7 @@ export interface User {
   activationDate?: string;
   homeAddress?: string;
   dateOfBirth?: string;
+  lastSupplyRequestDate?: number;
 }
 
 export interface Shift {

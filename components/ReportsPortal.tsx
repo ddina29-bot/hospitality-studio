@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { AuditReport, User, UserRole, SupplyRequest, Shift, LeaveRequest } from '../types';
+import { AuditReport, User, UserRole, SupplyRequest, Shift, LeaveRequest, AnomalyReport } from '../types';
 
 interface ReportsPortalProps {
   auditReports?: AuditReport[];
@@ -9,11 +9,11 @@ interface ReportsPortalProps {
   shifts?: Shift[];
   leaveRequests?: LeaveRequest[];
   userRole: UserRole;
+  anomalyReports?: AnomalyReport[];
 }
 
-type ReportTab = 'audit' | 'employees' | 'incidents';
+type ReportTab = 'audit' | 'employees' | 'incidents' | 'anomalies';
 type SortOrder = 'newest' | 'oldest' | 'type';
-type GroupMode = 'none' | 'property';
 
 const ReportsPortal: React.FC<ReportsPortalProps> = ({ 
   auditReports = [], 
@@ -21,28 +21,17 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
   supplyRequests = [], 
   shifts = [],
   leaveRequests = [],
-  userRole 
+  userRole,
+  anomalyReports = []
 }) => {
   const [activeTab, setActiveTab] = useState<ReportTab>('audit');
-  const [personnelSearch, setPersonnelSearch] = useState('');
   const [incidentSearch, setIncidentSearch] = useState('');
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [auditSearch, setAuditSearch] = useState('');
   const [selectedAuditShift, setSelectedAuditShift] = useState<Shift | null>(null);
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
-  const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
 
   const handleGeneratePDF = (shift: Shift, e?: React.MouseEvent) => {
     e?.stopPropagation();
-    const cleanerNames = shift.userIds.map(id => users.find(u => u.id === id)?.name || 'Unknown').join(', ');
-    const inspectorName = shift.decidedBy || 'Management';
-    const date = shift.date;
-    const formatTime = (ts?: number, str?: string) => {
-       if (ts) return new Date(ts).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-       return str || 'N/A';
-    };
-    const timeRange = `${formatTime(shift.actualStartTime, shift.startTime)} - ${formatTime(shift.actualEndTime, shift.endTime)}`;
-
     const allPhotos = [
         ...(shift.tasks?.flatMap(t => t.photos) || []),
         ...(shift.checkoutPhotos?.keyInBox || []),
@@ -78,16 +67,9 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
               <div class="flex flex-col gap-1">
                  <div class="flex items-center gap-4">
                     <span class="text-[8px] font-black uppercase tracking-widest text-slate-400 w-16">DATE</span>
-                    <span class="text-sm font-bold text-black uppercase tracking-widest bg-slate-50 px-2 rounded">${date}</span>
-                 </div>
-                 <div class="flex items-center gap-4">
-                    <span class="text-[8px] font-black uppercase tracking-widest text-slate-400 w-16">TIME</span>
-                    <span class="text-xs font-bold text-black uppercase tracking-widest">${timeRange}</span>
+                    <span class="text-sm font-bold text-black uppercase tracking-widest bg-slate-50 px-2 rounded">${shift.date}</span>
                  </div>
               </div>
-           </div>
-           <div class="text-right">
-              <span class="bg-[#0D9488] text-white px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest">VERIFIED</span>
            </div>
         </div>
         <div class="mb-10">
@@ -95,9 +77,6 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
            <div class="grid grid-cols-3 gap-4">
               ${allPhotos.map(p => `<div class="aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-50"><img src="${p.url}" class="w-full h-full object-cover" /></div>`).join('')}
            </div>
-        </div>
-        <div class="text-center pt-10 border-t border-slate-100">
-           <p class="text-[7px] font-black text-slate-300 uppercase tracking-[0.5em]">Official Studio Operational Record</p>
         </div>
         <script>window.onload = function() { setTimeout(function(){ window.print(); }, 500); }</script>
       </body>
@@ -150,7 +129,7 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
   const auditMonthGroups = useMemo(() => groupShiftsByMonthDay(auditHistory), [auditHistory]);
 
   const filteredIncidents = useMemo(() => {
-      let list = [];
+      let list: any[] = [];
       shifts.forEach(s => {
          s.maintenanceReports?.forEach(r => list.push({ ...r, type: 'Maintenance', date: s.date, propertyName: s.propertyName, status: r.status }));
          s.damageReports?.forEach(r => list.push({ ...r, type: 'Damage', date: s.date, propertyName: s.propertyName, status: r.status }));
@@ -169,12 +148,12 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
     <div className="space-y-8 animate-in fade-in duration-700 text-left pb-24">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
-           <h2 className="text-2xl font-bold text-slate-900 tracking-tight">STUDIO RECORDS</h2>
-           <p className="text-[9px] font-black text-[#0D9488] uppercase tracking-[0.4em]">Operations Data Center</p>
+           <h2 className="text-2xl font-bold text-slate-900 tracking-tight leading-none uppercase">Studio Records</h2>
+           <p className="text-[9px] font-black text-[#0D9488] uppercase tracking-[0.4em] mt-2">Operations Intelligence Center</p>
         </div>
         <nav className="p-1 bg-slate-50 rounded-2xl border border-slate-100 shadow-sm">
           <div className="flex gap-2 flex-wrap">
-            {['audit', 'incidents', 'employees'].map((t) => (
+            {['audit', 'incidents', 'anomalies', 'employees'].map((t) => (
               <button 
                 key={t} 
                 onClick={() => setActiveTab(t as any)} 
@@ -191,13 +170,13 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
         <div className="space-y-10 animate-in slide-in-from-right-4">
            <div className="relative w-full">
               <input type="text" placeholder="SEARCH APARTMENT OR DATE..." className={`${inputStyle} w-full pl-12`} value={auditSearch} onChange={(e) => setAuditSearch(e.target.value)} />
-              <div className="absolute left-4 top-3 text-slate-300"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+              <div className="absolute left-4 top-3 text-slate-300"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8"/><line x1="21" y1="16.65" y2="16.65"/></svg></div>
            </div>
 
            <div className="space-y-8">
               {auditMonthGroups.map((monthGroup, mIdx) => (
                  <div key={mIdx} className="bg-white border border-slate-100 rounded-[2rem] overflow-hidden shadow-sm">
-                    <div className="bg-slate-50 px-8 py-5 border-b border-slate-100 flex justify-between items-center">
+                    <div className="bg-slate-50 px-8 py-5 border-b border-slate-100">
                        <h2 className="text-lg font-bold text-slate-900 uppercase tracking-tight">{monthGroup.monthLabel}</h2>
                     </div>
                     <div className="p-6 space-y-3">
@@ -212,7 +191,6 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
                              </div>
                              <div className="flex gap-2 w-full md:w-auto">
                                 <button onClick={(e) => handleGeneratePDF(shift, e)} className="flex-1 md:flex-none px-4 py-2 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest">PDF</button>
-                                <button onClick={() => setSelectedAuditShift(shift)} className="flex-1 md:flex-none px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-[9px] font-black uppercase tracking-widest">View</button>
                              </div>
                           </div>
                        ))}
@@ -225,7 +203,9 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
 
       {activeTab === 'incidents' && (
          <div className="space-y-4 animate-in slide-in-from-right-4">
-            {filteredIncidents.map((inc, i) => (
+            {filteredIncidents.length === 0 ? (
+               <div className="py-20 text-center opacity-20 font-black uppercase italic tracking-widest text-[10px]">No shift incidents logged</div>
+            ) : filteredIncidents.map((inc, i) => (
                <div key={i} className="p-6 rounded-[2rem] bg-white border border-slate-100 shadow-sm flex items-center justify-between">
                   <div className="flex items-center gap-6">
                      <div className="w-12 h-12 rounded-full bg-red-50 text-red-600 flex items-center justify-center font-bold">!</div>
@@ -238,6 +218,42 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
                   <span className="px-4 py-1.5 rounded-full text-[8px] font-black bg-slate-100 text-slate-400 uppercase">{inc.status}</span>
                </div>
             ))}
+         </div>
+      )}
+
+      {activeTab === 'anomalies' && (
+         <div className="space-y-6 animate-in slide-in-from-right-4">
+            <div className="bg-slate-900 p-8 rounded-[40px] text-white shadow-2xl flex flex-col md:flex-row justify-between items-center gap-6">
+               <div className="text-left">
+                  <h3 className="text-xl font-bold uppercase tracking-tight">Anomaly Monitoring Log</h3>
+                  <p className="text-[10px] font-black text-teal-400 uppercase tracking-[0.4em] mt-2">Active Risk Tracking</p>
+               </div>
+               <span className="bg-teal-400/10 text-teal-400 px-4 py-1.5 rounded-full text-[8px] font-black uppercase tracking-widest border border-teal-400/20">LIVE DATA STREAM</span>
+            </div>
+
+            <div className="space-y-3">
+               {anomalyReports.length === 0 ? (
+                  <div className="py-24 text-center border-2 border-dashed border-black/5 rounded-[40px] opacity-10 italic text-[10px] font-black uppercase tracking-[0.4em]">Historical Queue Clear</div>
+               ) : (
+                  anomalyReports.map((anom) => (
+                     <div key={anom.id} className="bg-white border border-slate-100 p-6 rounded-[32px] shadow-sm flex flex-col md:flex-row justify-between items-center gap-4 hover:border-rose-100 transition-all group">
+                        <div className="flex items-center gap-6 text-left flex-1">
+                           <div className="w-12 h-12 rounded-2xl bg-rose-50 flex items-center justify-center text-rose-600 font-bold text-xl shrink-0">!</div>
+                           <div className="space-y-1">
+                              <div className="flex items-center gap-3">
+                                 <h4 className="text-sm font-black text-slate-900 uppercase">{anom.userName}</h4>
+                                 <span className="bg-rose-600 text-white text-[7px] font-black px-2 py-0.5 rounded uppercase tracking-widest animate-pulse">AUDIT FILED</span>
+                              </div>
+                              <p className="text-[10px] text-slate-600 font-bold italic leading-relaxed">"{anom.message}"</p>
+                           </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                           <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest">{new Date(anom.timestamp).toLocaleDateString()} • {new Date(anom.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p>
+                        </div>
+                     </div>
+                  ))
+               )}
+            </div>
          </div>
       )}
       

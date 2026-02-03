@@ -79,7 +79,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({
 
   const getStatusLabel = (job: Shift) => {
     if (job.approvalStatus === 'approved') return { text: 'APPROVED', color: 'text-green-600 bg-green-50 border-green-500/20' };
-    if (job.approvalStatus === 'rejected') return { text: 'REJECTED', color: 'text-red-600 bg-red-50 border-red-500/20' };
+    if (job.approvalStatus === 'rejected') return { text: 'REPORTED', color: 'text-rose-600 bg-rose-50 border-rose-500/20' };
     if (job.status === 'completed') return { text: 'COMPLETED', color: 'text-[#3B82F6] bg-blue-50 border-[#3B82F6]/20' };
     return { text: 'PENDING', color: 'text-black/30 bg-gray-50 border-gray-200' };
   };

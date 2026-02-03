@@ -40,15 +40,9 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
   const [refreshToggle, setRefreshToggle] = useState(0);
   const [reasons, setReasons] = useState<Record<string, string>>({});
   
-  // ROLE LOGIC
-  // 'user' here is the "mockUser" from App.tsx, so user.role is actually the effectiveRole
   const isDriverRole = user.role === 'driver';
   const isManagerRole = user.role === 'admin' || user.role === 'housekeeping';
-  
-  // Operational View: Shown if user is acting as a Driver OR an Admin deep-diving into a specific driver
   const isOperationalMode = isDriverRole || (isManagerRole && !!overrideDriverId);
-  
-  // Monitor View: Shown to Managers only when they are NOT overriding a specific driver
   const isMonitorMode = isManagerRole && !isDriverRole && !overrideDriverId;
 
   useEffect(() => {
@@ -72,25 +66,18 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
     return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase();
   }, [viewedDate]);
 
-  // Which user ID are we interacting with for the current view?
   const activeUserId = isOperationalMode ? (overrideDriverId || user.id) : null;
   const isViewingToday = viewedDate === realTodayISO;
 
-  // SHARED LOGISTICS FILTER LOGIC (Used by both Monitor and Operational Views)
   const getLogisticsTasksForUser = (userId: string, dateStr: string, activeRole: string) => {
     return (shifts || []).filter(s => {
       if (!s.isPublished || s.excludeLaundry || s.date !== dateStr) return false;
-      
-      // 1. Explicit Assignment (Always show if ID is in list)
       if (s.userIds.includes(userId)) return true;
-      
-      // 2. Implicit Driver Access (Show all unassigned logistics to any personnel currently acting as a driver)
-      const isLogisticsType = ['Check out/check in', 'REFRESH', 'MID STAY CLEANING', 'BEDS ONLY', 'Common Area'].includes(s.serviceType);
+      const isLogisticsType = ['Check out/check in', 'REFRESH', 'MID STAY CLEANING', 'BEDS ONLY', 'Common Area', 'SUPPLY DELIVERY'].includes(s.serviceType);
       return isLogisticsType && activeRole === 'driver';
     });
   };
 
-  // ROUTE TIMING
   const todaysEntries = useMemo(() => {
     if (!activeUserId) return [];
     return (timeEntries || [])
@@ -105,7 +92,6 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
 
   const routeEndTime = useMemo(() => {
     if (!routeStartTime) return null;
-    // Find the latest 'out' after the first 'in'
     const endEntry = todaysEntries.slice().reverse().find(e => e.type === 'out' && new Date(e.timestamp) > routeStartTime);
     return endEntry ? new Date(endEntry.timestamp) : null;
   }, [todaysEntries, routeStartTime]);
@@ -123,7 +109,7 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
         }
       };
       updateTimer();
-      interval = setInterval(updateTimer, 10000); 
+      interval = setInterval(updateTimer, 1000); 
     }
     return () => clearInterval(interval);
   }, [routeActive, isViewingToday, routeStartTime]);
@@ -134,12 +120,8 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
     return `${hrs.toString().padStart(2, '0')}h ${mins.toString().padStart(2, '0')}m`;
   };
 
-  // STOP LIST FILTERING
   const logisticsTasks = useMemo(() => {
     if (!activeUserId) return [];
-    
-    // Determine the role of the person we are viewing
-    // If override, it's that user's database role. If simulating, it's the simulated role from 'user.role'
     const effectiveRoleOfSubject = overrideDriverId 
         ? (users?.find(u => u.id === overrideDriverId)?.role || 'driver')
         : user.role;
@@ -155,7 +137,6 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
     });
   }, [shifts, viewedDateStr, properties, users, activeUserId, user.role, overrideDriverId]);
 
-  // MONITOR VIEW DATA
   const monitorData = useMemo(() => {
     if (!isMonitorMode) return [];
     return users?.filter(u => u.role === 'driver' && u.status === 'active').map(d => {
@@ -207,12 +188,6 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
     }));
   };
 
-  const handleSaveKeyNote = (id: string) => {
-    if (!reasons[id]) return;
-    setShifts?.(prev => prev.map(s => s.id === id ? { ...s, keyLocationReason: reasons[id] } : s));
-    alert("Key status updated.");
-  };
-
   const weekDays = useMemo(() => {
     const days = [];
     const base = new Date();
@@ -227,7 +202,7 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
     return days;
   }, [realTodayISO]);
 
-  const labelStyle = "text-[7px] font-black text-teal-700 uppercase tracking-[0.4em] mb-1.5 opacity-60";
+  const labelStyle = "text-[7px] font-black text-slate-400 uppercase tracking-[0.4em] mb-1.5 block px-1";
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700 text-left pb-32 max-w-2xl mx-auto px-2">
@@ -237,21 +212,21 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
         <div className="space-y-8">
            <header>
              <h2 className="text-2xl font-serif-brand font-bold text-slate-900 tracking-tight leading-none uppercase">Activity Monitor</h2>
-             <p className="text-[9px] text-teal-600 font-bold uppercase tracking-[0.4em] mt-2">FLEET STATUS OVERVIEW</p>
+             <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wide mt-2">Fleet status overview for driver logistics.</p>
            </header>
 
-           <div className="bg-white border border-teal-100 rounded-[40px] shadow-2xl overflow-hidden divide-y divide-slate-50">
+           <div className="bg-white border border-slate-100 rounded-[40px] shadow-2xl overflow-hidden divide-y divide-slate-50">
               {monitorData.length === 0 ? (
                 <div className="p-20 text-center opacity-20 font-black uppercase text-[10px]">No active drivers.</div>
               ) : monitorData.map((session, i) => (
-                <div key={i} className="p-8 flex flex-col md:flex-row justify-between items-center gap-6 hover:bg-teal-50/20 transition-colors">
-                   <div className="flex items-center gap-6 flex-1">
-                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-bold text-2xl ${session.isActive ? 'bg-teal-600 text-white shadow-lg' : 'bg-slate-100 text-slate-400'}`}>
+                <div key={i} className="p-8 flex flex-col md:flex-row justify-between items-center gap-6 hover:bg-slate-50 transition-colors">
+                   <div className="flex items-center gap-6 flex-1 text-left">
+                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-bold text-2xl ${session.isActive ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-100 text-slate-400'}`}>
                          {session.driver.name.charAt(0)}
                       </div>
                       <div className="text-left">
                          <h4 className="text-lg font-bold text-slate-900 uppercase tracking-tight">{session.driver.name}</h4>
-                         <p className="text-[9px] font-black uppercase tracking-widest text-teal-500">Progress: {session.progress} STOPS</p>
+                         <p className="text-[9px] font-black uppercase tracking-widest text-indigo-500">Progress: {session.progress} STOPS</p>
                       </div>
                    </div>
                    <div className="flex items-center gap-10">
@@ -283,7 +258,7 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
                 </button>
              )}
              <div className="flex-1 text-right">
-                <p className="text-[8px] font-black text-teal-600 uppercase tracking-widest">Active Personnel</p>
+                <p className="text-[8px] font-black text-indigo-600 uppercase tracking-widest">Active Personnel</p>
                 <p className="text-[10px] font-bold text-slate-900 uppercase leading-none">{users?.find(u => u.id === activeUserId)?.name || user.name}</p>
              </div>
           </section>
@@ -291,136 +266,151 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
           <section className="bg-white border border-gray-200 p-4 rounded-[32px] shadow-sm">
             <div className="flex justify-between items-center gap-2 overflow-x-auto no-scrollbar pb-2">
               {weekDays.map((wd) => (
-                <button key={wd.iso} onClick={() => setViewedDate(wd.iso)} className={`flex flex-col items-center min-w-[60px] py-3 rounded-2xl border transition-all ${viewedDate === wd.iso ? 'bg-[#0D9488] border-[#0D9488] text-white shadow-lg scale-105' : 'bg-white border-gray-200 text-gray-400 hover:border-teal-600/40'}`}>
-                  <span className={`text-[8px] font-black uppercase mb-1 ${viewedDate === wd.iso ? 'text-white/80' : 'text-gray-300'}`}>{wd.dayName}</span>
-                  <span className={`text-sm font-bold ${viewedDate === wd.iso ? 'text-white' : 'text-gray-600'}`}>{wd.dateNum}</span>
+                <button key={wd.iso} onClick={() => setViewedDate(wd.iso)} className={`flex flex-col items-center min-w-[60px] py-3 rounded-2xl border transition-all ${viewedDate === wd.iso ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg scale-105' : 'bg-white border-gray-200 text-slate-400'}`}>
+                  <span className={`text-[8px] font-black uppercase mb-1 ${viewedDate === wd.iso ? 'text-white/80' : 'text-slate-400'}`}>{wd.dayName}</span>
+                  <span className={`text-sm font-bold ${viewedDate === wd.iso ? 'text-white' : 'text-slate-600'}`}>{wd.dateNum}</span>
                 </button>
               ))}
             </div>
           </section>
 
-          <header className="flex justify-between items-center bg-teal-50 p-6 rounded-[32px] border border-teal-100 shadow-xl">
-            <div className="space-y-2 text-left">
-              <h2 className="text-xl font-brand text-black uppercase font-bold tracking-tight leading-none">
+          {/* HUD: DEEP SLATE */}
+          <header className="flex justify-between items-center bg-slate-900 p-8 rounded-[40px] shadow-xl border border-white/5 relative overflow-hidden">
+            <div className="space-y-2 text-left relative z-10">
+              <h2 className="text-xl font-brand text-white uppercase font-bold tracking-tight leading-none">
                 {isViewingToday ? (isFinishedForViewedDate ? 'Route Archive' : 'Active Route') : `Route Preview`}
               </h2>
               <div className="space-y-1">
-                 <p className="text-[10px] text-teal-800/60 uppercase tracking-widest">{viewedDateStr} • {logisticsTasks.length} STOP(S)</p>
-                 {routeStartTime && <p className="text-[9px] font-bold text-black/80 uppercase">Started: {routeStartTime.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p>}
+                 <p className="text-[10px] text-white/40 uppercase tracking-widest">{viewedDateStr} • {logisticsTasks.length} STOP(S)</p>
+                 {routeStartTime && <p className="text-[9px] font-bold text-teal-400 uppercase">Started: {routeStartTime.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p>}
               </div>
             </div>
-            <div className="text-right">
+            <div className="text-right relative z-10">
               {isViewingToday && routeActive ? (
                  <div className="flex flex-col items-end">
-                   <p className="text-xl font-bold text-black font-mono leading-none">{formatElapsedTime(elapsedTime)}</p>
-                   <span className="text-[7px] font-black text-green-600 uppercase tracking-widest mt-1 animate-pulse">SESSION LIVE</span>
+                   <p className="text-3xl font-bold text-emerald-400 font-mono leading-none tracking-tighter shadow-[0_0_15px_rgba(52,211,153,0.3)]">{formatElapsedTime(elapsedTime)}</p>
+                   <span className="text-[8px] font-black text-emerald-500 uppercase tracking-[0.2em] mt-3 animate-pulse">SESSION LIVE</span>
                  </div>
               ) : isViewingToday && !isFinishedForViewedDate ? (
-                <button onClick={handleStartDay} className="bg-[#0D9488] text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase shadow-lg active:scale-95 transition-transform">START ROUTE</button>
+                <button onClick={handleStartDay} className="bg-indigo-600 text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase shadow-lg active:scale-95 transition-transform">START ROUTE</button>
               ) : isFinishedForViewedDate ? (
-                <span className="text-[9px] font-black text-green-600 uppercase bg-green-500/10 px-4 py-2 rounded-xl border border-green-500/20">FINISHED</span>
+                <span className="text-[9px] font-black text-emerald-400 uppercase bg-emerald-400/10 px-4 py-2 rounded-xl border border-emerald-400/20">FINISHED</span>
               ) : (
-                 <span className="text-[9px] font-black text-teal-600 uppercase bg-teal-50 px-4 py-2 rounded-xl border border-teal-100">LOCKED</span>
+                 <span className="text-[9px] font-black text-slate-500 uppercase bg-slate-800 px-4 py-2 rounded-xl border border-white/5">LOCKED</span>
               )}
             </div>
           </header>
 
           <div className="space-y-6">
             {logisticsTasks.length === 0 ? (
-              <div className="py-20 text-center border-2 border-dashed border-black/5 rounded-[40px] opacity-10 italic text-[10px] font-black uppercase tracking-[0.4em]">No active route assignments for this personnel.</div>
+              <div className="py-24 text-center border-2 border-dashed border-black/5 rounded-[48px] opacity-10 italic text-[10px] font-black uppercase tracking-[0.4em]">Queue Clear.</div>
             ) : (
-              logisticsTasks.map(task => (
-                <div key={task.id} className={`bg-white p-6 rounded-[32px] border shadow-xl space-y-6 transition-all hover:border-teal-200 ${(!task.isDelivered || !task.isCollected) ? 'border-orange-300 ring-2 ring-orange-50' : 'border-slate-100'} ${(!routeActive && !isManagerRole) ? 'opacity-70 grayscale-[0.5]' : ''}`}>
-                  <div className="flex justify-between items-start">
-                    <div className="space-y-1 text-left flex-1">
-                        <div className="flex items-center gap-4 flex-wrap">
-                          <h4 className="text-black font-bold uppercase text-lg leading-tight tracking-tight">{task.propertyName}</h4>
-                          <label className={`flex items-center gap-2 group bg-teal-50 px-3 py-1.5 rounded-full border border-teal-200 ${(!routeActive && !isManagerRole) ? 'opacity-50' : 'cursor-pointer'}`}>
-                            <div 
-                              onClick={() => (routeActive || isManagerRole) && toggleTaskField(task.id, 'keysHandled')}
-                              className={`w-4 h-4 rounded border transition-all flex items-center justify-center ${task.keysHandled ? 'bg-teal-600 border-teal-600' : 'bg-white border-gray-300'}`}
-                            >
-                              {task.keysHandled && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="4"><polyline points="20 6 9 17 4 12"/></svg>}
-                            </div>
-                            <span className="text-[8px] font-black text-teal-600 uppercase tracking-widest whitespace-nowrap">Keys from Office</span>
-                          </label>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 bg-slate-50 p-4 rounded-2xl border border-gray-100">
-                          <div>
-                            <p className={labelStyle}>Staff Onsite</p>
-                            <p className="text-[11px] text-black font-bold uppercase">{task.cleanerDetails?.name || 'N/A'}</p>
-                            {task.cleanerDetails?.phone && (
-                              <div className="flex gap-2 mt-1.5">
-                                 <a href={`tel:${task.cleanerDetails.phone}`} className="text-[8px] bg-white text-teal-700 px-3 py-1 rounded-lg border border-teal-100 font-black uppercase shadow-sm">Call</a>
-                                 <a href={`https://wa.me/${task.cleanerDetails.phone.replace(/[^0-9]/g, '')}`} target="_blank" className="text-[8px] bg-green-50 text-green-600 px-3 py-1 rounded-lg border border-green-100 font-black uppercase shadow-sm">WhatsApp</a>
-                              </div>
+              logisticsTasks.map(task => {
+                const isExtraTask = task.serviceType === 'SUPPLY DELIVERY';
+                return (
+                  <div key={task.id} className={`bg-white p-8 rounded-[40px] border shadow-xl space-y-8 transition-all hover:border-indigo-100 ${(!task.isDelivered || (!isExtraTask && !task.isCollected)) ? 'border-orange-100 ring-2 ring-orange-50/50' : 'border-slate-50'}`}>
+                    <div className="flex justify-between items-start">
+                      <div className="space-y-1 text-left flex-1">
+                          <div className="flex items-center gap-4 flex-wrap">
+                            <h4 className="text-slate-900 font-extrabold uppercase text-xl leading-tight tracking-tighter">{task.propertyName}</h4>
+                            {!isExtraTask && (
+                              <label className={`flex items-center gap-2 group bg-slate-50 px-4 py-1.5 rounded-full border border-slate-200 ${(!routeActive && !isManagerRole) ? 'opacity-50' : 'cursor-pointer'}`}>
+                                <div 
+                                  onClick={() => (routeActive || isManagerRole) && toggleTaskField(task.id, 'keysHandled')}
+                                  className={`w-4 h-4 rounded border transition-all flex items-center justify-center ${task.keysHandled ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-300'}`}
+                                >
+                                  {task.keysHandled && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="4"><polyline points="20 6 9 17 4 12"/></svg>}
+                                </div>
+                                <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap">Access Keys taken</span>
+                              </label>
+                            )}
+                            {isExtraTask && (
+                              <span className="bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border border-indigo-100">Supply Drop</span>
                             )}
                           </div>
-                          <div>
-                            <p className={labelStyle}>Navigate To Stop</p>
-                            <div className="flex gap-2">
-                              <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(task.propDetails?.address || '')}`} target="_blank" className="text-[9px] bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-black uppercase border border-blue-100">G-Maps</a>
-                              <a href={`https://maps.apple.com/?q=${encodeURIComponent(task.propDetails?.address || '')}`} target="_blank" className="text-[9px] bg-gray-50 text-black px-3 py-1.5 rounded-lg font-black uppercase border border-gray-200">Apple</a>
+                          
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6 bg-slate-50/50 p-5 rounded-3xl border border-slate-100">
+                            <div>
+                              <p className={labelStyle}>Staff Contact</p>
+                              <p className="text-[11px] text-slate-900 font-extrabold uppercase leading-none">{task.cleanerDetails?.name || 'HQ / Pending'}</p>
+                              {task.cleanerDetails?.phone && (
+                                <div className="flex gap-2 mt-3">
+                                   <a href={`tel:${task.cleanerDetails.phone}`} className="text-[8px] bg-white text-slate-400 px-4 py-1.5 rounded-lg border border-slate-200 font-black uppercase shadow-sm active:scale-95 hover:bg-slate-50">Call</a>
+                                   <a href={`https://wa.me/${task.cleanerDetails.phone.replace(/[^0-9]/g, '')}`} target="_blank" className="text-[8px] bg-green-50 text-green-600 px-4 py-1.5 rounded-lg border border-green-100 font-black uppercase shadow-sm active:scale-95">WhatsApp</a>
+                                </div>
+                              )}
+                            </div>
+                            <div>
+                              <p className={labelStyle}>Deployment Position</p>
+                              <div className="flex gap-2">
+                                <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(task.propDetails?.address || '')}`} target="_blank" className="flex-1 text-[9px] bg-white text-blue-600 px-3 py-2 rounded-xl font-black uppercase border border-blue-100 text-center shadow-sm hover:bg-blue-50 transition-colors">G-Maps</a>
+                                <a href={`https://maps.apple.com/?q=${encodeURIComponent(task.propDetails?.address || '')}`} target="_blank" className="flex-1 text-[9px] bg-white text-slate-900 px-3 py-2 rounded-xl font-black uppercase border border-slate-200 text-center shadow-sm hover:bg-slate-50 transition-colors">Apple</a>
+                              </div>
                             </div>
                           </div>
+                          {isExtraTask && task.notes && (
+                            <div className="mt-4 p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100">
+                               <p className="text-[8px] font-black text-indigo-400 uppercase tracking-widest mb-1">Items to Deliver</p>
+                               <p className="text-[10px] text-indigo-900 font-bold italic leading-relaxed">"{task.notes}"</p>
+                            </div>
+                          )}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-4">
+                      {isExtraTask ? (
+                        <div className="flex gap-4">
+                          {(routeActive || isManagerRole) ? (
+                            <button 
+                              onClick={() => toggleTaskField(task.id, 'isDelivered')} 
+                              className={`w-full py-6 rounded-2xl font-black uppercase text-[11px] tracking-[0.3em] transition-all shadow-lg active:scale-95 ${task.isDelivered ? 'bg-indigo-600 text-white' : 'bg-white border-2 border-indigo-500 text-indigo-600 hover:bg-indigo-50'}`}
+                            >
+                               {task.isDelivered ? '✓ DELIVERY COMPLETED' : 'MARK AS DELIVERED'}
+                            </button>
+                          ) : (
+                            <div className={`w-full py-6 rounded-2xl text-center border-2 shadow-inner ${task.isDelivered ? 'bg-indigo-50 border-indigo-100 text-indigo-600' : 'bg-slate-50 border-slate-100 text-slate-300'}`}>
+                              <span className="text-[11px] font-black uppercase tracking-widest">{task.isDelivered ? 'DELIVERY DONE' : 'DROP PENDING'}</span>
+                            </div>
+                          )}
                         </div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-4">
-                    <div className="flex flex-col sm:flex-row gap-4">
-                        {(routeActive || isManagerRole) ? (
-                        <>
-                            <button onClick={() => toggleTaskField(task.id, 'isDelivered')} className={`flex-1 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all shadow-sm ${task.isDelivered ? 'bg-green-600 text-white' : 'bg-white border border-gray-200 text-black/40 hover:bg-gray-50'}`}>DELIVERED</button>
-                            <button onClick={() => toggleTaskField(task.id, 'isCollected')} className={`flex-1 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all shadow-sm ${task.isCollected ? 'bg-teal-600 text-white' : 'bg-white border border-gray-200 text-black/40 hover:bg-gray-50'}`}>COLLECTED</button>
-                        </>
-                        ) : (
-                        <>
-                            <div className={`flex-1 py-4 rounded-2xl text-center border shadow-sm ${task.isDelivered ? 'bg-green-50 border-green-200 text-green-600' : 'bg-white/40 border-gray-200 text-black/10'}`}>
-                            <span className="text-[9px] font-black uppercase">{task.isDelivered ? '✓ DELIVERED' : 'PENDING'}</span>
-                            </div>
-                            <div className={`flex-1 py-4 rounded-2xl text-center border shadow-sm ${task.isCollected ? 'bg-teal-50 border-teal-200 text-teal-600' : 'bg-white/40 border-gray-200 text-black/10'}`}>
-                            <span className="text-[9px] font-black uppercase">{task.isCollected ? '✓ COLLECTED' : 'PENDING'}</span>
-                            </div>
-                        </>
-                        )}
-                    </div>
-
-                    {task.keysHandled && (
-                        <div className="bg-teal-50/50 p-4 rounded-2xl border border-teal-100 flex flex-col sm:flex-row items-center gap-4">
-                           <div className="flex-1 w-full text-left">
-                              <p className="text-[8px] font-black text-teal-700 uppercase tracking-widest mb-1.5">Key Status (If Not Back)</p>
-                              <div className="flex gap-2">
-                                 <input 
-                                    className="flex-1 bg-white border border-teal-200 rounded-lg px-3 py-2 text-[10px] outline-none focus:border-teal-500"
-                                    placeholder="Enter reason..."
-                                    value={reasons[task.id] || task.keyLocationReason || ''}
-                                    onChange={(e) => setReasons({...reasons, [task.id]: e.target.value})}
-                                    disabled={!routeActive && !isManagerRole}
-                                 />
-                                 <button onClick={() => handleSaveKeyNote(task.id)} disabled={!routeActive && !isManagerRole} className="px-4 bg-teal-100 text-teal-700 font-bold rounded-lg text-[9px] hover:bg-teal-200">SAVE</button>
-                              </div>
-                           </div>
-                           {(routeActive || isManagerRole) ? (
-                              <button onClick={() => toggleTaskField(task.id, 'keysAtOffice', reasons[task.id])} className={`w-full sm:w-auto px-8 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest transition-all shadow-sm ${task.keysAtOffice ? 'bg-teal-600 text-white' : 'bg-white border border-teal-300 text-teal-500'}`}>
-                                 {task.keysAtOffice ? 'RETURNED' : 'MARK RETURNED'}
+                      ) : (
+                        <div className="flex flex-col sm:flex-row gap-4">
+                          {(routeActive || isManagerRole) ? (
+                          <>
+                              <button 
+                                onClick={() => toggleTaskField(task.id, 'isDelivered')} 
+                                className={`flex-1 py-5 rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] transition-all shadow-lg active:scale-95 ${task.isDelivered ? 'bg-emerald-600 text-white' : 'bg-white border-2 border-emerald-500 text-emerald-600 hover:bg-emerald-50'}`}
+                              >
+                                 {task.isDelivered ? '✓ DELIVERED' : 'MARK DELIVERED'}
                               </button>
-                           ) : (
-                              <div className={`px-8 py-3 rounded-xl border text-[9px] font-black uppercase tracking-widest ${task.keysAtOffice ? 'bg-teal-50 border-teal-200 text-teal-600' : 'bg-white/40 border-gray-200 text-black/10'}`}>
-                                 {task.keysAtOffice ? '✓ RETURNED' : 'KEYS HELD'}
+                              <button 
+                                onClick={() => toggleTaskField(task.id, 'isCollected')} 
+                                className={`flex-1 py-5 rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] transition-all shadow-lg active:scale-95 ${task.isCollected ? 'bg-indigo-600 text-white' : 'bg-white border-2 border-indigo-500 text-indigo-600 hover:bg-indigo-50'}`}
+                              >
+                                 {task.isCollected ? '✓ COLLECTED' : 'MARK COLLECTED'}
+                              </button>
+                          </>
+                          ) : (
+                          <>
+                              <div className={`flex-1 py-5 rounded-2xl text-center border-2 shadow-inner ${task.isDelivered ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : 'bg-slate-50 border-slate-100 text-slate-300'}`}>
+                                <span className="text-[9px] font-black uppercase tracking-widest">{task.isDelivered ? 'DELIVERED' : 'PENDING'}</span>
                               </div>
-                           )}
+                              <div className={`flex-1 py-5 rounded-2xl text-center border-2 shadow-inner ${task.isCollected ? 'bg-indigo-50 border-indigo-100 text-indigo-600' : 'bg-slate-50 border-slate-100 text-slate-300'}`}>
+                                <span className="text-[9px] font-black uppercase tracking-widest">{task.isCollected ? 'COLLECTED' : 'PENDING'}</span>
+                              </div>
+                          </>
+                          )}
                         </div>
-                    )}
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
 
           {routeActive && isViewingToday && (
-            <button onClick={handleFinishDay} className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-6 rounded-3xl uppercase tracking-[0.3em] text-xs shadow-2xl mt-12 active:scale-95 transition-all border-4 border-red-500/20">
+            <button onClick={handleFinishDay} className="w-full bg-slate-900 hover:bg-black text-white font-black py-7 rounded-[32px] uppercase tracking-[0.4em] text-xs shadow-2xl mt-12 active:scale-95 transition-all">
               FINISH THE DAY
             </button>
           )}

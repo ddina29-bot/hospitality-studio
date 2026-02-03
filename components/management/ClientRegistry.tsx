@@ -150,7 +150,7 @@ const ClientRegistry: React.FC<ClientRegistryProps> = ({
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div className="flex-1">
           <h2 className="text-2xl font-bold text-slate-900 uppercase tracking-tight leading-none">STUDIO PARTNER REGISTRY</h2>
-          <p className="text-[9px] font-bold text-teal-600 uppercase tracking-[0.4em] mt-2 opacity-80">Corporate Client Ledger</p>
+          <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wide mt-2">Database of property owners and corporate partners for billing and communication.</p>
         </div>
         <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto items-stretch">
           <div className="relative w-full md:w-64">

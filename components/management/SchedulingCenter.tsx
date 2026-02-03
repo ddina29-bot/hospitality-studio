@@ -289,8 +289,9 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
   const activeManagedProperties = useMemo(() => properties.filter(p => p.status !== 'disabled'), [properties]);
 
   const filteredProperties = useMemo(() => {
-    if (!propertySearch) return activeManagedProperties;
-    return activeManagedProperties.filter(p => p.name.toLowerCase().includes(propertySearch.toLowerCase()) || p.address.toLowerCase().includes(propertySearch.toLowerCase()));
+    const query = propertySearch.toLowerCase();
+    if (!query) return activeManagedProperties;
+    return activeManagedProperties.filter(p => p.name.toLowerCase().includes(query) || p.address.toLowerCase().includes(query));
   }, [activeManagedProperties, propertySearch]);
 
   const filteredServiceTypes = useMemo(() => {
@@ -488,7 +489,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
     setSelectedShift(null);
   };
 
-  const handleRescheduleFix = (originalShift: Shift) => {
+  const handleRescheduleFix = (originalShift: Shift, remedialNotes?: string) => {
     setIsFieldLocked(true);
     setIsReactivating(true);
     
@@ -510,7 +511,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
       propertyId: originalShift.propertyId,
       userIds: targetUserIds ? [...targetUserIds] : [],
       serviceType: 'TO FIX',
-      notes: `[REMEDIAL] Fix required for ${originalShift.propertyName}. Findings: ${originalShift.approvalComment}`,
+      notes: `[REMEDIAL] Fix required for ${originalShift.propertyName}. Findings: ${remedialNotes || originalShift.approvalComment || 'Quality standard not met.'}`,
       approvalComment: originalShift.approvalComment,
       inspectionPhotos: originalShift.inspectionPhotos,
       originalCleaningPhotos: originalCleanerPhotos,
@@ -573,7 +574,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
                 const isAuditTask = s.serviceType === 'TO CHECK APARTMENT';
                 return { 
                     ...s, 
-                    approvalStatus: 'approved' as const, 
+                    approvalStatus: status, 
                     decidedBy: auditorName,
                     approvalComment: finalComment,
                     userIds: isAuditTask ? [currentUser.id] : s.userIds,
@@ -609,8 +610,8 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
         }
         return next;
     });
-    if (showToast) showToast(status === 'approved' ? 'WORK AUTHORIZED' : 'WORK REJECTED', 'success');
-    setReviewShift(null);
+    if (showToast) showToast(status === 'approved' ? 'WORK AUTHORIZED' : 'WORK REPORTED', 'success');
+    if (status !== 'rejected') setReviewShift(null); // Keep active if rejecting & fixing next
     setRejectionReason('');
   };
 
@@ -689,6 +690,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
     <div className="space-y-6 animate-in fade-in duration-700 text-left pb-24 max-w-full overflow-hidden bg-white min-h-screen">
       <header className="space-y-4 px-1">
         <h2 className="text-2xl font-serif-brand text-black uppercase font-bold tracking-tight">SCHEDULE</h2>
+        <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wide">Manage staff assignments, service types, and deployment dates.</p>
         <div className="flex flex-col lg:flex-row lg:items-center gap-4">
            <div className="flex bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm h-10 w-fit">
               <button onClick={() => navigateWeek(-1)} className="px-4 flex items-center text-slate-400 hover:text-slate-600 border-r border-slate-200 transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="15 18 9 12 15 6"/></svg></button>
@@ -711,7 +713,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
         <div className="flex flex-col md:flex-row gap-3 items-stretch">
            <div className="relative flex-1">
              <input type="text" placeholder="SEARCH STAFF / UNITS..." className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 text-[10px] text-[#1A1A1A] outline-none focus:border-[#0D9488] uppercase tracking-widest font-black placeholder:text-slate-300 h-11 shadow-sm" value={search} onChange={e => setSearch(e.target.value)} />
-             <div className="absolute left-3.5 top-3.5 text-slate-300"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y2="16.65"/></svg></div>
+             <div className="absolute left-3.5 top-3.5 text-slate-300"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
            </div>
            <div className="flex gap-2">
              <button onClick={() => handleOpenNewShift()} className="flex-1 md:flex-none bg-teal-600 text-white px-8 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest h-11 shadow-lg active:scale-95 transition-all hover:bg-teal-700">NEW SHIFT</button>
@@ -722,28 +724,28 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
         {/* Status Legend Row */}
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-1 pt-3 border-t border-slate-100 mt-1">
            <div className="flex items-center gap-2">
-              <div className="w-1.5 h-1.5 rounded-full border border-slate-300 bg-white"></div>
+              <div className="w-1.5 h-1.5 rounded-full bg-slate-100 border border-slate-200"></div>
               <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest">In Draft</span>
            </div>
            <div className="flex items-center gap-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-slate-200"></div>
+              <div className="w-1.5 h-1.5 rounded-full bg-teal-50 border border-teal-200"></div>
               <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest">Scheduled</span>
            </div>
            <div className="flex items-center gap-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-[#0D9488]"></div>
+              <div className="w-1.5 h-1.5 rounded-full bg-violet-100 border border-violet-200"></div>
               <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest">Active</span>
            </div>
            <div className="flex items-center gap-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-[#3B82F6]"></div>
+              <div className="w-1.5 h-1.5 rounded-full bg-amber-100 border border-amber-200"></div>
               <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest">Waiting for Verification</span>
            </div>
            <div className="flex items-center gap-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-100 border border-emerald-200"></div>
               <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest">Approved</span>
            </div>
            <div className="flex items-center gap-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
-              <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest">Rejected</span>
+              <div className="w-1.5 h-1.5 rounded-full bg-rose-100 border border-rose-200"></div>
+              <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest">Reported</span>
            </div>
         </div>
       </header>
@@ -818,13 +820,22 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
                                     const isPendingAudit = s.status === 'completed' && s.approvalStatus === 'pending';
                                     const isActive = s.status === 'active';
                                     const isApproved = s.approvalStatus === 'approved';
-                                    const isRejected = s.approvalStatus === 'rejected';
+                                    const isReported = s.approvalStatus === 'rejected';
+                                    const isDraft = !s.isPublished;
+                                    
+                                    let colorClass = 'bg-white border-slate-100 text-[#1A1A1A]';
+                                    if (isReported) colorClass = 'bg-rose-100 border-rose-200 text-rose-800';
+                                    else if (isApproved) colorClass = 'bg-emerald-100 border-emerald-200 text-emerald-800';
+                                    else if (isPendingAudit) colorClass = 'bg-amber-100 border-amber-200 text-amber-800';
+                                    else if (isActive) colorClass = 'bg-violet-100 border-violet-200 text-violet-700 font-black shadow-md';
+                                    else if (isDraft) colorClass = 'bg-slate-100 border-slate-200 text-slate-600';
+                                    else colorClass = 'bg-teal-50 border-teal-200 text-teal-700';
+
                                     return (
-                                      <div key={s.id} onClick={() => { if (isPendingAudit || isActive || isApproved || isRejected) setReviewShift(s); else { handleEditShift(s); } }} className={`border rounded-xl p-2 cursor-pointer transition-all relative shadow-sm ${hasConflict(s) ? 'border-red-500 bg-red-50' : isActive ? 'bg-teal-600 border-teal-600 text-white font-black ring-2 ring-teal-600/30 shadow-[0_0_15px_rgba(13,148,136,0.4)]' : isPendingAudit ? 'bg-[#3B82F6] border-[#3B82F6] text-white' : isApproved ? 'bg-green-100 border-green-500 text-green-700 font-bold' : isRejected ? 'bg-red-100 border-red-500 text-red-700 font-bold shadow-red-500/20 shadow-md' : 'bg-white border-slate-100'}`}>
-                                        {!s.isPublished && <span className="absolute top-1 right-1 text-[5px] font-black text-slate-300 tracking-widest bg-white px-1 rounded">DRAFT</span>}
-                                        {isActive && <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-white rounded-full animate-pulse"></span>}
-                                        <p className={`text-[9px] font-black uppercase truncate pr-4 ${isActive ? 'text-white' : isPendingAudit ? 'text-white' : isApproved ? 'text-green-700' : isRejected ? 'text-red-700' : 'text-[#1A1A1A]'}`}>{s.propertyName}</p>
-                                        <p className={`text-[7px] font-bold uppercase mt-1 ${isActive ? 'text-white/60' : isPendingAudit ? 'text-white/60' : isApproved ? 'text-green-700/60' : isRejected ? 'text-red-700/60' : 'text-slate-300'}`}>{s.startTime} — {s.endTime}</p>
+                                      <div key={s.id} onClick={() => { if (isPendingAudit || isActive || isApproved || isReported) setReviewShift(s); else { handleEditShift(s); } }} className={`border rounded-xl p-2 cursor-pointer transition-all relative shadow-sm ${hasConflict(s) ? 'border-red-500 bg-red-50' : colorClass}`}>
+                                        {isActive && <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-violet-400 rounded-full animate-pulse"></span>}
+                                        <p className={`text-[9px] font-black uppercase truncate pr-4`}>{s.propertyName}</p>
+                                        <p className={`text-[7px] font-bold uppercase mt-1 opacity-70`}>{s.startTime} — {s.endTime}</p>
                                       </div>
                                     );
                                   })
@@ -832,7 +843,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
                                 {(!userLeave || userLeave.status !== 'approved') && (
                                   <div className="absolute bottom-1 left-1 opacity-0 group-hover/cell:opacity-100 transition-all pointer-events-none">
                                     <button onClick={(e) => { e.stopPropagation(); handleOpenNewShift(cleaner.id, dateStr); }} className="w-8 h-8 rounded-full border border-teal-100 text-black bg-white flex items-center justify-center hover:bg-teal-600 hover:text-white transition-all pointer-events-auto shadow-xl" title="Add Another Shift">
-                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" cy="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                                     </button>
                                   </div>
                                 )}
@@ -866,35 +877,44 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
                     const isPendingAudit = s.status === 'completed' && s.approvalStatus === 'pending';
                     const isActive = s.status === 'active';
                     const isApproved = s.approvalStatus === 'approved';
-                    const isRejected = s.approvalStatus === 'rejected';
-                    const isScheduled = s.status === 'pending';
+                    const isReported = s.approvalStatus === 'rejected';
+                    const isDraft = !s.isPublished;
+                    
+                    let colorClass = 'bg-white border-slate-100';
+                    if (isReported) colorClass = 'bg-rose-100 border-rose-200 text-rose-800';
+                    else if (isApproved) colorClass = 'bg-emerald-100 border-emerald-200 text-emerald-800';
+                    else if (isPendingAudit) colorClass = 'bg-amber-100 border-amber-200 text-amber-800';
+                    else if (isActive) colorClass = 'bg-violet-100 border-violet-200 text-violet-700';
+                    else if (isDraft) colorClass = 'bg-slate-100 border-slate-200 text-slate-600';
+                    else colorClass = 'bg-teal-50 border-teal-200 text-teal-700';
+
                     return (
-                      <div key={s.id} onClick={() => { if (isPendingAudit || isActive || isApproved || isRejected) setReviewShift(s); else { handleEditShift(s); } }} className={`bg-white p-6 rounded-[28px] border flex flex-col gap-5 shadow-sm transition-all active:scale-[0.98] ${isActive ? 'border-teal-600 bg-white ring-2 ring-teal-600/10' : isPendingAudit ? 'bg-[#3B82F6] border-[#3B82F6] text-white shadow-lg shadow-blue-500/20' : isApproved ? 'border-green-50 bg-green-50/50' : isRejected ? 'border-red-500 bg-red-50/50 shadow-lg shadow-red-500/10' : isScheduled ? 'border-slate-100 bg-white shadow-sm' : 'border-slate-200'}`}>
+                      <div key={s.id} onClick={() => { if (isPendingAudit || isActive || isApproved || isReported) setReviewShift(s); else { handleEditShift(s); } }} className={`bg-white p-6 rounded-[28px] border flex flex-col gap-5 shadow-sm transition-all active:scale-[0.98] ${colorClass}`}>
                         <div className="flex justify-between items-start gap-4">
                           <div className="text-left space-y-1.5">
-                             <h4 className={`text-base font-bold uppercase tracking-tight ${isRejected ? 'text-red-700' : isApproved ? 'text-green-700' : isPendingAudit ? 'text-white' : 'text-teal-700'}`}>{s.propertyName}</h4>
-                             <p className={`text-[10px] font-black uppercase tracking-widest ${isPendingAudit ? 'text-white/80' : 'text-black opacity-60'}`}>{s.startTime} — {s.endTime} • {s.serviceType}</p>
+                             <h4 className={`text-base font-bold uppercase tracking-tight`}>{s.propertyName}</h4>
+                             <p className={`text-[10px] font-black uppercase tracking-widest opacity-70`}>{s.startTime} — {s.endTime} • {s.serviceType}</p>
                           </div>
                           <div className="flex flex-col items-end gap-2">
-                             {isActive && <span className="bg-teal-600 text-white px-3 py-1 rounded-full text-[7px] font-black uppercase tracking-widest animate-pulse border border-teal-600">Active</span>}
-                             {isPendingAudit && <span className="bg-white/20 text-white border border-white/40 px-3 py-1 rounded-full text-[7px] font-black uppercase tracking-widest">Audit</span>}
-                             {isApproved && <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-[7px] font-black uppercase tracking-widest border border-green-200">Verified</span>}
-                             {isRejected && <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-[7px] font-black uppercase tracking-widest border border-red-200">Rejected</span>}
-                             {!s.isPublished && <span className="bg-white text-slate-500 px-3 py-1 rounded-full text-[7px] font-black uppercase tracking-widest border border-slate-200">Draft</span>}
+                             {isActive && <span className="bg-violet-600 text-white px-3 py-1 rounded-full text-[7px] font-black uppercase tracking-widest animate-pulse border border-violet-700 shadow-sm">Active</span>}
+                             {isPendingAudit && <span className="bg-amber-600 text-white px-3 py-1 rounded-full text-[7px] font-black uppercase tracking-widest shadow-sm">Audit Required</span>}
+                             {isApproved && <span className="bg-emerald-600 text-white px-3 py-1 rounded-full text-[7px] font-black uppercase tracking-widest shadow-sm">Approved</span>}
+                             {isReported && <span className="bg-rose-600 text-white px-3 py-1 rounded-full text-[7px] font-black uppercase tracking-widest shadow-sm">Reported</span>}
+                             {isDraft && <span className="bg-slate-200 text-slate-600 px-3 py-1 rounded-full text-[7px] font-black uppercase tracking-widest border border-slate-300">Draft</span>}
                           </div>
                         </div>
-                        <div className="pt-4 border-t border-dashed border-slate-100 flex justify-between items-center">
+                        <div className="pt-4 border-t border-dashed border-black/5 flex justify-between items-center">
                            <div className="flex items-center gap-2">
                               <div className="flex -space-x-2">
                                  {s.userIds.map((uid, i) => (
-                                    <div key={i} className={`w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-bold border-2 border-white ${isActive ? 'bg-teal-600 text-white' : isPendingAudit ? 'bg-white text-blue-600' : 'bg-slate-200 text-slate-600'}`}>
+                                    <div key={i} className={`w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-bold border-2 border-white bg-white text-black`}>
                                        {users.find(u => u.id === uid)?.name.charAt(0)}
                                     </div>
                                  ))}
                               </div>
-                              <span className={`text-[9px] font-bold uppercase truncate max-w-[150px] ${isPendingAudit ? 'text-white/80' : 'text-slate-400'}`}>{assignedStaff}</span>
+                              <span className={`text-[9px] font-bold uppercase truncate max-w-[150px] opacity-60`}>{assignedStaff}</span>
                            </div>
-                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className={`${isPendingAudit ? 'text-white' : 'text-slate-300'}`}><polyline points="9 18 15 12 9 6"/></svg>
+                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className={`opacity-20`}><polyline points="9 18 15 12 9 6"/></svg>
                         </div>
                       </div>
                     );
@@ -1135,8 +1155,8 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
               <button onClick={handleCloseMonitor} className="absolute top-8 right-8 text-slate-400 hover:text-slate-600 transition-colors"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
               
               <div className="space-y-1">
-                 <h2 className="text-2xl font-serif-brand font-bold uppercase text-[#1A1A1A]">{reviewShift.propertyName}</h2>
-                 <p className="text-[9px] font-black text-black uppercase tracking-[0.4em]">Review & Verify • {reviewShift.date}</p>
+                 <h2 className="text-2xl font-serif-brand font-bold uppercase text-slate-900">{reviewShift.propertyName}</h2>
+                 <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.4em]">Review & Verify • {reviewShift.date}</p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -1167,7 +1187,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
                                 <label className="text-[7px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Actual Start</label>
                                 <input 
                                     type="time" 
-                                    className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold"
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-700"
                                     value={getTimeFromTimestamp(reviewShift.actualStartTime)}
                                     onChange={(e) => setReviewShift({...reviewShift, actualStartTime: updateTimestampWithTime(reviewShift.actualStartTime || Date.now(), e.target.value, reviewShift.date)})}
                                 />
@@ -1176,7 +1196,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
                                 <label className="text-[7px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Actual End</label>
                                 <input 
                                     type="time" 
-                                    className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold"
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-700"
                                     value={getTimeFromTimestamp(reviewShift.actualEndTime)}
                                     onChange={(e) => setReviewShift({...reviewShift, actualEndTime: updateTimestampWithTime(reviewShift.actualEndTime || Date.now(), e.target.value, reviewShift.date)})}
                                 />
@@ -1190,25 +1210,24 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
                          value={rejectionReason} 
                          onChange={(e) => setRejectionReason(e.target.value)}
                          className="w-full bg-teal-50 border border-slate-100 rounded-xl p-4 text-[10px] font-medium outline-none focus:border-teal-600 h-24 placeholder:text-slate-200 italic"
-                         placeholder="Required for rejection. Optional for approval."
+                         placeholder="Required for reporting issues. Optional for approval."
                        />
                     </div>
                     <div className="flex flex-col gap-3">
                        <div className="flex gap-3">
-                          <button onClick={() => handleReviewDecision('approved')} className="flex-1 bg-green-600 text-white font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-xl active:scale-95 transition-all">
+                          <button onClick={() => handleReviewDecision('approved')} className="flex-1 bg-emerald-600 text-white font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-lg shadow-emerald-100 hover:bg-emerald-700 active:scale-95 transition-all">
                              APPROVE CLEAN
                           </button>
-                          <button onClick={() => handleReviewDecision('rejected')} className="flex-1 bg-red-600 text-white font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-xl active:scale-95 transition-all">
-                             REJECT CLEAN
+                          <button onClick={() => handleReviewDecision('rejected')} className="flex-1 bg-rose-600 text-white font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-lg shadow-rose-100 hover:bg-rose-700 active:scale-95 transition-all">
+                             REPORT ISSUES
                           </button>
                        </div>
                        
                        <div className="flex gap-3">
-                           <button onClick={() => { if (!rejectionReason) { alert("Reason required for fix schedule"); return; } handleReviewDecision('rejected'); handleRescheduleFix(reviewShift); }} className="flex-1 bg-teal-600 text-white font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-xl active:scale-95 transition-all border border-teal-200 hover:bg-teal-700">
-                              REJECT & SCHEDULE FIX
+                           <button onClick={() => { if (!rejectionReason) { alert("Reason required for fix schedule"); return; } handleReviewDecision('rejected'); handleRescheduleFix(reviewShift, rejectionReason); }} className="flex-1 bg-amber-50 text-amber-800 border-2 border-amber-200 font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-sm hover:border-amber-400 active:scale-95 transition-all">
+                              REPORT & FIX
                            </button>
-                           {/* Fix: Wrap handleSendSupervisor in arrow function to avoid immediate execution */}
-                           <button onClick={() => handleSendSupervisor(reviewShift)} className="flex-1 bg-white border border-teal-600/30 text-[#1A1A1A] font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-sm active:scale-95 transition-all hover:bg-teal-50">
+                           <button onClick={() => handleSendSupervisor(reviewShift)} className="flex-1 bg-slate-50 text-slate-700 border-2 border-slate-200 font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-sm hover:border-slate-400 active:scale-95 transition-all">
                               SEND SUPERVISOR
                            </button>
                        </div>

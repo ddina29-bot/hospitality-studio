@@ -124,7 +124,7 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="flex-1">
           <h2 className="text-2xl font-bold text-slate-900 tracking-tight leading-none uppercase">Employee Registry</h2>
-          <p className="text-[9px] text-slate-400 font-bold mt-1 uppercase tracking-widest">Master Employee Files & Employment Center</p>
+          <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wide mt-2">Manage personnel profiles, roles, and compliance documentation.</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto items-center">
           <div className="relative flex-1 sm:w-64">

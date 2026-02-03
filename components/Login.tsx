@@ -40,17 +40,17 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-8">
+    <div className="min-h-screen bg-[#F0FDFA] flex items-center justify-center p-8">
       <div className="max-w-md w-full space-y-10 animate-in slide-in-from-bottom-8 duration-700">
         <div className="text-center space-y-3">
           <div className="w-20 h-20 bg-[#0D9488] rounded-[2rem] mx-auto flex items-center justify-center text-white text-4xl font-black shadow-2xl shadow-teal-900/20 mb-6">R</div>
-          <h1 className="font-brand font-bold text-4xl text-slate-900 tracking-tight uppercase">RESET</h1>
+          <h1 className="font-brand font-bold text-4xl text-[#1E293B] tracking-tight uppercase">RESET</h1>
           <p className="text-[10px] font-bold text-teal-600 uppercase tracking-[0.5em] mt-1">HOSPITALITY STUDIO</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-2xl space-y-8 text-left">
+        <form onSubmit={handleSubmit} className="bg-white p-10 rounded-[2.5rem] border border-teal-100 shadow-2xl space-y-8 text-left">
           {error && (
-            <div className="bg-red-50 border border-red-100 text-red-600 p-4 rounded-xl text-[10px] font-black uppercase text-center animate-in fade-in">
+            <div className="bg-rose-50 border border-rose-100 text-rose-800 p-4 rounded-xl text-[10px] font-black uppercase text-center animate-in fade-in">
               {error}
             </div>
           )}
@@ -65,7 +65,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                   required 
                   disabled={isLoading}
                   placeholder="name@reset.studio"
-                  className="w-full bg-slate-50 border border-transparent rounded-2xl px-6 py-4 text-sm font-semibold outline-none focus:bg-white focus:border-[#0D9488] transition-all uppercase tracking-widest placeholder:text-slate-300" 
+                  className="w-full bg-[#F0FDFA] border border-transparent rounded-2xl px-6 py-4 text-sm font-semibold text-[#1E293B] outline-none focus:bg-white focus:border-[#0D9488] transition-all uppercase tracking-widest placeholder:text-slate-300" 
                 />
             </div>
             <div className="space-y-2">
@@ -77,7 +77,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                   required 
                   disabled={isLoading}
                   placeholder="••••••••"
-                  className="w-full bg-slate-50 border border-transparent rounded-2xl px-6 py-4 text-sm font-semibold outline-none focus:bg-white focus:border-[#0D9488] transition-all uppercase tracking-widest placeholder:text-slate-300" 
+                  className="w-full bg-[#F0FDFA] border border-transparent rounded-2xl px-6 py-4 text-sm font-semibold text-[#1E293B] outline-none focus:bg-white focus:border-[#0D9488] transition-all uppercase tracking-widest placeholder:text-slate-300" 
                 />
             </div>
           </div>
