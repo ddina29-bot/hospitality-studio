@@ -41,7 +41,9 @@ const App: React.FC = () => {
   const [targetLogisticsUserId, setTargetLogisticsUserId] = useState<string | null>(null);
   const [selectedAuditShiftId, setSelectedAuditShiftId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const isHydrating = useRef(false);
+  const lastLocalUpdate = useRef<number>(0);
 
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>(() => load('studio_notifications', []));
@@ -62,7 +64,6 @@ const App: React.FC = () => {
   const [organization, setOrganization] = useState<OrganizationSettings>(() => load('studio_org_settings', { id: 'org-1', name: 'RESET STUDIO', address: '', email: '', phone: '' }));
   const [authorizedLaundryUserIds, setAuthorizedLaundryUserIds] = useState<string[]>(() => load('studio_auth_laundry_ids', []));
   
-  const [selectedPropertyIdToEdit, setSelectedPropertyIdToEdit] = useState<string | null>(null);
   const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const localPersistenceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -95,50 +96,53 @@ const App: React.FC = () => {
     setNotifications(prev => [fullNotif, ...prev]);
   };
 
+  // HYDRATION: Fetch data from server on startup
   useEffect(() => {
     const hydrateState = async () => {
       if (!user || isHydrating.current || isDemoMode) return;
+      
+      // If we just made a local change, wait for that to sync instead of fetching old data
+      if (Date.now() - lastLocalUpdate.current < 3000) return;
+
       isHydrating.current = true;
       setIsLoading(true);
       try {
         const response = await fetch(`/api/state?email=${encodeURIComponent(user.email)}`);
-        if (response.status === 404) {
-          setIsLoading(false);
-          isHydrating.current = false;
-          return;
-        }
-        if (!response.ok) throw new Error("Sync server connection interrupted.");
+        if (!response.ok) throw new Error("Sync failed");
         const data = await response.json();
         if (data.success && data.organization) {
           const org = data.organization;
           setOrgId(org.id);
-          localStorage.setItem('current_org_id', org.id);
-          if (org.users) setUsers(org.users);
-          if (org.shifts) setShifts(org.shifts);
-          if (org.properties) setProperties(org.properties);
-          if (org.clients) setClients(org.clients);
-          if (org.invoices) setInvoices(org.invoices);
-          if (org.timeEntries) setTimeEntries(org.timeEntries);
-          if (org.tutorials) setTutorials(org.tutorials);
-          if (org.inventoryItems) setInventoryItems(org.inventoryItems);
-          if (org.supplyRequests) setSupplyRequests(org.supplyRequests);
-          if (org.anomalyReports) setAnomalyReports(org.anomalyReports);
-          if (org.manualTasks) setManualTasks(org.manualTasks);
-          if (org.leaveRequests) setLeaveRequests(org.leaveRequests);
-          if (org.settings) setOrganization(org.settings);
-          if (org.authorizedLaundryUserIds) setAuthorizedLaundryUserIds(org.authorizedLaundryUserIds);
+          // Only overwrite if we haven't touched the app recently to avoid race conditions
+          if (Date.now() - lastLocalUpdate.current > 3000) {
+              if (org.users) setUsers(org.users);
+              if (org.shifts) setShifts(org.shifts);
+              if (org.properties) setProperties(org.properties);
+              if (org.clients) setClients(org.clients);
+              if (org.invoices) setInvoices(org.invoices);
+              if (org.timeEntries) setTimeEntries(org.timeEntries);
+              if (org.tutorials) setTutorials(org.tutorials);
+              if (org.inventoryItems) setInventoryItems(org.inventoryItems);
+              if (org.supplyRequests) setSupplyRequests(org.supplyRequests);
+              if (org.anomalyReports) setAnomalyReports(org.anomalyReports);
+              if (org.manualTasks) setManualTasks(org.manualTasks);
+              if (org.leaveRequests) setLeaveRequests(org.leaveRequests);
+              if (org.settings) setOrganization(org.settings);
+              if (org.authorizedLaundryUserIds) setAuthorizedLaundryUserIds(org.authorizedLaundryUserIds);
+          }
         }
       } catch (err) {
-        console.error("Sync Negotiation Failed:", err);
+        console.error("Hydration Error:", err);
       } finally {
         setIsLoading(false);
-        setTimeout(() => { isHydrating.current = false; }, 500);
+        isHydrating.current = false;
       }
     };
     hydrateState();
   }, [user?.email, isDemoMode]);
 
   const saveAllLocal = useCallback(() => {
+    lastLocalUpdate.current = Date.now();
     safeSave('studio_users', users);
     safeSave('studio_shifts', shifts);
     safeSave('studio_props', properties);
@@ -158,18 +162,20 @@ const App: React.FC = () => {
     safeSave('studio_auth_laundry_ids', authorizedLaundryUserIds);
   }, [users, shifts, properties, clients, invoices, timeEntries, tutorials, activeTab, user, organization, inventoryItems, supplyRequests, anomalyReports, authorizedLaundryUserIds, manualTasks, leaveRequests, notifications]);
 
+  // SYNC Logic: Push local state to server
   useEffect(() => {
     if (!user) return;
 
     if (localPersistenceTimeoutRef.current) clearTimeout(localPersistenceTimeoutRef.current);
-    localPersistenceTimeoutRef.current = setTimeout(saveAllLocal, 1000); 
+    localPersistenceTimeoutRef.current = setTimeout(saveAllLocal, 500); 
 
     if (!orgId || isHydrating.current || isDemoMode) return;
 
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     syncTimeoutRef.current = setTimeout(async () => {
+      setIsSyncing(true);
       try {
-        await fetch('/api/sync', {
+        const response = await fetch('/api/sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -181,8 +187,14 @@ const App: React.FC = () => {
             }
           })
         });
-      } catch (err) { console.error("Cloud Sync error:", err); }
-    }, 5000); 
+        if (response.ok) {
+           setTimeout(() => setIsSyncing(false), 1000); // Keep indicator briefly
+        }
+      } catch (err) { 
+        console.error("Cloud Sync error:", err); 
+        setIsSyncing(false);
+      }
+    }, 1500); // 1.5s debounce for faster saving
 
     return () => {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
@@ -190,29 +202,11 @@ const App: React.FC = () => {
     };
   }, [saveAllLocal, user, orgId, isDemoMode, users, shifts, properties, clients, invoices, timeEntries, tutorials, activeTab, organization, inventoryItems, supplyRequests, anomalyReports, authorizedLaundryUserIds, manualTasks, leaveRequests, notifications]);
 
-  // Force save on tab close
   useEffect(() => {
     const handleUnload = () => saveAllLocal();
     window.addEventListener('beforeunload', handleUnload);
     return () => window.removeEventListener('beforeunload', handleUnload);
   }, [saveAllLocal]);
-
-  const handleSupplyRequest = (batch: Record<string, number>) => {
-    if (!user) return;
-    const now = Date.now();
-    const newRequests: SupplyRequest[] = Object.entries(batch).map(([itemId, qty]) => ({
-        id: `sr-${now}-${itemId}`,
-        itemId,
-        itemName: inventoryItems.find(i => i.id === itemId)?.name || 'Unknown Item',
-        quantity: qty,
-        userId: user.id,
-        userName: user.name,
-        date: new Date().toISOString().split('T')[0],
-        status: 'pending'
-    }));
-    setSupplyRequests(prev => [...prev, ...newRequests]);
-    handleUpdateUser({ ...user, lastSupplyRequestDate: now });
-  };
 
   const handleUpdateUser = (updatedUser: User) => {
     setUser(updatedUser);
@@ -232,29 +226,6 @@ const App: React.FC = () => {
     }
     setNotifications(prev => prev.filter(n => n.linkId !== id));
     showToast(`LEAVE REQUEST ${status.toUpperCase()}`, status === 'approved' ? 'success' : 'error');
-  };
-
-  const handleRequestLeave = (type: LeaveType, start: string, end: string) => {
-    if (!user) return;
-    const leaveId = `leave-${Date.now()}`;
-    const newRequest: LeaveRequest = {
-      id: leaveId,
-      userId: user.id,
-      userName: user.name,
-      type,
-      startDate: start,
-      endDate: end,
-      status: 'pending'
-    };
-    setLeaveRequests(prev => [...prev, newRequest]);
-    addNotification({
-      title: 'New Leave Request',
-      message: `${user.name} requested ${type} (${start} to ${end})`,
-      type: 'info',
-      linkTab: 'dashboard',
-      linkId: leaveId
-    });
-    showToast('LEAVE REQUEST SUBMITTED', 'info');
   };
 
   const handleLogin = (u: User, organizationData?: any) => {
@@ -314,7 +285,12 @@ const App: React.FC = () => {
         <PersonnelProfile 
           user={user} 
           leaveRequests={leaveRequests} 
-          onRequestLeave={handleRequestLeave} 
+          onRequestLeave={(type, start, end) => {
+             const leaveId = `leave-${Date.now()}`;
+             setLeaveRequests(prev => [...prev, { id: leaveId, userId: user.id, userName: user.name, type, startDate: start, endDate: end, status: 'pending' }]);
+             addNotification({ title: 'New Leave Request', message: `${user.name} requested ${type}`, type: 'info', linkTab: 'dashboard', linkId: leaveId });
+             showToast('LEAVE REQUEST SUBMITTED', 'info');
+          }} 
           shifts={shifts} 
           properties={properties} 
           onUpdateUser={handleUpdateUser} 
@@ -346,11 +322,19 @@ const App: React.FC = () => {
           onUpdateUser={handleUpdateUser} 
         />
       );
-      case 'properties': return <AdminPortal user={user} view="properties" properties={properties} setProperties={setProperties} clients={clients} setClients={setClients} setActiveTab={setActiveTab} setSelectedClientIdFilter={() => {}} selectedPropertyIdToEdit={selectedPropertyIdToEdit} setSelectedPropertyIdToEdit={setSelectedPropertyIdToEdit} />;
+      case 'properties': return <AdminPortal user={user} view="properties" properties={properties} setProperties={setProperties} clients={clients} setClients={setClients} setActiveTab={setActiveTab} setSelectedClientIdFilter={() => {}} />;
       case 'clients': return <AdminPortal user={user} view="clients" clients={clients} setClients={setClients} properties={properties} setActiveTab={setActiveTab} setSelectedClientIdFilter={() => {}} />;
       case 'shifts': 
         if (['admin', 'housekeeping'].includes(currentRole)) return <AdminPortal user={user} view="scheduling" shifts={shifts} setShifts={setShifts} properties={properties} users={users} setActiveTab={setActiveTab} setSelectedClientIdFilter={() => {}} leaveRequests={leaveRequests} initialSelectedShiftId={selectedAuditShiftId} onConsumedDeepLink={handleConsumedAuditDeepLink} />;
-        return <CleanerPortal user={user} shifts={shifts} setShifts={setShifts} properties={properties} users={users} inventoryItems={inventoryItems} onAddSupplyRequest={handleSupplyRequest} onUpdateUser={handleUpdateUser} initialSelectedShiftId={selectedAuditShiftId} onConsumedDeepLink={handleConsumedAuditDeepLink} />;
+        return <CleanerPortal user={user} shifts={shifts} setShifts={setShifts} properties={properties} users={users} inventoryItems={inventoryItems} onAddSupplyRequest={(batch) => {
+            const now = Date.now();
+            // Fix: Explicitly cast qty to number to satisfy SupplyRequest interface requirements
+            const newRequests: SupplyRequest[] = Object.entries(batch).map(([itemId, qty]) => ({
+                id: `sr-${now}-${itemId}`, itemId, itemName: inventoryItems.find(i => i.id === itemId)?.name || 'Unknown', quantity: qty as number, userId: user.id, userName: user.name, date: new Date().toISOString().split('T')[0], status: 'pending'
+            }));
+            setSupplyRequests(prev => [...prev, ...newRequests]);
+            handleUpdateUser({ ...user, lastSupplyRequestDate: now });
+        }} onUpdateUser={handleUpdateUser} initialSelectedShiftId={selectedAuditShiftId} onConsumedDeepLink={handleConsumedAuditDeepLink} />;
       case 'logistics': return <DriverPortal user={user} shifts={shifts} setShifts={setShifts} properties={properties} users={users} setActiveTab={setActiveTab} timeEntries={timeEntries} setTimeEntries={setTimeEntries} initialOverrideId={targetLogisticsUserId} onResetOverrideId={() => setTargetLogisticsUserId(null)} manualTasks={manualTasks} setManualTasks={setManualTasks} />;
       case 'laundry': return (
         <LaundryDashboard 
@@ -392,7 +376,7 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-[#F0FDFA] overflow-hidden">
-      {isLoading && properties.length === 0 ? (
+      {isLoading && shifts.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center py-40 animate-pulse">
            <div className="w-12 h-12 border-4 border-teal-50 border-t-teal-600 rounded-full animate-spin"></div>
            <p className="text-[10px] font-black uppercase tracking-widest mt-6 text-teal-600">Synchronizing Session Core...</p>
@@ -406,6 +390,14 @@ const App: React.FC = () => {
           notificationCount={notifications.length}
           onOpenNotifications={() => setShowActivityCenter(true)}
         >
+          {isSyncing && (
+             <div className="fixed top-4 right-10 z-[5000] animate-in slide-in-from-top-2">
+                <div className="bg-slate-900/90 text-white px-3 py-1.5 rounded-full border border-teal-500/30 flex items-center gap-2 shadow-2xl backdrop-blur-sm">
+                   <div className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-ping"></div>
+                   <span className="text-[7px] font-black uppercase tracking-widest">Cloud Syncing</span>
+                </div>
+             </div>
+          )}
           {renderContent()}
         </Layout>
       )}

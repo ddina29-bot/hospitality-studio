@@ -19,7 +19,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({ limit: '100mb' }));
 app.use(express.static(path.join(__dirname, 'dist')));
 
 // --- SQLITE DATABASE SETUP ---
@@ -137,18 +137,18 @@ app.post('/api/auth/invite', async (req, res) => {
 app.post('/api/sync', async (req, res) => {
   const { orgId, data } = req.body;
   const org = getOrgById(orgId);
-  if (!org) return res.status(404).json({ error: "Org not found" });
+  if (!org) {
+    console.error(`Sync Fail: Org ${orgId} not found.`);
+    return res.status(404).json({ error: "Org not found" });
+  }
   
-  // Merge logic to prevent data loss
+  // Merge data
   Object.keys(data).forEach(key => {
-    if (Array.isArray(data[key])) {
-      org[key] = data[key];
-    } else {
-      org[key] = data[key];
-    }
+    org[key] = data[key];
   });
   
   saveOrgToDb(org);
+  console.log(`Sync Success: Org ${orgId} updated at ${new Date().toLocaleTimeString()}`);
   res.json({ success: true });
 });
 

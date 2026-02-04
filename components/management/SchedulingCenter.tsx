@@ -231,6 +231,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
   
   const [shiftForm, setShiftForm] = useState<Partial<Shift>>({});
   const [isReactivating, setIsReactivating] = useState(false);
+  const hasHandledDeepLink = useRef<string | null>(null);
 
   const [availableServiceTypes, setAvailableServiceTypes] = useState<string[]>(() => {
     const saved = localStorage.getItem('studio_custom_service_types');
@@ -261,15 +262,15 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
   }, []);
 
   useEffect(() => {
-    if (initialSelectedShiftId && shifts.length > 0) {
+    if (initialSelectedShiftId && shifts.length > 0 && hasHandledDeepLink.current !== initialSelectedShiftId) {
       const shift = shifts.find(s => s.id === initialSelectedShiftId);
       if (shift) {
+        hasHandledDeepLink.current = initialSelectedShiftId;
         if (shift.approvalStatus === 'rejected') {
             handleRescheduleFix(shift);
-        } else {
+        } else if (shift.status === 'completed' && shift.approvalStatus === 'pending') {
             setReviewShift(shift);
         }
-        // Consume link after setting shift to prevent effect from resetting it
         if (onConsumedDeepLink) onConsumedDeepLink();
       }
     }
@@ -568,27 +569,26 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
     }
     const auditorName = currentUser.name || 'Management';
     const finalComment = status === 'approved' ? (reviewShift.approvalComment || 'Quality Verified.') : (rejectionReason || reviewShift.approvalComment || 'Remediation Required.');
-    const finalShift = { ...reviewShift };
-    
+    const finalShiftId = reviewShift.id;
+    const finalPropId = reviewShift.propertyId;
+    const isAuditTask = reviewShift.serviceType === 'TO CHECK APARTMENT';
+
     setShifts((prev: Shift[]): Shift[] => {
         let next: Shift[] = prev.map(s => {
-            if (s.id === finalShift.id) {
-                const isAuditTask = s.serviceType === 'TO CHECK APARTMENT';
+            if (s.id === finalShiftId) {
                 return { 
                     ...s, 
                     approvalStatus: status, 
                     decidedBy: auditorName,
                     approvalComment: finalComment,
-                    userIds: isAuditTask ? [currentUser.id] : s.userIds,
-                    actualStartTime: finalShift.actualStartTime || s.actualStartTime,
-                    actualEndTime: finalShift.actualEndTime || s.actualEndTime
+                    userIds: isAuditTask ? [currentUser.id] : s.userIds
                 };
             }
             return s;
         });
-        if (finalShift.serviceType === 'TO CHECK APARTMENT') {
+        if (isAuditTask) {
             const cleanerShift = next
-                .filter(s => s.propertyId === finalShift.propertyId && s.serviceType !== 'TO CHECK APARTMENT' && s.status === 'completed')
+                .filter(s => s.propertyId === finalPropId && s.serviceType !== 'TO CHECK APARTMENT' && s.status === 'completed')
                 .sort((a, b) => (b.actualEndTime || 0) - (a.actualEndTime || 0))[0];
             if (cleanerShift) {
                 next = next.map(s => s.id === cleanerShift.id ? {
@@ -600,14 +600,12 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
                 } : s);
             }
         } else {
-            next = next.map(s => s.id === finalShift.id ? {
+            next = next.map(s => s.id === finalShiftId ? {
                 ...s,
                 approvalStatus: status,
                 wasRejected: status === 'rejected' ? true : s.wasRejected,
                 approvalComment: finalComment,
-                decidedBy: auditorName,
-                actualStartTime: finalShift.actualStartTime || s.actualStartTime,
-                actualEndTime: finalShift.actualEndTime || s.actualEndTime
+                decidedBy: auditorName
             } : s);
         }
         return next;
@@ -615,11 +613,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
 
     if (showToast) showToast(status === 'approved' ? 'WORK AUTHORIZED' : 'WORK REPORTED', 'success');
     
-    // Logic: If rejecting, we usually want to trigger the "REPORT & FIX" flow immediately or keep modal for that.
-    // However, setShifts above is async-like. We should clear the reviewShift state to close the modal IF we are approving.
-    if (status === 'approved') {
-        setReviewShift(null);
-    }
+    setReviewShift(null);
     setRejectionReason('');
   };
 
@@ -721,7 +715,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
         <div className="flex flex-col md:flex-row gap-3 items-stretch">
            <div className="relative flex-1">
              <input type="text" placeholder="SEARCH STAFF / UNITS..." className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 text-[10px] text-[#1A1A1A] outline-none focus:border-[#0D9488] uppercase tracking-widest font-black placeholder:text-slate-300 h-11 shadow-sm" value={search} onChange={e => setSearch(e.target.value)} />
-             <div className="absolute left-3.5 top-3.5 text-slate-300"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+             <div className="absolute left-3.5 top-3.5 text-slate-300"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y2="16.65"/></svg></div>
            </div>
            <div className="flex gap-2">
              <button onClick={() => handleOpenNewShift()} className="flex-1 md:flex-none bg-teal-600 text-white px-8 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest h-11 shadow-lg active:scale-95 transition-all hover:bg-teal-700">NEW SHIFT</button>
