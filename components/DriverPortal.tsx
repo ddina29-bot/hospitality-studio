@@ -93,6 +93,9 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
   const routeActive = !!routeStartTime && !routeEndTime;
   const isFinishedForViewedDate = !!routeEndTime;
 
+  // STRICT RULE: Drivers can only interact if it's today, route is active, and they haven't finished yet.
+  const isButtonsEnabled = (isViewingToday && routeActive && !isFinishedForViewedDate) || isManagerRole;
+
   useEffect(() => {
     let interval: any;
     if (routeActive && isViewingToday) {
@@ -140,13 +143,14 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
 
   const handleFinishDay = () => {
     if (!setTimeEntries || !activeUserId) return;
+    if (!window.confirm("Confirm Route Completion? All task interactions will be locked.")) return;
     const newEntry: TimeEntry = { id: `time-${Date.now()}`, userId: activeUserId, type: 'out', timestamp: new Date().toISOString() };
     setTimeEntries(prev => [...prev, newEntry]);
     setRefreshToggle(p => p + 1);
   };
 
   const toggleTaskField = (shiftId: string, field: keyof Shift) => {
-    if (!routeActive && !isManagerRole) return;
+    if (!isButtonsEnabled) return;
     setShifts?.(prev => prev.map(s => {
       if (s.id === shiftId) {
         return { ...s, [field]: !s[field] };
@@ -234,29 +238,48 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
                 <svg width="150" height="150" viewBox="0 0 24 24" fill="white"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>
             </div>
             <div className="space-y-2 text-center sm:text-left relative z-10">
-              <h2 className="text-xl md:text-2xl font-brand text-white uppercase font-black tracking-tight leading-none">ACTIVE ROUTE</h2>
+              <h2 className="text-xl md:text-2xl font-brand text-white uppercase font-black tracking-tight leading-none">
+                {isFinishedForViewedDate ? 'ROUTE COMPLETED' : routeActive ? 'ACTIVE ROUTE' : 'READY TO DEPLOY'}
+              </h2>
               <p className="text-[10px] text-white/40 uppercase tracking-widest font-black">{viewedDateStr} • {logisticsTasks.length} STOPS</p>
             </div>
             <div className="relative z-10 w-full sm:w-auto">
-              {isViewingToday && routeActive ? (
+              {isViewingToday && routeActive && !isFinishedForViewedDate ? (
                  <div className="flex flex-col items-center sm:items-end">
                    <p className="text-3xl font-black text-indigo-400 font-mono tracking-tighter">{formatElapsedTime(elapsedTime)}</p>
                    <button onClick={handleFinishDay} className="mt-4 bg-rose-600 text-white px-8 py-3 rounded-xl text-[9px] font-black uppercase shadow-lg active:scale-95 transition-all">FINISH DAY</button>
                  </div>
-              ) : isViewingToday && !isFinishedForViewedDate ? (
+              ) : isViewingToday && !routeStartTime ? (
                 <button onClick={handleStartDay} className="w-full sm:w-auto bg-[#5851DB] text-white px-10 py-4 rounded-2xl text-[10px] font-black uppercase shadow-xl active:scale-95 transition-all hover:bg-indigo-700">START ROUTE</button>
               ) : (
-                <span className="text-[10px] font-black text-emerald-400 uppercase bg-emerald-400/10 px-6 py-3 rounded-2xl border border-emerald-400/20">ROUTE ARCHIVED</span>
+                <div className="flex flex-col items-center sm:items-end gap-2">
+                   <span className="text-[10px] font-black text-emerald-400 uppercase bg-emerald-400/10 px-6 py-3 rounded-2xl border border-emerald-400/20">ROUTE ARCHIVED</span>
+                   {isFinishedForViewedDate && <p className="text-[8px] font-black text-white/20 uppercase tracking-widest">RECORD LOCKED</p>}
+                </div>
               )}
             </div>
           </header>
 
-          <div className="space-y-8">
+          {!isButtonsEnabled && !isFinishedForViewedDate && isViewingToday && (
+             <div className="bg-amber-50 border-2 border-amber-200 p-6 rounded-[2rem] animate-in slide-in-from-top-4 flex items-center gap-4">
+                <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center text-white text-xl font-bold shrink-0 shadow-lg">!</div>
+                <div>
+                   <p className="text-[10px] font-black text-amber-900 uppercase tracking-widest">Action Required</p>
+                   <p className="text-[11px] text-amber-700 font-bold uppercase leading-tight">Initialize the route timer above to enable task interactions.</p>
+                </div>
+             </div>
+          )}
+
+          <div className={`space-y-8 transition-all duration-500 ${!isButtonsEnabled ? 'opacity-40 pointer-events-none grayscale' : ''}`}>
             {logisticsTasks.map(task => {
               const isExtraTask = task.serviceType === 'SUPPLY DELIVERY';
-              const isButtonsEnabled = routeActive || isManagerRole;
               return (
-                <div key={task.id} className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-2xl space-y-8 transition-all hover:shadow-indigo-900/5">
+                <div key={task.id} className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-2xl space-y-8 transition-all hover:shadow-indigo-900/5 group relative overflow-hidden">
+                  {!isButtonsEnabled && (
+                     <div className="absolute top-4 right-4 z-20 opacity-40">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-300"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                     </div>
+                  )}
                   <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
                     <div className="space-y-1 text-left flex-1 min-w-0">
                         <div className="flex items-center gap-3">
@@ -264,6 +287,7 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
                            {!isExtraTask && (
                              <button 
                                onClick={() => isButtonsEnabled && toggleTaskField(task.id, 'keysHandled')}
+                               disabled={!isButtonsEnabled}
                                className={`flex items-center gap-2 px-3 py-1 rounded-full border transition-all ${task.keysHandled ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-slate-50 border-slate-200 text-slate-400'}`}
                              >
                                 <div className={`w-3 h-3 rounded border flex items-center justify-center ${task.keysHandled ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-300'}`}>
@@ -301,7 +325,7 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
                         <button 
                            onClick={() => toggleTaskField(task.id, 'isCleanLinenTakenFromOffice')} 
                            disabled={!isButtonsEnabled}
-                           className={`w-full py-4 md:py-5 rounded-2xl font-black uppercase text-[9px] md:text-[10px] tracking-[0.2em] transition-all shadow-lg active:scale-95 disabled:opacity-40 disabled:bg-slate-50 disabled:text-slate-300 disabled:shadow-none ${task.isCleanLinenTakenFromOffice ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}
+                           className={`w-full py-4 md:py-5 rounded-2xl font-black uppercase text-[9px] md:text-[10px] tracking-[0.2em] transition-all shadow-lg active:scale-95 disabled:opacity-40 disabled:bg-slate-50 disabled:text-slate-300 disabled:shadow-none ${task.isCleanLinenTakenFromOffice ? 'bg-indigo-600 text-white shadow-indigo-900/20' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}
                         >
                            {task.isCleanLinenTakenFromOffice ? '✓ COLLECTED FROM OFFICE' : 'MARK TAKEN FROM OFFICE'}
                         </button>
@@ -313,7 +337,7 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
                            <button 
                               onClick={() => toggleTaskField(task.id, 'isDelivered')} 
                               disabled={!isButtonsEnabled || !task.isCleanLinenTakenFromOffice}
-                              className={`w-full py-4 md:py-5 rounded-2xl font-black uppercase text-[9px] md:text-[10px] tracking-[0.2em] transition-all shadow-lg active:scale-95 disabled:opacity-40 disabled:shadow-none ${task.isDelivered ? 'bg-emerald-600 text-white' : 'bg-white border-2 border-emerald-500 text-emerald-600'}`}
+                              className={`w-full py-4 md:py-5 rounded-2xl font-black uppercase text-[9px] md:text-[10px] tracking-[0.2em] transition-all shadow-lg active:scale-95 disabled:opacity-40 disabled:shadow-none ${task.isDelivered ? 'bg-emerald-600 text-white shadow-emerald-900/20' : 'bg-white border-2 border-emerald-500 text-emerald-600'}`}
                            >
                               {task.isDelivered ? '✓ DELIVERED' : 'MARK DELIVERED'}
                            </button>
@@ -323,7 +347,7 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
                            <button 
                               onClick={() => toggleTaskField(task.id, 'isCollected')} 
                               disabled={!isButtonsEnabled}
-                              className={`w-full py-4 md:py-5 rounded-2xl font-black uppercase text-[9px] md:text-[10px] tracking-[0.2em] transition-all shadow-lg active:scale-95 disabled:opacity-40 disabled:shadow-none ${task.isCollected ? 'bg-orange-600 text-white' : 'bg-white border-2 border-orange-500 text-orange-600'}`}
+                              className={`w-full py-4 md:py-5 rounded-2xl font-black uppercase text-[9px] md:text-[10px] tracking-[0.2em] transition-all shadow-lg active:scale-95 disabled:opacity-40 disabled:shadow-none ${task.isCollected ? 'bg-orange-600 text-white shadow-orange-900/20' : 'bg-white border-2 border-orange-500 text-orange-600'}`}
                            >
                               {task.isCollected ? '✓ COLLECTED' : 'MARK COLLECTED'}
                            </button>
