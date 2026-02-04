@@ -1,22 +1,39 @@
 
-// Service for handling file uploads purely on the client side.
-// Converts images to Base64 for local persistence in localStorage.
+/**
+ * Service for handling file uploads.
+ * Sends files to the server API to be stored on disk.
+ * Returns a URL link to the file instead of a massive Base64 string.
+ */
 
 export const uploadFile = async (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      if (typeof reader.result === 'string') {
-        resolve(reader.result);
-      } else {
-        reject(new Error("Failed to convert image to Base64"));
-      }
-    };
-    reader.onerror = () => reject(new Error("File reading failed"));
-    reader.readAsDataURL(file);
-  });
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const response = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Upload failed');
+    }
+
+    const data = await response.json();
+    // Return the link provided by the server (e.g., /uploads/filename.jpg)
+    return data.url;
+  } catch (error) {
+    console.error("Storage Service Error:", error);
+    throw error;
+  }
 };
 
 export const syncDataToCloud = async (key: string, data: any) => {
-  localStorage.setItem(key, JSON.stringify(data));
+  try {
+    // Now that we store links instead of Base64, this will fit easily in localStorage
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch (e) {
+    console.error("Local storage sync failed.", e);
+  }
 };

@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef } from 'react';
 import { TabType, Shift, User, SupplyRequest, LeaveRequest, ManualTask, SpecialReport, Property } from '../../types';
 import { uploadFile } from '../../services/storageService';
@@ -57,16 +58,27 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({
 
   const pendingLeaves = useMemo(() => (leaveRequests || []).filter(l => l.status === 'pending'), [leaveRequests]);
 
-  // Logic: Units where beds are literally "not done" because clean linens haven't reached the unit.
-  // This triggers if isDelivered is false, regardless of whether picked up from office yet.
-  const bedsNotDone = useMemo(() => {
+  // UNITS FINISHED BUT UNMADE (Needs Linen/Packs)
+  const supplyDebtUnits = useMemo(() => {
     return shifts.filter(s => 
-      s.isPublished && 
-      !s.excludeLaundry && 
-      !s.isDelivered && 
-      ['Check out/check in', 'REFRESH', 'MID STAY CLEANING', 'BEDS ONLY'].includes(s.serviceType)
+      s.status === 'completed' && 
+      s.isLinenShortage && 
+      !s.isDelivered
     );
   }, [shifts]);
+
+  const handleForceClockOut = (shiftId: string, propertyName: string) => {
+    if (!window.confirm(`EMERGENCY ACTION: Forcefully clock-out staff from ${propertyName}?\n\nThis will move the shift to Audit for review.`)) {
+      return;
+    }
+    setShifts(prev => prev.map(s => s.id === shiftId ? ({
+      ...s,
+      status: 'completed',
+      actualEndTime: Date.now(),
+      approvalStatus: 'pending',
+      approvalComment: 'SYSTEM: Management Emergency Force Clock-Out.'
+    } as Shift) : s));
+  };
 
   const handleApproveSupplies = (batch: SupplyRequest[]) => {
     if (!setSupplyRequests || !setShifts) return;
@@ -187,37 +199,46 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({
         <p className="text-[9px] md:text-[11px] text-teal-600 font-black uppercase tracking-[0.3em] md:tracking-[0.4em] mt-2 md:mt-3 leading-none">REAL-TIME OVERSIGHT</p>
       </header>
 
-      {/* URGENT: BEDS NOT DONE (Awaiting Pickup or In Transit) */}
-      {bedsNotDone.length > 0 && (
-        <section className="bg-white border-2 border-rose-200 p-5 md:p-8 rounded-3xl md:rounded-[40px] shadow-2xl space-y-4 md:space-y-6 animate-pulse">
+      {/* URGENT: SUPPLY DEBT (UNITS READY BUT UNMADE) */}
+      {supplyDebtUnits.length > 0 && (
+        <section className="bg-white border-2 border-rose-200 p-6 md:p-8 rounded-[2.5rem] md:rounded-[48px] shadow-2xl space-y-6 animate-pulse">
            <div className="flex justify-between items-center px-1">
               <div className="flex items-center gap-3 md:gap-4">
                  <div className="w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-rose-600 flex items-center justify-center text-white font-black text-xl md:text-2xl shadow-xl">🛌</div>
                  <div className="space-y-0">
-                    <h3 className="text-xs md:text-sm font-black text-rose-900 uppercase tracking-widest leading-none">Beds Not Done</h3>
-                    <p className="text-[7px] md:text-[9px] font-bold text-rose-500 uppercase tracking-widest mt-1">Linen Logic Oversight</p>
+                    <h3 className="text-xs md:text-sm font-black text-rose-900 uppercase tracking-widest leading-none">Supply Debt Gaps</h3>
+                    <p className="text-[7px] md:text-[9px] font-bold text-rose-500 uppercase tracking-widest mt-1">Linen & Pack Follow-up Required</p>
                  </div>
               </div>
-              <span className="text-[8px] md:text-[10px] font-black bg-rose-600 text-white px-3 md:px-5 py-1.5 md:py-2 rounded-full uppercase tracking-widest shadow-md">{bedsNotDone.length} UNITS BLOCKED</span>
+              <span className="text-[8px] md:text-[10px] font-black bg-rose-600 text-white px-3 md:px-5 py-1.5 md:py-2 rounded-full uppercase tracking-widest shadow-md">{supplyDebtUnits.length} UNITS UNMADE</span>
            </div>
-           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {bedsNotDone.map(s => (
-                <div key={s.id} className="bg-rose-50 border border-rose-100 p-4 rounded-2xl flex flex-col justify-between">
-                   <div>
-                      <p className="text-[10px] font-black uppercase text-rose-900 truncate">{s.propertyName}</p>
-                      <div className="flex items-center gap-2 mt-2">
-                        <div className={`w-1.5 h-1.5 rounded-full ${s.isCleanLinenTakenFromOffice ? 'bg-amber-500' : 'bg-rose-600 animate-ping'}`}></div>
-                        <p className="text-[8px] font-bold text-rose-400 uppercase tracking-widest">
-                          {s.isCleanLinenTakenFromOffice ? 'Status: In Transit' : 'Status: Waiting at Office'}
-                        </p>
+           
+           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {supplyDebtUnits.map(s => (
+                <div key={s.id} className="bg-amber-50 border border-amber-200 p-6 rounded-[2rem] flex flex-col justify-between shadow-sm group hover:bg-white hover:border-amber-400 transition-all">
+                  <div className="space-y-4">
+                      <p className="text-[11px] font-black uppercase text-amber-900 leading-tight">{s.propertyName}</p>
+                      <div className="bg-white/60 p-3 rounded-xl">
+                        <p className="text-[8px] font-bold text-amber-600 uppercase tracking-widest leading-relaxed">Cleaner has departed. Unit requires linens and welcome packs to be finalized.</p>
                       </div>
-                   </div>
-                   <button 
-                      onClick={() => setActiveTab('logistics')}
-                      className="mt-4 w-full bg-white text-rose-600 border border-rose-100 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest hover:bg-rose-100 transition-colors"
-                   >
-                      Dispatch Logistics
-                   </button>
+                  </div>
+                  <div className="flex flex-col gap-2 mt-6">
+                    <button 
+                        onClick={() => {
+                            // Deep link to scheduling for a "BEDS ONLY" shift
+                            setActiveTab('shifts');
+                        }}
+                        className="w-full bg-amber-600 text-white py-3 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all"
+                    >
+                        ASSIGN BEDS FOLLOW-UP
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('logistics')}
+                        className="w-full bg-white text-amber-600 border border-amber-200 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest"
+                    >
+                        TRACK SUPPLIES
+                    </button>
+                  </div>
                 </div>
               ))}
            </div>
@@ -354,23 +375,30 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({
               </div>
               {activeOps.length > 0 && <span className="bg-green-600 text-white px-2 md:px-3 py-0.5 md:py-1 rounded-full text-[8px] md:text-[10px] font-black shadow-sm">{activeOps.length}</span>}
            </div>
-           <div className="space-y-2.5 md:space-y-3 flex-1">
+           <div className="space-y-2.5 md:space-y-3 flex-1 overflow-y-auto max-h-[350px] custom-scrollbar no-scrollbar">
               {activeOps.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center py-12 md:py-16 text-center opacity-30">
                    <span className="text-3xl md:text-4xl mb-3 md:mb-4">📡</span>
                    <p className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-slate-400">Standby</p>
                 </div>
               ) : (
-                activeOps.slice(0, 4).map(s => (
+                activeOps.map(s => (
                    <div key={s.id} className="flex justify-between items-center p-3.5 md:p-5 bg-slate-50 rounded-2xl md:rounded-3xl border border-slate-100 group hover:bg-white hover:border-green-300 transition-all shadow-sm">
                       <div className="min-w-0 flex-1 text-left pr-2">
-                         <p className="text-[10px] md:text-xs font-black uppercase truncate text-slate-900 tracking-tight">{s.propertyName}</p>
+                         <p className="text-10px md:text-xs font-black uppercase truncate text-slate-900 tracking-tight">{s.propertyName}</p>
                          <p className="text-[7px] md:text-[9px] text-slate-500 font-bold uppercase tracking-widest truncate mt-0.5">{s.userIds.map(id => users?.find(u => u.id === id)?.name.split(' ')[0]).join(' & ')}</p>
                       </div>
-                      <div className="flex flex-col items-end shrink-0 gap-0.5">
+                      <div className="flex items-center gap-2 shrink-0">
                         <span className="text-[8px] md:text-[10px] font-mono text-green-700 font-black bg-green-100 px-2 md:px-3 py-0.5 md:py-1 rounded-lg border border-green-200">
                           {s.actualStartTime ? Math.floor((Date.now() - s.actualStartTime) / 60000) : 0}m
                         </span>
+                        <button 
+                          onClick={() => handleForceClockOut(s.id, s.propertyName)}
+                          className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center hover:bg-rose-600 hover:text-white transition-all shadow-sm"
+                          title="Emergency Force Stop"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>
+                        </button>
                       </div>
                    </div>
                 ))
@@ -397,7 +425,7 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({
                 messQueue.map(s => (
                    <div key={s.id} className="bg-rose-50/50 p-4 md:p-6 rounded-[1.5rem] md:rounded-[2.5rem] border border-rose-100 shadow-sm space-y-3 md:space-y-5 hover:bg-rose-50 transition-all">
                       <div className="text-left">
-                         <p className="text-[10px] md:text-xs font-black uppercase text-slate-900 tracking-tight truncate border-b border-rose-100 pb-1.5">{s.propertyName}</p>
+                         <p className="text-10px md:text-xs font-black uppercase text-slate-900 tracking-tight truncate border-b border-rose-100 pb-1.5">{s.propertyName}</p>
                          <div className="mt-2 md:mt-3 p-2.5 md:p-3 bg-white rounded-xl md:rounded-2xl border border-rose-100 shadow-inner">
                             <p className="text-[8px] md:text-[10px] text-rose-700 font-bold italic leading-tight">"{s.messReport?.description}"</p>
                          </div>

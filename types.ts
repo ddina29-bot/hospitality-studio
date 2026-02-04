@@ -1,3 +1,4 @@
+
 export type UserRole = 
   | 'cleaner' 
   | 'driver' 
@@ -310,6 +311,7 @@ export interface Shift {
   fixWorkPayment?: number;
   isLaundryPrepared?: boolean;
   isLaundryPickedUp?: boolean;
+  isLinenShortage?: boolean;
   originalCleaningPhotos?: string[];
   maintenanceReports?: SpecialReport[];
   damageReports?: SpecialReport[];

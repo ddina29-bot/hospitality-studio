@@ -78,6 +78,9 @@ const findOrgByUserEmail = (email) => {
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads'); 
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
+// SERVE THE UPLOADED FILES SO LINKS WORK
+app.use('/uploads', express.static(UPLOADS_DIR));
+
 const diskStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOADS_DIR),
   filename: (req, file, cb) => {

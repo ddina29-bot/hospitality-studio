@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
 import AdminPortal from './components/AdminPortal';
@@ -23,8 +24,17 @@ const load = <T,>(k: string, f: T): T => {
   try { return JSON.parse(s); } catch (e) { return f; }
 };
 
+const safeSave = (key: string, data: any) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch (e) {
+    console.warn(`Storage limit reached for ${key}. Data held in memory only.`);
+  }
+};
+
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(() => load('current_user_obj', null));
+  const [isDemoMode, setIsDemoMode] = useState(() => localStorage.getItem('studio_is_demo') === 'true');
   const [orgId, setOrgId] = useState<string | null>(() => localStorage.getItem('current_org_id'));
   const [activeTab, setActiveTab] = useState<TabType>(() => (localStorage.getItem('studio_active_tab') as TabType) || 'dashboard');
   
@@ -32,12 +42,10 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const isHydrating = useRef(false);
 
-  // Toast & Notification State
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>(() => load('studio_notifications', []));
   const [showActivityCenter, setShowActivityCenter] = useState(false);
 
-  // PRODUCTION STATE
   const [users, setUsers] = useState<User[]>(() => load('studio_users', []));
   const [shifts, setShifts] = useState<Shift[]>(() => load('studio_shifts', []));
   const [properties, setProperties] = useState<Property[]>(() => load('studio_props', []));
@@ -51,13 +59,11 @@ const App: React.FC = () => {
   const [manualTasks, setManualTasks] = useState<ManualTask[]>(() => load('studio_manual_tasks', []));
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(() => load('studio_leave_requests', []));
   const [organization, setOrganization] = useState<OrganizationSettings>(() => load('studio_org_settings', { id: 'org-1', name: 'RESET STUDIO', address: '', email: '', phone: '' }));
-  
   const [authorizedLaundryUserIds, setAuthorizedLaundryUserIds] = useState<string[]>(() => load('studio_auth_laundry_ids', []));
   
-  const [selectedClientIdFilter, setSelectedClientIdFilter] = useState<string | null>(null);
   const [selectedPropertyIdToEdit, setSelectedPropertyIdToEdit] = useState<string | null>(null);
-
   const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const localPersistenceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const currentRole = user?.role || 'admin';
 
@@ -79,10 +85,9 @@ const App: React.FC = () => {
     setNotifications(prev => [fullNotif, ...prev]);
   };
 
-  // HYDRATE STATE FROM SERVER
   useEffect(() => {
     const hydrateState = async () => {
-      if (!user || isHydrating.current) return;
+      if (!user || isHydrating.current || isDemoMode) return;
       isHydrating.current = true;
       setIsLoading(true);
       try {
@@ -121,29 +126,34 @@ const App: React.FC = () => {
       }
     };
     hydrateState();
-  }, [user?.email]);
+  }, [user?.email, isDemoMode]);
 
-  // AUTO-SYNC
   useEffect(() => {
-    if (!user || !orgId || isHydrating.current) return;
+    if (!user) return;
 
-    localStorage.setItem('studio_users', JSON.stringify(users));
-    localStorage.setItem('studio_shifts', JSON.stringify(shifts));
-    localStorage.setItem('studio_props', JSON.stringify(properties));
-    localStorage.setItem('studio_clients', JSON.stringify(clients));
-    localStorage.setItem('studio_invoices', JSON.stringify(invoices));
-    localStorage.setItem('studio_time_entries', JSON.stringify(timeEntries));
-    localStorage.setItem('studio_tutorials', JSON.stringify(tutorials));
-    localStorage.setItem('studio_inventory', JSON.stringify(inventoryItems));
-    localStorage.setItem('studio_supply_requests', JSON.stringify(supplyRequests));
-    localStorage.setItem('studio_anomalies', JSON.stringify(anomalyReports));
-    localStorage.setItem('studio_manual_tasks', JSON.stringify(manualTasks));
-    localStorage.setItem('studio_leave_requests', JSON.stringify(leaveRequests));
-    localStorage.setItem('studio_notifications', JSON.stringify(notifications));
-    localStorage.setItem('studio_active_tab', activeTab);
-    localStorage.setItem('studio_org_settings', JSON.stringify(organization));
-    localStorage.setItem('current_user_obj', JSON.stringify(user));
-    localStorage.setItem('studio_auth_laundry_ids', JSON.stringify(authorizedLaundryUserIds));
+    if (localPersistenceTimeoutRef.current) clearTimeout(localPersistenceTimeoutRef.current);
+    
+    localPersistenceTimeoutRef.current = setTimeout(() => {
+      safeSave('studio_users', users);
+      safeSave('studio_shifts', shifts);
+      safeSave('studio_props', properties);
+      safeSave('studio_clients', clients);
+      safeSave('studio_invoices', invoices);
+      safeSave('studio_time_entries', timeEntries);
+      safeSave('studio_tutorials', tutorials);
+      safeSave('studio_inventory', inventoryItems);
+      safeSave('studio_supply_requests', supplyRequests);
+      safeSave('studio_anomalies', anomalyReports);
+      safeSave('studio_manual_tasks', manualTasks);
+      safeSave('studio_leave_requests', leaveRequests);
+      safeSave('studio_notifications', notifications);
+      localStorage.setItem('studio_active_tab', activeTab);
+      safeSave('studio_org_settings', organization);
+      safeSave('current_user_obj', user);
+      safeSave('studio_auth_laundry_ids', authorizedLaundryUserIds);
+    }, 1000); 
+
+    if (!orgId || isHydrating.current || isDemoMode) return;
 
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     syncTimeoutRef.current = setTimeout(async () => {
@@ -160,11 +170,14 @@ const App: React.FC = () => {
             }
           })
         });
-      } catch (err) { console.error("Sync error:", err); }
-    }, 2000);
+      } catch (err) { console.error("Cloud Sync error:", err); }
+    }, 5000); 
 
-    return () => { if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current); };
-  }, [users, shifts, properties, clients, invoices, timeEntries, tutorials, activeTab, user, orgId, organization, inventoryItems, supplyRequests, anomalyReports, authorizedLaundryUserIds, manualTasks, leaveRequests, notifications]);
+    return () => {
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+      if (localPersistenceTimeoutRef.current) clearTimeout(localPersistenceTimeoutRef.current);
+    };
+  }, [users, shifts, properties, clients, invoices, timeEntries, tutorials, activeTab, user, orgId, organization, inventoryItems, supplyRequests, anomalyReports, authorizedLaundryUserIds, manualTasks, leaveRequests, notifications, isDemoMode]);
 
   const handleSupplyRequest = (batch: Record<string, number>) => {
     if (!user) return;
@@ -191,8 +204,6 @@ const App: React.FC = () => {
   const handleUpdateLeaveStatus = (id: string, status: 'approved' | 'rejected') => {
     const leave = leaveRequests.find(l => l.id === id);
     setLeaveRequests(prev => prev.map(l => l.id === id ? { ...l, status } : l));
-    
-    // Notify the user that their leave was processed
     if (leave) {
       addNotification({
         title: `Leave ${status.toUpperCase()}`,
@@ -201,8 +212,6 @@ const App: React.FC = () => {
         linkTab: 'settings'
       });
     }
-
-    // Clear notification for the admin
     setNotifications(prev => prev.filter(n => n.linkId !== id));
     showToast(`LEAVE REQUEST ${status.toUpperCase()}`, status === 'approved' ? 'success' : 'error');
   };
@@ -220,8 +229,6 @@ const App: React.FC = () => {
       status: 'pending'
     };
     setLeaveRequests(prev => [...prev, newRequest]);
-
-    // Create App-wide Notification for Management
     addNotification({
       title: 'New Leave Request',
       message: `${user.name} requested ${type} (${start} to ${end})`,
@@ -246,26 +253,35 @@ const App: React.FC = () => {
         if (organizationData.authorizedLaundryUserIds) setAuthorizedLaundryUserIds(organizationData.authorizedLaundryUserIds);
         if (organizationData.notifications) setNotifications(organizationData.notifications);
     }
-    // Redirect on login if necessary
     if (u.role === 'supervisor') setActiveTab('shifts');
     else if (u.role === 'laundry') setActiveTab('laundry');
     else setActiveTab('dashboard');
   };
 
-  const handleDemoLogin = () => {
+  const handleDemoLogin = (role: UserRole = 'admin') => {
     const demoUser: User = {
-      id: 'demo-admin',
-      name: 'Demo Administrator',
-      email: 'demo@reset.studio',
-      role: 'admin',
+      id: `demo-${role}`,
+      name: `Demo ${role.charAt(0).toUpperCase() + role.slice(1)}`,
+      email: `demo-${role}@reset.studio`,
+      role: role,
       status: 'active'
     };
-    handleLogin(demoUser, { id: 'demo-org', settings: { id: 'demo-org', name: 'DEMO STUDIO', address: '123 Demo St', email: 'demo@reset.studio', phone: '+356 000 000' } });
+    setIsDemoMode(true);
+    localStorage.setItem('studio_is_demo', 'true');
+    const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase();
+    handleLogin(demoUser, { 
+        id: 'demo-org', 
+        users: [demoUser],
+        properties: [],
+        shifts: [],
+        settings: { id: 'demo-org', name: 'DEMO STUDIO', address: '123 Demo St', email: 'demo@reset.studio', phone: '+356 000 000' } 
+    });
   };
 
   const handleLogout = () => {
     setUser(null);
     setOrgId(null);
+    setIsDemoMode(false);
     localStorage.clear();
   };
 
@@ -274,22 +290,12 @@ const App: React.FC = () => {
     showToast('LINEN PREPARATION STATUS UPDATED', 'success');
   };
 
-  const onToggleLaundryAuthority = (uid: string) => {
-    setAuthorizedLaundryUserIds(prev => {
-      const next = prev.includes(uid) ? prev.filter(id => id !== uid) : [...prev, uid];
-      return next;
-    });
-  };
-
   const renderContent = () => {
     if (!user) return null;
-    const effectiveUser = { ...user, role: currentRole };
-    
-    // Virtual "settings" tab acts as the User Profile for all roles
     if (activeTab === 'settings') {
       return (
         <PersonnelProfile 
-          user={effectiveUser} 
+          user={user} 
           leaveRequests={leaveRequests} 
           onRequestLeave={handleRequestLeave} 
           shifts={shifts} 
@@ -303,7 +309,7 @@ const App: React.FC = () => {
     switch (activeTab) {
       case 'dashboard': return (
         <Dashboard 
-          user={effectiveUser} 
+          user={user} 
           users={users} 
           setActiveTab={setActiveTab} 
           shifts={shifts} 
@@ -322,15 +328,15 @@ const App: React.FC = () => {
           onUpdateUser={handleUpdateUser} 
         />
       );
-      case 'properties': return <AdminPortal user={effectiveUser} view="properties" properties={properties} setProperties={setProperties} clients={clients} setClients={setClients} setActiveTab={setActiveTab} setSelectedClientIdFilter={setSelectedClientIdFilter} selectedPropertyIdToEdit={selectedPropertyIdToEdit} setSelectedPropertyIdToEdit={setSelectedPropertyIdToEdit} onSelectPropertyToEdit={(id) => { setSelectedPropertyIdToEdit(id); setActiveTab('properties'); }} />;
-      case 'clients': return <AdminPortal user={effectiveUser} view="clients" clients={clients} setClients={setClients} properties={properties} setActiveTab={setActiveTab} setSelectedClientIdFilter={setSelectedClientIdFilter} onSelectPropertyToEdit={(id) => { setSelectedPropertyIdToEdit(id); setActiveTab('properties'); }} />;
+      case 'properties': return <AdminPortal user={user} view="properties" properties={properties} setProperties={setProperties} clients={clients} setClients={setClients} setActiveTab={setActiveTab} setSelectedClientIdFilter={() => {}} selectedPropertyIdToEdit={selectedPropertyIdToEdit} setSelectedPropertyIdToEdit={setSelectedPropertyIdToEdit} />;
+      case 'clients': return <AdminPortal user={user} view="clients" clients={clients} setClients={setClients} properties={properties} setActiveTab={setActiveTab} setSelectedClientIdFilter={() => {}} />;
       case 'shifts': 
-        if (['admin', 'housekeeping'].includes(currentRole)) return <AdminPortal user={effectiveUser} view="scheduling" shifts={shifts} setShifts={setShifts} properties={properties} users={users} setActiveTab={setActiveTab} setSelectedClientIdFilter={setSelectedClientIdFilter} leaveRequests={leaveRequests} />;
-        return <CleanerPortal user={effectiveUser} shifts={shifts} setShifts={setShifts} properties={properties} users={users} inventoryItems={inventoryItems} onAddSupplyRequest={handleSupplyRequest} onUpdateUser={handleUpdateUser} />;
-      case 'logistics': return <DriverPortal user={effectiveUser} shifts={shifts} setShifts={setShifts} properties={properties} users={users} setActiveTab={setActiveTab} timeEntries={timeEntries} setTimeEntries={setTimeEntries} initialOverrideId={targetLogisticsUserId} onResetOverrideId={() => setTargetLogisticsUserId(null)} manualTasks={manualTasks} setManualTasks={setManualTasks} />;
+        if (['admin', 'housekeeping'].includes(currentRole)) return <AdminPortal user={user} view="scheduling" shifts={shifts} setShifts={setShifts} properties={properties} users={users} setActiveTab={setActiveTab} setSelectedClientIdFilter={() => {}} leaveRequests={leaveRequests} />;
+        return <CleanerPortal user={user} shifts={shifts} setShifts={setShifts} properties={properties} users={users} inventoryItems={inventoryItems} onAddSupplyRequest={handleSupplyRequest} onUpdateUser={handleUpdateUser} />;
+      case 'logistics': return <DriverPortal user={user} shifts={shifts} setShifts={setShifts} properties={properties} users={users} setActiveTab={setActiveTab} timeEntries={timeEntries} setTimeEntries={setTimeEntries} initialOverrideId={targetLogisticsUserId} onResetOverrideId={() => setTargetLogisticsUserId(null)} manualTasks={manualTasks} setManualTasks={setManualTasks} />;
       case 'laundry': return (
         <LaundryDashboard 
-          user={effectiveUser} 
+          user={user} 
           setActiveTab={setActiveTab} 
           onLogout={handleLogout} 
           shifts={shifts} 
@@ -339,7 +345,7 @@ const App: React.FC = () => {
           properties={properties} 
           onTogglePrepared={onToggleLaundryPrepared}
           authorizedLaundryUserIds={authorizedLaundryUserIds}
-          onToggleAuthority={onToggleLaundryAuthority}
+          onToggleAuthority={(uid) => setAuthorizedLaundryUserIds(prev => prev.includes(uid) ? prev.filter(id => id !== uid) : [...prev, uid])}
           timeEntries={timeEntries}
           setTimeEntries={setTimeEntries}
         />
@@ -357,10 +363,10 @@ const App: React.FC = () => {
         />
       );
       case 'tutorials': return <TutorialsHub tutorials={tutorials} setTutorials={setTutorials} userRole={currentRole} showToast={showToast} />;
-      case 'users': return <AdminPortal user={effectiveUser} view="users" users={users} setUsers={setUsers} setActiveTab={setActiveTab} setSelectedClientIdFilter={setSelectedClientIdFilter} />;
+      case 'users': return <AdminPortal user={user} view="users" users={users} setUsers={setUsers} setActiveTab={setActiveTab} setSelectedClientIdFilter={() => {}} />;
       case 'finance': return <FinanceDashboard setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} users={users} properties={properties} invoices={invoices} setInvoices={setInvoices} clients={clients} organization={organization} manualTasks={manualTasks} />;
       case 'reports': return <ReportsPortal auditReports={[]} users={users} shifts={shifts} userRole={currentRole} anomalyReports={anomalyReports} leaveRequests={leaveRequests} />;
-      default: return <Dashboard user={effectiveUser} users={users} setActiveTab={setActiveTab} shifts={shifts} setShifts={setShifts} properties={properties} invoices={invoices} timeEntries={timeEntries} supplyRequests={supplyRequests} setSupplyRequests={setSupplyRequests} manualTasks={manualTasks} setManualTasks={setManualTasks} leaveRequests={leaveRequests} onUpdateLeaveStatus={handleUpdateLeaveStatus} onLogisticsAlertClick={(uid) => { setTargetLogisticsUserId(uid); setActiveTab('logistics'); }} onLogout={handleLogout} onUpdateUser={handleUpdateUser} />;
+      default: return null;
     }
   };
 
@@ -386,7 +392,20 @@ const App: React.FC = () => {
         </Layout>
       )}
 
-      {/* Global Activity Center */}
+      {isDemoMode && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[3000] bg-slate-900 border border-teal-500/30 p-2 rounded-2xl flex items-center gap-2 shadow-2xl animate-in slide-in-from-bottom-2">
+           <div className="px-3 border-r border-slate-700">
+              <p className="text-[7px] font-black text-teal-400 uppercase tracking-widest">Previewing</p>
+              <p className="text-[9px] font-bold text-white uppercase">{user.role}</p>
+           </div>
+           <div className="flex gap-1">
+              {[{ r: 'admin', i: '💼' }, { r: 'cleaner', i: '🧹' }, { r: 'driver', i: '🚚' }, { r: 'laundry', i: '🧺' }].map(item => (
+                <button key={item.r} onClick={() => handleDemoLogin(item.r as UserRole)} className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg transition-all ${user.role === item.r ? 'bg-teal-600 text-white shadow-lg' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>{item.i}</button>
+              ))}
+           </div>
+        </div>
+      )}
+
       {showActivityCenter && (
         <div className="fixed inset-0 z-[2000] flex justify-end">
           <ActivityCenter 
@@ -397,14 +416,9 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Global Toast Component */}
       {toast && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[9999] animate-in slide-in-from-top-4 duration-300">
-           <div className={`px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-4 border ${
-             toast.type === 'error' ? 'bg-rose-600 border-rose-500 text-white' : 
-             toast.type === 'success' ? 'bg-emerald-600 border-emerald-500 text-white' : 
-             'bg-slate-900 border-slate-800 text-white'
-           }`}>
+           <div className={`px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-4 border ${toast.type === 'error' ? 'bg-rose-600 border-rose-500 text-white' : toast.type === 'success' ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-900 border-slate-800 text-white'}`}>
               <div className="w-2 h-2 rounded-full bg-white animate-pulse"></div>
               <p className="text-[10px] font-black uppercase tracking-widest">{toast.message}</p>
            </div>
