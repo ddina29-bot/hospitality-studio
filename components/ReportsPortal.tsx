@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { AuditReport, User, UserRole, SupplyRequest, Shift, LeaveRequest, AnomalyReport } from '../types';
 
@@ -31,11 +32,18 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
 
   const handleGeneratePDF = (shift: Shift, e?: React.MouseEvent) => {
     e?.stopPropagation();
+    
+    const assignedStaffNames = shift.userIds.map(id => users.find(u => u.id === id)?.name || 'Unknown').join(', ');
+    const startTimeStr = shift.actualStartTime ? new Date(shift.actualStartTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
+    const endTimeStr = shift.actualEndTime ? new Date(shift.actualEndTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
+
     const allPhotos = [
         ...(shift.tasks?.flatMap(t => t.photos) || []),
         ...(shift.checkoutPhotos?.keyInBox || []),
         ...(shift.checkoutPhotos?.boxClosed || [])
     ];
+
+    const isApproved = shift.approvalStatus === 'approved';
 
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
@@ -47,7 +55,7 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Report - ${shift.propertyName}</title>
+        <title>Deployment Report - ${shift.propertyName}</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
         <style>
@@ -59,24 +67,48 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
         </style>
       </head>
       <body class="bg-white text-black max-w-4xl mx-auto">
-        <div class="border-b-4 border-[#0D9488] pb-6 mb-8 flex justify-between items-start">
+        <div class="border-b-4 ${isApproved ? 'border-[#0D9488]' : 'border-rose-600'} pb-6 mb-8 flex justify-between items-start">
            <div>
-              <p class="text-[10px] font-black text-[#0D9488] uppercase tracking-[0.4em] mb-2">RESET HOSPITALITY STUDIO</p>
-              <h1 class="text-3xl font-bold uppercase tracking-tight mb-4">${shift.propertyName}</h1>
-              <div class="flex flex-col gap-1">
+              <p class="text-[10px] font-black ${isApproved ? 'text-[#0D9488]' : 'text-rose-600'} uppercase tracking-[0.4em] mb-2">OFFICIAL DEPLOYMENT RECORD</p>
+              <h1 class="text-4xl font-bold uppercase tracking-tighter mb-4">${shift.propertyName}</h1>
+              <div class="space-y-2">
                  <div class="flex items-center gap-4">
-                    <span class="text-[8px] font-black uppercase tracking-widest text-slate-400 w-16">DATE</span>
-                    <span class="text-sm font-bold text-black uppercase tracking-widest bg-slate-50 px-2 rounded">${shift.date}</span>
+                    <span class="text-[9px] font-black uppercase tracking-widest text-slate-400 w-24">PERSONNEL</span>
+                    <span class="text-sm font-bold text-black uppercase">${assignedStaffNames}</span>
+                 </div>
+                 <div class="flex items-center gap-4">
+                    <span class="text-[9px] font-black uppercase tracking-widest text-slate-400 w-24">DATE</span>
+                    <span class="text-sm font-bold text-black uppercase tracking-widest bg-slate-100 px-2 rounded">${shift.date}</span>
+                 </div>
+                 <div class="flex items-center gap-4">
+                    <span class="text-[9px] font-black uppercase tracking-widest text-slate-400 w-24">TIMELINE</span>
+                    <span class="text-sm font-bold text-black uppercase">${startTimeStr} — ${endTimeStr}</span>
                  </div>
               </div>
            </div>
-        </div>
-        <div class="mb-10">
-           <h3 class="text-xs font-black uppercase tracking-widest border-b border-slate-100 pb-2 mb-6">Visual Evidence</h3>
-           <div class="grid grid-cols-3 gap-4">
-              ${allPhotos.map(p => `<div class="aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-50"><img src="${p.url}" class="w-full h-full object-cover" /></div>`).join('')}
+           <div class="text-right">
+              <div class="px-6 py-2 rounded-xl ${isApproved ? 'bg-teal-600' : 'bg-rose-600'} text-white font-black text-xs uppercase tracking-[0.2em] shadow-lg">
+                ${isApproved ? 'VERIFIED CLEAN' : 'ISSUES REPORTED'}
+              </div>
            </div>
         </div>
+        
+        <div class="mb-10">
+           <h3 class="text-xs font-black uppercase tracking-widest border-b-2 border-slate-100 pb-2 mb-6">Execution Visuals</h3>
+           <div class="grid grid-cols-3 gap-6">
+              ${allPhotos.map(p => `<div class="aspect-square rounded-[2rem] overflow-hidden border border-slate-200 bg-slate-50 shadow-sm"><img src="${p.url}" class="w-full h-full object-cover" /></div>`).join('')}
+           </div>
+        </div>
+
+        <div class="${isApproved ? 'bg-slate-50' : 'bg-rose-50'} p-8 rounded-[2rem] border ${isApproved ? 'border-slate-100' : 'border-rose-100'}">
+           <p class="text-[9px] font-black ${isApproved ? 'text-slate-400' : 'text-rose-400'} uppercase tracking-widest mb-3">ADMINISTRATIVE FEEDBACK</p>
+           <p class="text-sm italic font-medium ${isApproved ? 'text-slate-600' : 'text-rose-700'}">"${shift.approvalComment || 'Standard deployment protocol completed.'}"</p>
+        </div>
+
+        <div class="mt-12 text-center">
+           <p class="text-[8px] font-black uppercase text-slate-300 tracking-[0.5em]">DIGITALLY VERIFIED BY RESET STUDIO OPS CORE</p>
+        </div>
+
         <script>window.onload = function() { setTimeout(function(){ window.print(); }, 500); }</script>
       </body>
       </html>
@@ -118,7 +150,8 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
   const auditHistory = useMemo(() => {
     const lowerSearch = auditSearch.toLowerCase();
     return shifts.filter(s => {
-        if (s.status !== 'completed' || s.approvalStatus !== 'approved') return false;
+        // INCLUDE ALL COMPLETED SHIFTS (Approved or Rejected)
+        if (s.status !== 'completed' || s.approvalStatus === 'pending') return false;
         if (!lowerSearch) return true;
         const propName = s.propertyName?.toLowerCase() || '';
         return propName.includes(lowerSearch);
@@ -188,7 +221,7 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
         <div className="space-y-10 animate-in slide-in-from-right-4">
            <div className="relative w-full">
               <input type="text" placeholder="SEARCH APARTMENT OR DATE..." className={`${inputStyle} w-full pl-12`} value={auditSearch} onChange={(e) => setAuditSearch(e.target.value)} />
-              <div className="absolute left-4 top-3 text-slate-300"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8"/><line x1="21" y1="16.65" y2="16.65"/></svg></div>
+              <div className="absolute left-4 top-3 text-slate-300"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y2="16.65"/></svg></div>
            </div>
 
            <div className="space-y-8">
@@ -198,20 +231,27 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
                        <h2 className="text-lg font-bold text-slate-900 uppercase tracking-tight">{monthGroup.monthLabel}</h2>
                     </div>
                     <div className="p-6 space-y-3">
-                       {monthGroup.days.flatMap(d => d.shifts).map(shift => (
-                          <div key={shift.id} className="flex flex-col md:flex-row items-center justify-between p-4 rounded-2xl bg-teal-50/20 border border-teal-50 hover:border-[#0D9488] transition-all gap-4">
-                             <div className="flex items-center gap-4">
-                                <span className="text-xl">📄</span>
-                                <div>
-                                   <h4 className="text-sm font-bold text-slate-900 uppercase">{shift.propertyName}</h4>
+                       {monthGroup.days.flatMap(d => d.shifts).map(shift => {
+                          const isRejected = shift.approvalStatus === 'rejected';
+                          return (
+                            <div key={shift.id} className={`flex flex-col md:flex-row items-center justify-between p-4 rounded-2xl border transition-all gap-4 ${isRejected ? 'bg-rose-50/50 border-rose-100 hover:border-rose-300' : 'bg-teal-50/20 border-teal-50 hover:border-[#0D9488]'}`}>
+                              <div className="flex items-center gap-4 text-left">
+                                <span className="text-xl">{isRejected ? '❌' : '📄'}</span>
+                                <div className="min-w-0">
+                                   <h4 className={`text-sm font-bold uppercase truncate ${isRejected ? 'text-rose-900' : 'text-slate-900'}`}>{shift.propertyName}</h4>
                                    <p className="text-[9px] text-slate-400 font-bold uppercase">{shift.date} • {shift.serviceType}</p>
+                                   <div className="flex items-center gap-2 mt-1">
+                                      <p className={`text-[8px] font-black uppercase ${isRejected ? 'text-rose-400' : 'text-teal-600'}`}>Staff: {shift.userIds.map(id => users.find(u => u.id === id)?.name.split(' ')[0]).join(' & ')}</p>
+                                      {isRejected && <span className="text-[7px] font-black bg-rose-600 text-white px-2 py-0.5 rounded-full uppercase">Reported</span>}
+                                   </div>
                                 </div>
-                             </div>
-                             <div className="flex gap-2 w-full md:w-auto">
-                                <button onClick={(e) => handleGeneratePDF(shift, e)} className="flex-1 md:flex-none px-4 py-2 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest">PDF</button>
-                             </div>
-                          </div>
-                       ))}
+                              </div>
+                              <div className="flex gap-2 w-full md:w-auto">
+                                <button onClick={(e) => handleGeneratePDF(shift, e)} className={`flex-1 md:flex-none px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg transition-all ${isRejected ? 'bg-rose-900 text-white hover:bg-rose-950' : 'bg-slate-900 text-white hover:bg-black'}`}>GENERATE REPORT</button>
+                              </div>
+                            </div>
+                          );
+                       })}
                     </div>
                  </div>
               ))}
@@ -227,7 +267,7 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
                <div key={i} className="p-6 rounded-[2rem] bg-white border border-slate-100 shadow-sm flex items-center justify-between">
                   <div className="flex items-center gap-6">
                      <div className="w-12 h-12 rounded-full bg-red-50 text-red-600 flex items-center justify-center font-bold">!</div>
-                     <div>
+                     <div className="text-left">
                         <h4 className="text-sm font-bold text-slate-900 uppercase">{inc.propertyName}</h4>
                         <p className="text-[10px] text-slate-400 font-bold uppercase">{inc.date} • {inc.type}</p>
                         <p className="text-xs text-slate-600 italic mt-1">"{inc.description}"</p>

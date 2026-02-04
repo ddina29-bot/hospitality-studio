@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { TabType, User, Shift, Property, SpecialReport, TimeEntry } from '../../types';
 import LaundryReports from './LaundryReports';
@@ -48,8 +49,6 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
   
   const canMarkItems = isActualLaundry || isAuthorizedDelegate || (isAdmin && adminOverride);
   
-  const showDriverAlerts = isActualLaundry || isAdmin;
-
   useEffect(() => {
     const checkDamage = () => {
       try {
@@ -95,10 +94,6 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
     }
     return days;
   }, [realTodayISO]);
-
-  const collectionAlerts = useMemo(() => {
-    return shifts.filter(s => s.date === viewedDateStrShort && !s.isCollected && !s.excludeLaundry);
-  }, [shifts, viewedDateStrShort]);
 
   const missingLaundryItems = useMemo(() => {
     const list: { shiftId: string, propertyName: string, report: SpecialReport }[] = [];
@@ -305,20 +300,6 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
             </section>
           )}
 
-          {isAuthorizedToView && showDriverAlerts && collectionAlerts.length > 0 && (
-            <section className="bg-orange-50 border border-orange-200 p-4 md:p-6 rounded-[1.5rem] md:rounded-[32px] shadow-sm space-y-3 md:space-y-4">
-              <h3 className="text-[9px] md:text-[10px] font-black text-orange-700 uppercase tracking-[0.3em]">Driver Alerts (Today)</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-3">
-                {collectionAlerts.slice(0, 6).map(alert => (
-                  <div key={alert.id} className="bg-white/80 p-2.5 md:p-3 rounded-xl flex justify-between items-center border border-orange-100 shadow-sm">
-                    <p className="text-[9px] font-bold text-slate-900 uppercase truncate pr-3">{alert.propertyName}</p>
-                    <span className="text-[6px] md:text-[7px] font-black text-orange-600 uppercase tracking-widest whitespace-nowrap bg-orange-100/50 px-2 py-0.5 rounded-full">Drop-off</span>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
           {isAuthorizedToView ? (
             <section className="space-y-4 md:space-y-6">
               <div className="flex items-center justify-between px-2">
@@ -340,6 +321,13 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
                     const pCount = shift.propertyDetails?.pillows || 0;
                     const bathCount = shift.propertyDetails?.bathrooms || 0;
                     const isDone = shift.isLaundryPrepared;
+
+                    // Formatted strings for full linen names
+                    const dLabel = `${dCount} Double${dCount !== 1 ? 's' : ''}`;
+                    const sLabel = `${sCount} Single${sCount !== 1 ? 's' : ''}`;
+                    const pLabel = `${pCount} Pillow Case${pCount !== 1 ? 's' : ''}`;
+                    const bLabel = `${bathCount} Full Unit${bathCount !== 1 ? 's' : ''}`;
+
                     return (
                       <div key={shift.id} className={`p-6 md:p-8 bg-white border rounded-[2rem] md:rounded-[40px] shadow-xl hover:shadow-2xl transition-all flex flex-col justify-between h-full ${isDone ? 'opacity-80 border-green-500/20' : 'border-slate-100'}`}>
                         <div className="space-y-5 md:space-y-6">
@@ -350,12 +338,14 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
                           <div className="space-y-3 md:space-y-4">
                             <div className={`p-3 md:p-4 rounded-xl md:rounded-2xl border ${isDone ? 'bg-gray-50 border-gray-100' : 'bg-slate-50 border-slate-100'}`}>
                               <p className={`text-[6px] md:text-[7px] font-black uppercase tracking-widest mb-1 ${isDone ? 'text-slate-400' : 'text-indigo-600'}`}>Beds & Pillows</p>
-                              <p className={`text-[9px] md:text-[10px] font-bold uppercase leading-none ${isDone ? 'text-slate-400' : 'text-slate-900'}`}>{dCount}D • {sCount}S • {pCount}P</p>
+                              <p className={`text-[9px] md:text-[10px] font-bold uppercase leading-relaxed ${isDone ? 'text-slate-400' : 'text-slate-900'}`}>
+                                {dLabel}, {sLabel}, {pLabel}
+                              </p>
                             </div>
                             
                             <div className={`p-3 md:p-4 rounded-xl md:rounded-2xl border ${isDone ? 'bg-gray-50 border-gray-100' : 'bg-slate-50 border-slate-100'}`}>
                               <p className={`text-[6px] md:text-[7px] font-black uppercase tracking-widest mb-1 ${isDone ? 'text-slate-400' : 'text-indigo-600'}`}>Bathrooms / Packs</p>
-                              <p className={`text-[9px] md:text-[10px] font-bold uppercase leading-none ${isDone ? 'text-slate-400' : 'text-slate-900'}`}>{bathCount} Full Unit{bathCount !== 1 ? 's' : ''}</p>
+                              <p className={`text-[9px] md:text-[10px] font-bold uppercase leading-none ${isDone ? 'text-slate-400' : 'text-slate-900'}`}>{bLabel}</p>
                             </div>
 
                             {shift.notes && (

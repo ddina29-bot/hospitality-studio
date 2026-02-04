@@ -52,11 +52,9 @@ const parseTimeToMinutes = (time12h: string) => {
 };
 
 const getTimeFromTimestamp = (ts: number | undefined) => {
-    if (!ts) return '';
+    if (!ts) return 'N/A';
     const d = new Date(ts);
-    const h = String(d.getHours()).padStart(2, '0');
-    const m = String(d.getMinutes()).padStart(2, '0');
-    return `${h}:${m}`;
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
 const updateTimestampWithTime = (originalTs: number | undefined, timeStr: string, dateStr: string) => {
@@ -270,6 +268,8 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
             handleRescheduleFix(shift);
         } else if (shift.status === 'completed' && shift.approvalStatus === 'pending') {
             setReviewShift(shift);
+        } else if (shift.status === 'active') {
+            setReviewShift(shift);
         }
         if (onConsumedDeepLink) onConsumedDeepLink();
       }
@@ -363,6 +363,10 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
   };
 
   const handleEditShift = (shift: Shift) => {
+    if (shift.approvalStatus === 'approved' || shift.approvalStatus === 'rejected') {
+        setReviewShift(shift);
+        return;
+    }
     setShiftForm({ ...shift, userIds: [...(shift.userIds || [])] });
     setSelectedShift(shift);
     setIsReactivating(false);
@@ -445,9 +449,9 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
         originalCleaningPhotos: shiftForm.originalCleaningPhotos,
         status: 'pending',
         approvalStatus: 'pending',
-        fixWorkPayment: shiftForm.fixWorkPayment || 0,
         isPublished: isShiftPublished,
-        excludeLaundry: shiftForm.excludeLaundry || false
+        excludeLaundry: shiftForm.excludeLaundry || false,
+        fixWorkPayment: shiftForm.fixWorkPayment || 0
     });
 
     setShifts(prev => {
@@ -519,7 +523,8 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
       originalCleaningPhotos: originalCleanerPhotos,
       date: parseShiftDate(originalShift.date),
       isPublished: true,
-      excludeLaundry: originalShift.excludeLaundry || false
+      excludeLaundry: originalShift.excludeLaundry || false,
+      fixWorkPayment: originalShift.fixWorkPayment || 0
     });
     setSelectedShift(originalShift); 
     setReviewShift(null);
@@ -581,7 +586,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
                     approvalStatus: status, 
                     decidedBy: auditorName,
                     approvalComment: finalComment,
-                    userIds: isAuditTask ? [currentUser.id] : s.userIds
+                    // PRESERVE ORIGINAL USERIDS SO SHIFT DOESN'T DISAPPEAR FROM THE Grid
                 };
             }
             return s;
@@ -615,6 +620,39 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
     
     setReviewShift(null);
     setRejectionReason('');
+  };
+
+  const handleReportAndFixAction = () => {
+    if (!reviewShift) return;
+    if (!rejectionReason.trim() && !reviewShift.approvalComment) {
+      alert("A reason is mandatory for reporting issues.");
+      return;
+    }
+    
+    const originalToFix = { ...reviewShift };
+    const auditorName = currentUser.name || 'Management';
+    const finalComment = rejectionReason || reviewShift.approvalComment || 'Quality standards not met.';
+
+    setShifts((prev: Shift[]): Shift[] => {
+        let next: Shift[] = prev.map(s => {
+            if (s.id === originalToFix.id) {
+                return { ...s, approvalStatus: 'rejected', decidedBy: auditorName, approvalComment: finalComment };
+            }
+            return s;
+        });
+        
+        const cleanerShift = next
+            .filter(s => s.propertyId === originalToFix.propertyId && s.serviceType !== 'TO CHECK APARTMENT' && s.status === 'completed')
+            .sort((a, b) => (b.actualEndTime || 0) - (a.actualEndTime || 0))[0];
+            
+        if (cleanerShift) {
+            next = next.map(s => s.id === cleanerShift.id ? { ...s, approvalStatus: 'rejected', wasRejected: true, approvalComment: finalComment, decidedBy: auditorName } : s);
+        }
+        return next;
+    });
+
+    // We close the review modal and open the fix modal
+    handleRescheduleFix(originalToFix, finalComment);
   };
 
   const getUserLeaveStatus = (userId: string, date: Date) => {
@@ -671,9 +709,13 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
   const categorizedGridUsers = useMemo(() => {
     const query = search.toLowerCase();
     const filtered = users.filter(u => {
+      // STRICTLY ONLY CLEANERS AND SUPERVISORS
+      if (!['cleaner', 'supervisor'].includes(u.role)) return false;
+      
       const matchesSearch = u.name.toLowerCase().includes(query);
       if (!matchesSearch) return false;
-      return ['cleaner', 'supervisor'].includes(u.role);
+      
+      return true;
     });
     return [
       { title: 'TEAM', members: filtered }
@@ -692,7 +734,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
     <div className="space-y-6 animate-in fade-in duration-700 text-left pb-24 max-w-full overflow-hidden bg-white min-h-screen">
       <header className="space-y-4 px-1">
         <h2 className="text-2xl font-serif-brand text-black uppercase font-bold tracking-tight">SCHEDULE</h2>
-        <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wide">Manage staff assignments, service types, and deployment dates.</p>
+        <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wide mt-1">Manage cleaner and supervisor assignments for property deployments.</p>
         <div className="flex flex-col lg:flex-row lg:items-center gap-4">
            <div className="flex bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm h-10 w-fit">
               <button onClick={() => navigateWeek(-1)} className="px-4 flex items-center text-slate-400 hover:text-slate-600 border-r border-slate-200 transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="15 18 9 12 15 6"/></svg></button>
@@ -774,7 +816,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
                 {categorizedGridUsers.map((group, groupIdx) => (
                   <React.Fragment key={groupIdx}>
                     <tr className="bg-white border-b border-slate-100">
-                       <td className="p-2 border-r border-slate-100 bg-white sticky left-0 z-10 shadow-[10px_0_20px_-10px_rgba(0,0,0,0.5)]">
+                       <td className="p-2 border-r border-slate-100 bg-white sticky left-0 z-10 shadow-[10px_0_20_px_-10px_rgba(0,0,0,0.5)]">
                           <span className="text-[8px] font-black text-black uppercase tracking-[0.4em] px-2">{group.title}</span>
                        </td>
                        {weekDates.map((_, i) => (
@@ -837,7 +879,11 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
                                       <div key={s.id} onClick={() => { if (isPendingAudit || isActive || isApproved || isReported) setReviewShift(s); else { handleEditShift(s); } }} className={`border rounded-xl p-2 cursor-pointer transition-all relative shadow-sm ${hasConflict(s) ? 'border-red-500 bg-red-50' : colorClass}`}>
                                         {isActive && <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-violet-400 rounded-full animate-pulse"></span>}
                                         <p className={`text-[9px] font-black uppercase truncate pr-4`}>{s.propertyName}</p>
+                                        <p className="text-[7px] font-black uppercase text-indigo-600 mt-0.5 truncate">{s.serviceType}</p>
                                         <p className={`text-[7px] font-bold uppercase mt-1 opacity-70`}>{s.startTime} — {s.endTime}</p>
+                                        {isReported && s.correctionStatus !== 'fixing' && (
+                                            <p className="text-[6px] font-black uppercase text-rose-600 mt-1 animate-pulse">⚠ NEEDS REMEDIAL</p>
+                                        )}
                                       </div>
                                     );
                                   })
@@ -1119,7 +1165,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
                                 className="w-full bg-white border border-teal-200 rounded-lg px-2 py-1.5 text-black text-[10px] font-bold outline-none focus:border-teal-600"
                                 placeholder="0.00"
                                 value={shiftForm.fixWorkPayment || ''} 
-                                onChange={(e) => setShiftForm({...shiftForm, fixWorkPayment: parseFloat(e.target.value)})} 
+                                onChange={(e) => setShiftForm({...shiftForm, fixWorkPayment: parseFloat(e.target.value) || 0})} 
                             />
                             <p className="text-[7px] text-teal-600 mt-1 italic">* This fixed price will be used for the payroll of the assigned team.</p>
                         </div>
@@ -1164,25 +1210,47 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                  <div className="space-y-6">
                     <div className="bg-teal-50 p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
-                       <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.4em]">Deployment Evidence</p>
+                       <div className="flex justify-between items-center border-b border-teal-100 pb-2">
+                          <p className="text-[8px] font-black text-teal-700 uppercase tracking-[0.4em]">Deployment Evidence</p>
+                          <p className="text-[7px] font-bold text-teal-600 uppercase">{getShiftAttributedPhotos(reviewShift).length} PHOTOS</p>
+                       </div>
                        <div className="grid grid-cols-3 gap-2">
                           {getShiftAttributedPhotos(reviewShift).map((p, i) => (
-                             <img key={i} src={p.url} onClick={() => setZoomedImage(p.url)} className="aspect-square rounded-xl object-cover border border-slate-100 cursor-zoom-in hover:opacity-80 transition-opacity" />
+                             <img key={i} src={p.url} onClick={() => setZoomedImage(p.url)} className="aspect-square rounded-xl object-cover border border-white shadow-sm cursor-zoom-in hover:opacity-80 transition-opacity" />
                           ))}
                           {getShiftAttributedPhotos(reviewShift).length === 0 && (
                              <p className="col-span-3 text-[9px] italic text-center py-4 opacity-30">No photos provided.</p>
                           )}
                        </div>
                     </div>
+
+                    {/* Personnel Insight Card */}
+                    <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 space-y-4">
+                       <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.4em]">Personnel Details</p>
+                       <div className="flex flex-wrap gap-4">
+                          {reviewShift.userIds.map(id => {
+                            const u = users.find(user => user.id === id);
+                            return (
+                               <div key={id} className="flex items-center gap-3 bg-white p-2 rounded-2xl border border-slate-100 shadow-sm">
+                                  <div className="w-8 h-8 rounded-lg bg-teal-600 text-white flex items-center justify-center font-bold text-xs uppercase">{u?.name.charAt(0)}</div>
+                                  <div className="text-left">
+                                     <p className="text-[10px] font-bold text-slate-900 uppercase leading-none">{u?.name || 'Unknown'}</p>
+                                     <p className="text-[7px] font-black text-teal-600 uppercase tracking-widest mt-1">{u?.role || 'Cleaner'}</p>
+                                  </div>
+                               </div>
+                            );
+                          })}
+                       </div>
+                    </div>
                  </div>
 
                  <div className="space-y-6">
-                    {reviewShift.approvalStatus !== 'pending' ? (
-                        /* READ-ONLY SUMMARY VIEW */
+                    {(reviewShift.approvalStatus !== 'pending') ? (
+                        /* DECISION MADE VIEW (LOCKED BUT INFORMATIVE) */
                         <div className={`p-8 rounded-3xl border space-y-8 animate-in slide-in-from-right-4 ${reviewShift.approvalStatus === 'approved' ? 'bg-emerald-50 border-emerald-100' : 'bg-rose-50 border-rose-100'}`}>
                            <div className="flex items-center justify-between border-b border-black/5 pb-4">
                               <div className="space-y-1">
-                                 <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.4em]">FINAL DECISION</p>
+                                 <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.4em]">AUDIT SUMMARY</p>
                                  <p className={`text-xl font-black uppercase tracking-tight ${reviewShift.approvalStatus === 'approved' ? 'text-emerald-700' : 'text-rose-700'}`}>
                                     {reviewShift.approvalStatus === 'approved' ? 'QUALITY AUTHORIZED' : 'WORK REPORTED'}
                                  </p>
@@ -1192,16 +1260,24 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
                               </div>
                            </div>
 
-                           <div className="grid grid-cols-2 gap-8">
+                           <div className="grid grid-cols-2 gap-y-8 gap-x-6">
                               <div>
-                                 <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Personnel</p>
-                                 <p className="text-[11px] font-bold text-slate-900 uppercase leading-tight">
+                                 <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Assigned Team</p>
+                                 <p className="text-[10px] font-bold text-slate-900 uppercase leading-tight">
                                     {reviewShift.userIds.map(id => users.find(u => u.id === id)?.name).join(' & ')}
                                  </p>
                               </div>
                               <div>
                                  <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Deployment Date</p>
-                                 <p className="text-[11px] font-bold text-slate-900 uppercase">{reviewShift.date}</p>
+                                 <p className="text-[10px] font-bold text-slate-900 uppercase">{reviewShift.date}</p>
+                              </div>
+                              <div>
+                                 <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Timeline (Start → End)</p>
+                                 <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-black text-slate-900 bg-white px-2 py-0.5 rounded border border-black/5">{getTimeFromTimestamp(reviewShift.actualStartTime)}</span>
+                                    <span className="text-slate-300">→</span>
+                                    <span className="text-[10px] font-black text-slate-900 bg-white px-2 py-0.5 rounded border border-black/5">{getTimeFromTimestamp(reviewShift.actualEndTime)}</span>
+                                 </div>
                               </div>
                               <div>
                                  <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Total Duration</p>
@@ -1209,13 +1285,13 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
                               </div>
                               <div>
                                  <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Verified By</p>
-                                 <p className="text-[11px] font-bold text-slate-500 uppercase">{reviewShift.decidedBy || 'SYSTEM'}</p>
+                                 <p className="text-[10px] font-bold text-slate-600 uppercase">{reviewShift.decidedBy || 'MANAGEMENT'}</p>
                               </div>
                            </div>
 
                            {reviewShift.approvalComment && (
                               <div className="pt-6 border-t border-black/5">
-                                 <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-2">Decision Log / Feedback</p>
+                                 <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-2">Final Feedback</p>
                                  <div className="bg-white/60 p-4 rounded-xl border border-black/5 italic text-[10px] text-slate-600 font-medium leading-relaxed">
                                     "{reviewShift.approvalComment}"
                                  </div>
@@ -1223,11 +1299,35 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
                            )}
 
                            <div className="pt-4 flex justify-end no-print">
-                              <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] italic">Record locked — No further changes authorized.</p>
+                              <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] italic">Record locked — Final operational record.</p>
+                           </div>
+                        </div>
+                    ) : reviewShift.status === 'active' ? (
+                        /* LIVE MONITOR VIEW (NON-INTERACTIVE AUDIT) */
+                        <div className="p-8 rounded-3xl border border-violet-100 bg-violet-50/50 space-y-8 animate-pulse">
+                           <div className="flex items-center justify-between border-b border-violet-100 pb-4">
+                              <div className="space-y-1">
+                                 <p className="text-[8px] font-black text-violet-400 uppercase tracking-[0.4em]">MISSION STATUS</p>
+                                 <p className="text-xl font-black uppercase tracking-tight text-violet-700">MISSION LIVE</p>
+                              </div>
+                              <div className="w-12 h-12 rounded-2xl bg-violet-600 flex items-center justify-center text-white text-2xl shadow-lg">📡</div>
+                           </div>
+                           <div className="space-y-4">
+                              <p className="text-[10px] text-violet-600 font-bold leading-relaxed uppercase">Staff is on-site. Real-time telemetry is active. Full report details will unlock upon successful clock-out.</p>
+                              <div className="grid grid-cols-2 gap-4 pt-4">
+                                  <div>
+                                     <p className="text-[7px] font-black text-violet-400 uppercase tracking-widest mb-1">Assigned Team</p>
+                                     <p className="text-[10px] font-bold text-violet-900 uppercase">{reviewShift.userIds.map(id => users.find(u => u.id === id)?.name).join(' & ')}</p>
+                                  </div>
+                                  <div>
+                                     <p className="text-[7px] font-black text-violet-400 uppercase tracking-widest mb-1">Active Time</p>
+                                     <p className="text-[10px] font-black text-violet-900 uppercase">{reviewShift.actualStartTime ? Math.floor((Date.now() - reviewShift.actualStartTime)/60000) : 0} MINS LOGGED</p>
+                                  </div>
+                              </div>
                            </div>
                         </div>
                     ) : (
-                        /* INTERACTIVE REVIEW VIEW */
+                        /* INTERACTIVE REVIEW VIEW (FOR COMPLETED WORK) */
                         <>
                             <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
                                 <div className="flex justify-between items-center mb-3">
@@ -1279,7 +1379,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
                                </div>
                                
                                <div className="flex gap-3">
-                                   <button onClick={() => { if (!rejectionReason) { alert("Reason required for fix schedule"); return; } handleReviewDecision('rejected'); handleRescheduleFix(reviewShift, rejectionReason); }} className="flex-1 bg-amber-50 text-amber-800 border-2 border-amber-200 font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-sm hover:border-amber-400 active:scale-95 transition-all">
+                                   <button onClick={handleReportAndFixAction} className="flex-1 bg-amber-50 text-amber-800 border-2 border-amber-200 font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-sm hover:border-amber-400 active:scale-95 transition-all">
                                       REPORT & FIX
                                    </button>
                                    <button onClick={() => handleSendSupervisor(reviewShift)} className="flex-1 bg-slate-50 text-slate-700 border-2 border-slate-200 font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-sm hover:border-slate-400 active:scale-95 transition-all">

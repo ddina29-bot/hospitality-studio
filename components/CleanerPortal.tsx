@@ -135,7 +135,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   const activeProperty = useMemo(() => activeShift ? properties.find(p => p.id === activeShift.propertyId) : null, [activeShift, properties]);
 
   const lastCleanerShift = useMemo(() => {
-    if (activeShift?.serviceType !== 'TO CHECK APARTMENT') return null;
+    if (!activeShift || activeShift.serviceType !== 'TO CHECK APARTMENT') return null;
     return (shifts || []).find(s => 
       s.propertyId === activeShift.propertyId && 
       s.status === 'completed' && 
@@ -472,7 +472,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
 
   const getRefPhotoForTask = (taskId: string) => {
      if (!activeProperty) return null;
-     if (taskId === 'kitchen-task' || taskId === 'fridge-task') return activeProperty.kitchenPhoto;
+     if (taskId === 'kitchen-task' || taskId === 'fridge-task' || taskId === 'audit-hygiene') return activeProperty.kitchenPhoto;
      if (taskId.startsWith('room-task-')) {
         const idx = parseInt(taskId.split('-').pop() || '1') - 1;
         return activeProperty.roomPhotos?.[idx];
@@ -481,8 +481,8 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
         const idx = parseInt(taskId.split('-').pop() || '1') - 1;
         return activeProperty.bathroomPhotos?.[idx];
      }
-     if (taskId === 'living-task' || taskId === 'windows-task') return activeProperty.livingRoomPhoto;
-     if (taskId === 'welcome-task') return activeProperty.welcomePackPhoto;
+     if (taskId === 'living-task' || taskId === 'windows-task' || taskId === 'audit-general') return activeProperty.livingRoomPhoto;
+     if (taskId === 'welcome-task' || taskId === 'audit-inventory') return activeProperty.welcomePackPhoto;
      return null;
   };
 
@@ -676,7 +676,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
               </div>
               <div className="flex gap-2">
                 <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activeProperty?.address || '')}`} target="_blank" className="flex-1 bg-blue-50 text-blue-600 border border-blue-100 py-2.5 md:py-3 rounded-xl text-[8px] md:text-[9px] font-black uppercase text-center shadow-sm">Google Maps</a>
-                <a href={`https://maps.apple.com/?q=${encodeURIComponent(activeProperty?.address || '')}`} target="_blank" className="flex-1 bg-slate-50 text-slate-600 border border-slate-200 py-2.5 md:py-3 rounded-xl text-[8px] md:text-[9px] font-black uppercase text-center shadow-sm">Apple Maps</a>
+                <a href={`https://maps.apple.com/?q=${encodeURIComponent(activeProperty?.address || '')}`} target="_blank" className="flex-1 bg-slate-50 text-slate-600 border border-slate-200 py-2.5 md:py-3 rounded-xl text-[8px] font-black uppercase text-center shadow-sm">Apple Maps</a>
               </div>
            </div>
            <div className="bg-teal-50 p-5 md:p-6 rounded-3xl md:rounded-[32px] border border-teal-100 space-y-5 md:space-y-6">
@@ -748,7 +748,11 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                   <span className="text-[7px] font-black uppercase tracking-tight text-center leading-none">Maintenance & Damages</span>
                </button>
                <button onClick={handleToggleLinenShortage} className={`h-20 md:h-24 flex flex-col items-center justify-center gap-1.5 md:gap-2 rounded-2xl md:rounded-[28px] transition-all active:scale-95 shadow-sm border-2 ${activeShift.isLinenShortage ? 'bg-amber-600 border-amber-500 text-white' : 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'}`}>
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M7 21a4 4 0 0 1-4-4V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v12a4 4 0 0 1-4 4zm0 0h12a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2h-5"/></svg>
+                  {activeShift.isLinenShortage ? (
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+                  ) : (
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M7 21a4 4 0 0 1-4-4V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v12a4 4 0 0 1-4 4zm0 0h12a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2h-5"/></svg>
+                  )}
                   <span className="text-[8px] font-black uppercase tracking-widest">{activeShift.isLinenShortage ? 'Cancel Shortage' : 'No Supplies'}</span>
                </button>
                <button onClick={() => setReportModalType('missing')} className="h-20 md:h-24 bg-indigo-50 border-2 border-indigo-200 text-indigo-700 flex flex-col items-center justify-center gap-1.5 md:gap-2 rounded-2xl md:rounded-[28px] transition-all active:scale-95 hover:bg-indigo-100 shadow-sm">
@@ -756,6 +760,17 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                   <span className="text-[8px] font-black uppercase tracking-widest">Missing</span>
                </button>
             </div>
+
+            {activeShift.isLinenShortage && (
+              <div className="bg-amber-600 text-white p-5 rounded-[2rem] shadow-xl animate-in slide-in-from-top-4 border-b-8 border-amber-700 flex items-center gap-4">
+                 <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-amber-600 font-black text-xl shrink-0">!</div>
+                 <div className="flex-1">
+                    <p className="text-[9px] font-black uppercase tracking-[0.2em]">Supply Shortage Protocol Active</p>
+                    <p className="text-[10px] font-bold opacity-90 uppercase">BEDS AND PACK TASKS ARE BYPASSED. CLOCK-OUT UNLOCKED.</p>
+                 </div>
+              </div>
+            )}
+
             <div className="bg-[#1E293B] border-l-4 border-amber-500 p-5 rounded-2xl shadow-xl space-y-2 animate-in fade-in">
                <div className="flex items-center gap-2">
                   <span className="text-amber-500 text-lg">⚠️</span>
@@ -767,15 +782,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                   <span className="text-amber-400">WATER MUST BE CHANGED FOR EVERY ROOM</span> TO WASH THE FLOOR.
                </p>
             </div>
-            {activeShift.isLinenShortage && (
-              <div className="bg-amber-50 border border-amber-100 p-5 rounded-3xl animate-in slide-in-from-top-2">
-                 <p className="text-[9px] font-black text-amber-800 uppercase tracking-widest flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping"></span>
-                    Operational Alert: Shortage Bypass Active
-                 </p>
-                 <p className="text-[10px] text-amber-700 mt-2 font-medium leading-relaxed">System has flagged this unit for follow-up. You may now complete the checklist without <strong>Linens</strong> or <strong>Welcome Packs</strong>. Housekeeping and Drivers have been notified.</p>
-              </div>
-            )}
+            
             <div className="space-y-3.5 md:space-y-4 text-left">
                <p className="text-[9px] md:text-[10px] font-black text-black/30 uppercase tracking-[0.4em] px-2">{isAudit ? 'Audit Protocol' : 'Deployment Protocol'}</p>
                {tasks.map(task => {
@@ -783,19 +790,27 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                   const isExemptByShortage = activeShift.isLinenShortage && isExemptableTask;
                   const hasPhoto = task.photos.length > 0;
                   const refPhoto = getRefPhotoForTask(task.id);
+                  
+                  // Side-by-Side Logic: Find cleaner evidence for this audit task
                   const cleanerEvidence = lastCleanerShift?.tasks?.find(t => {
                     if (task.id === 'audit-general') return t.id === 'living-task';
                     if (task.id === 'audit-hygiene') return t.id === 'bath-task-1';
                     if (task.id === 'audit-inventory') return t.id === 'welcome-task';
                     return false;
                   })?.photos[0]?.url;
+
                   return (
-                     <div key={task.id} className={`border rounded-3xl md:rounded-[32px] p-5 md:p-6 transition-all shadow-sm ${isExemptByShortage ? 'bg-amber-50/40 border-amber-200 grayscale-[0.5]' : hasPhoto ? 'bg-teal-50 border-teal-500' : 'bg-white border-slate-200'}`}>
+                     <div key={task.id} className={`border rounded-3xl md:rounded-[32px] p-5 md:p-6 transition-all shadow-sm ${isExemptByShortage ? 'bg-amber-50/60 border-amber-400 border-dashed grayscale-[0.3]' : hasPhoto ? 'bg-teal-50 border-teal-500' : 'bg-white border-slate-200'}`}>
                         <div className="flex justify-between items-start mb-4 text-left">
                            <div className="space-y-1 flex-1">
-                              <p className={`text-xs md:text-sm font-bold uppercase leading-tight ${isExemptByShortage ? 'text-amber-800' : hasPhoto ? 'text-teal-900' : 'text-slate-700'}`}>{task.label}</p>
+                              <div className="flex items-center gap-2">
+                                <p className={`text-xs md:text-sm font-bold uppercase leading-tight ${isExemptByShortage ? 'text-amber-800' : hasPhoto ? 'text-teal-900' : 'text-slate-700'}`}>{task.label}</p>
+                                {isExemptByShortage && (
+                                  <span className="bg-amber-600 text-white px-2 py-0.5 rounded text-[6px] font-black uppercase tracking-widest whitespace-nowrap">Bypassed</span>
+                                )}
+                              </div>
                               {isExemptByShortage ? (
-                                <span className="text-[7px] md:text-[8px] font-black text-amber-600 uppercase tracking-widest italic">Shortage Bypass Active</span>
+                                <span className="text-[7px] md:text-[8px] font-black text-amber-600 uppercase tracking-widest italic block mt-1">Linen Shortage: Task can be completed later by logistics.</span>
                               ) : task.isMandatory && !hasPhoto && attemptedNext && (
                                 <span className="text-[7px] md:text-[8px] font-black text-red-600 uppercase tracking-widest">Evidence Required</span>
                               )}
@@ -806,20 +821,20 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                         <div className="flex gap-2.5 md:gap-3 overflow-x-auto pb-2 custom-scrollbar no-scrollbar">
                            {refPhoto && (
                              <div className="flex flex-col gap-1 items-center shrink-0">
-                               <p className="text-[6px] font-black uppercase text-teal-600">Ref</p>
+                               <p className="text-[6px] font-black uppercase text-teal-600">Standard</p>
                                <img src={refPhoto} onClick={() => setZoomedImage(refPhoto)} className="w-16 h-16 md:w-20 md:h-20 rounded-xl md:rounded-2xl object-cover border-2 border-[#0D9488]/20 shadow-md cursor-zoom-in" alt="Standard" />
                              </div>
                            )}
                            {isAudit && cleanerEvidence && (
                               <div className="flex flex-col gap-1 items-center shrink-0">
-                                <p className="text-[6px] font-black uppercase text-indigo-600">Proof</p>
+                                <p className="text-[6px] font-black uppercase text-indigo-600">Cleaner Proof</p>
                                 <img src={cleanerEvidence} onClick={() => setZoomedImage(cleanerEvidence)} className="w-16 h-16 md:w-20 md:h-20 rounded-xl md:rounded-2xl object-cover border-2 border-indigo-200 shadow-md cursor-zoom-in" alt="Cleaner Proof" />
                               </div>
                            )}
                            {(refPhoto || cleanerEvidence) && <div className="w-px h-16 md:h-20 bg-slate-100 shrink-0 self-end"></div>}
                            {task.photos.map((p, i) => (
                              <div key={i} className="flex flex-col gap-1 items-center shrink-0">
-                               <p className="text-[6px] font-black uppercase text-slate-400">Done</p>
+                               <p className="text-[6px] font-black uppercase text-slate-400">Audit Photo</p>
                                <img src={p.url} onClick={() => setZoomedImage(p.url)} className="w-16 h-16 md:w-20 md:h-20 rounded-xl md:rounded-2xl object-cover border border-slate-100 shadow-sm cursor-zoom-in" alt="Evidence" />
                              </div>
                            ))}
@@ -864,7 +879,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
          </div>
          <input type="file" ref={cameraInputRef} className="hidden" accept="image/*" capture="environment" onChange={(e) => handleCapture(e, 'task')} />
          {(reportModalType || showMessReport) && (
-            <div className="fixed inset-0 bg-black/90 z-[1000] flex items-end sm:items-center justify-center p-2 sm:p-4 backdrop-blur-sm animate-in slide-in-from-bottom-5">
+            <div className="fixed inset-0 bg-black/90 z-[1000] flex items-end sm:items-center justify-center p-2 sm:p-4 backdrop-blur-md animate-in slide-in-from-bottom-5">
                <div className="bg-white w-full max-w-md rounded-[2.5rem] md:rounded-[50px] space-y-6 md:space-y-8 shadow-2xl relative text-center overflow-hidden">
                   <div className={`h-3 md:h-4 w-full ${showMessReport ? 'bg-rose-500' : 'bg-teal-600'}`}></div>
                   <div className="p-8 md:p-10 pb-4 md:pb-4 space-y-1.5 md:space-y-2">
