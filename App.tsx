@@ -15,7 +15,7 @@ import PersonnelProfile from './components/PersonnelProfile';
 import ActivityCenter from './components/ActivityCenter';
 import Login from './components/Login';
 import UserActivation from './components/UserActivation';
-import { TabType, Shift, User, Client, Property, Invoice, TimeEntry, Tutorial, UserRole, OrganizationSettings, SupplyItem, SupplyRequest, AnomalyReport, ManualTask, LeaveRequest, LeaveType, AppNotification } from './types';
+import { TabType, Shift, User, Client, Property, Invoice, TimeEntry, Tutorial, UserRole, OrganizationSettings, SupplyItem, SupplyRequest, AnomalyReport, ManualTask, LeaveRequest, AppNotification } from './types';
 
 const load = <T,>(k: string, f: T): T => {
   if (typeof window === 'undefined') return f;
@@ -34,7 +34,6 @@ const safeSave = (key: string, data: any) => {
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(() => load('current_user_obj', null));
-  const [isDemoMode, setIsDemoMode] = useState(() => localStorage.getItem('studio_is_demo') === 'true');
   const [orgId, setOrgId] = useState<string | null>(() => localStorage.getItem('current_org_id'));
   const [activeTab, setActiveTab] = useState<TabType>(() => (localStorage.getItem('studio_active_tab') as TabType) || 'dashboard');
   
@@ -96,12 +95,10 @@ const App: React.FC = () => {
     setNotifications(prev => [fullNotif, ...prev]);
   };
 
-  // HYDRATION: Fetch data from server on startup
   useEffect(() => {
     const hydrateState = async () => {
-      if (!user || isHydrating.current || isDemoMode) return;
+      if (!user || isHydrating.current) return;
       
-      // If we just made a local change, wait for that to sync instead of fetching old data
       if (Date.now() - lastLocalUpdate.current < 3000) return;
 
       isHydrating.current = true;
@@ -113,7 +110,7 @@ const App: React.FC = () => {
         if (data.success && data.organization) {
           const org = data.organization;
           setOrgId(org.id);
-          // Only overwrite if we haven't touched the app recently to avoid race conditions
+          localStorage.setItem('current_org_id', org.id);
           if (Date.now() - lastLocalUpdate.current > 3000) {
               if (org.users) setUsers(org.users);
               if (org.shifts) setShifts(org.shifts);
@@ -139,7 +136,7 @@ const App: React.FC = () => {
       }
     };
     hydrateState();
-  }, [user?.email, isDemoMode]);
+  }, [user?.email]);
 
   const saveAllLocal = useCallback(() => {
     lastLocalUpdate.current = Date.now();
@@ -162,14 +159,13 @@ const App: React.FC = () => {
     safeSave('studio_auth_laundry_ids', authorizedLaundryUserIds);
   }, [users, shifts, properties, clients, invoices, timeEntries, tutorials, activeTab, user, organization, inventoryItems, supplyRequests, anomalyReports, authorizedLaundryUserIds, manualTasks, leaveRequests, notifications]);
 
-  // SYNC Logic: Push local state to server
   useEffect(() => {
     if (!user) return;
 
     if (localPersistenceTimeoutRef.current) clearTimeout(localPersistenceTimeoutRef.current);
     localPersistenceTimeoutRef.current = setTimeout(saveAllLocal, 500); 
 
-    if (!orgId || isHydrating.current || isDemoMode) return;
+    if (!orgId || isHydrating.current) return;
 
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     syncTimeoutRef.current = setTimeout(async () => {
@@ -188,19 +184,19 @@ const App: React.FC = () => {
           })
         });
         if (response.ok) {
-           setTimeout(() => setIsSyncing(false), 1000); // Keep indicator briefly
+           setTimeout(() => setIsSyncing(false), 1000);
         }
       } catch (err) { 
         console.error("Cloud Sync error:", err); 
         setIsSyncing(false);
       }
-    }, 1500); // 1.5s debounce for faster saving
+    }, 1500);
 
     return () => {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
       if (localPersistenceTimeoutRef.current) clearTimeout(localPersistenceTimeoutRef.current);
     };
-  }, [saveAllLocal, user, orgId, isDemoMode, users, shifts, properties, clients, invoices, timeEntries, tutorials, activeTab, organization, inventoryItems, supplyRequests, anomalyReports, authorizedLaundryUserIds, manualTasks, leaveRequests, notifications]);
+  }, [saveAllLocal, user, orgId, users, shifts, properties, clients, invoices, timeEntries, tutorials, activeTab, organization, inventoryItems, supplyRequests, anomalyReports, authorizedLaundryUserIds, manualTasks, leaveRequests, notifications]);
 
   useEffect(() => {
     const handleUnload = () => saveAllLocal();
@@ -232,6 +228,7 @@ const App: React.FC = () => {
     setUser(u);
     if (organizationData) {
         setOrgId(organizationData.id);
+        localStorage.setItem('current_org_id', organizationData.id);
         if (organizationData.users) setUsers(organizationData.users);
         if (organizationData.shifts) setShifts(organizationData.shifts);
         if (organizationData.properties) setProperties(organizationData.properties);
@@ -249,59 +246,9 @@ const App: React.FC = () => {
     else setActiveTab('dashboard');
   };
 
-  const handleDemoLogin = (role: UserRole = 'admin') => {
-    const todayStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase();
-    
-    // DEMO DATA SETUP
-    const demoClient: Client = { id: 'c-1', name: 'ELITE HOLIDAYS', contactEmail: 'ops@elite.com', phone: '+356 9900 1122', billingAddress: 'Valletta Waterfront, Malta', status: 'active' };
-    
-    const demoProperties: Property[] = [
-      { id: 'p-1', name: 'SLIEMA PENTHOUSE 7', type: 'Penthouse', clientId: 'c-1', address: 'Tower Road, Sliema, Malta', lat: 35.912, lng: 14.504, keyboxCode: '1234', mainEntranceCode: '9900', accessNotes: 'Keybox behind the AC unit.', rooms: 3, bathrooms: 2, halfBaths: 1, doubleBeds: 2, singleBeds: 2, sofaBeds: 1, pillows: 8, hasBabyCot: true, capacity: 8, hasDishwasher: true, hasCoffeeMachine: true, clientPrice: 150, cleanerPrice: 45, status: 'active', specialRequests: [], entrancePhoto: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=400&q=80' },
-      { id: 'p-2', name: 'VALLETTA HERITAGE LOFT', type: 'Apartment', clientId: 'c-1', address: 'Republic Street, Valletta, Malta', lat: 35.898, lng: 14.512, keyboxCode: '5566', accessNotes: 'Green door next to the cafe.', rooms: 1, bathrooms: 1, halfBaths: 0, doubleBeds: 1, singleBeds: 0, sofaBeds: 0, pillows: 4, capacity: 2, hasDishwasher: false, hasCoffeeMachine: true, clientPrice: 80, cleanerPrice: 25, status: 'active', specialRequests: [], entrancePhoto: 'https://images.unsplash.com/photo-1493809842364-78817add7ffb?auto=format&fit=crop&w=400&q=80' },
-      { id: 'p-3', name: 'ST JULIANS STUDIO 4', type: 'Studio', clientId: 'c-1', address: 'Paceville Ave, St Julians, Malta', lat: 35.923, lng: 14.491, keyboxCode: '7788', accessNotes: 'Level 4, buzzer 14.', rooms: 1, bathrooms: 1, halfBaths: 0, doubleBeds: 1, singleBeds: 0, sofaBeds: 0, pillows: 2, capacity: 2, hasDishwasher: false, hasCoffeeMachine: false, clientPrice: 60, cleanerPrice: 20, status: 'active', specialRequests: [], entrancePhoto: 'https://images.unsplash.com/photo-1536376074432-bf12177d4f4f?auto=format&fit=crop&w=400&q=80' }
-    ];
-
-    const demoUsers: User[] = [
-      { id: 'u-1', name: 'John Doe', role: 'admin', email: 'admin@reset.studio', status: 'active' },
-      { id: 'u-2', name: 'Sarah Clean', role: 'cleaner', email: 'sarah@reset.studio', status: 'active', phone: '+356 7700 8899' },
-      { id: 'u-3', name: 'Dave Driver', role: 'driver', email: 'dave@reset.studio', status: 'active', phone: '+356 9944 5566' },
-      { id: 'u-4', name: 'Laura Laundry', role: 'laundry', email: 'laura@reset.studio', status: 'active' }
-    ];
-
-    const currentDemoUserId = role === 'admin' ? 'u-1' : role === 'cleaner' ? 'u-2' : role === 'driver' ? 'u-3' : 'u-4';
-    const activeDemoUser = demoUsers.find(u => u.id === currentDemoUserId)!;
-
-    const demoShifts: Shift[] = [
-      { id: 's-1', propertyId: 'p-1', propertyName: 'SLIEMA PENTHOUSE 7', userIds: ['u-2'], date: todayStr, startTime: '10:00 AM', endTime: '02:00 PM', serviceType: 'Check out/check in', status: 'active', actualStartTime: Date.now() - 3600000, approvalStatus: 'pending', isPublished: true },
-      { id: 's-2', propertyId: 'p-2', propertyName: 'VALLETTA HERITAGE LOFT', userIds: ['u-2'], date: todayStr, startTime: '02:30 PM', endTime: '04:30 PM', serviceType: 'Check out/check in', status: 'pending', approvalStatus: 'pending', isPublished: true },
-      { id: 's-3', propertyId: 'p-3', propertyName: 'ST JULIANS STUDIO 4', userIds: ['u-2'], date: todayStr, startTime: '09:00 AM', endTime: '11:00 AM', serviceType: 'TO CHECK APARTMENT', status: 'completed', actualStartTime: Date.now() - 20000000, actualEndTime: Date.now() - 15000000, approvalStatus: 'pending', isPublished: true },
-      { id: 's-4', propertyId: 'p-1', propertyName: 'SUPPLY DROP: SARAH CLEAN', userIds: ['u-3'], date: todayStr, startTime: '08:00 AM', endTime: '06:00 PM', serviceType: 'SUPPLY DELIVERY', status: 'pending', approvalStatus: 'pending', isPublished: true, notes: '2x Double Sheet, 4x Pillow Case, 10x Welcome Pack' }
-    ];
-
-    const demoInventory: SupplyItem[] = [
-        { id: 'inv-1', name: 'DOUBLE SHEET', unit: 'PIECE', category: 'linen', type: 'laundry', explanation: 'Ensure ironed and folded properly.', photo: 'https://images.unsplash.com/photo-1629910276241-98c4d14322a3?auto=format&fit=crop&w=300&q=80' },
-        { id: 'inv-2', name: 'WINDOW CLEANER (SPRAY)', unit: '750ML BOTTLE', category: 'spray', type: 'cleaning', explanation: 'Use only on glass surfaces.', photo: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=300&q=80' }
-    ];
-
-    setIsDemoMode(true);
-    localStorage.setItem('studio_is_demo', 'true');
-    handleLogin(activeDemoUser, { 
-        id: 'demo-org', 
-        users: demoUsers,
-        properties: demoProperties,
-        shifts: demoShifts,
-        clients: [demoClient],
-        inventoryItems: demoInventory,
-        settings: { id: 'demo-org', name: 'DEMO STUDIO', address: '123 Demo St, Valletta', email: 'demo@reset.studio', phone: '+356 000 000' } 
-    });
-    
-    showToast(`LOGGED IN AS ${role.toUpperCase()}`, 'success');
-  };
-
   const handleLogout = () => {
     setUser(null);
     setOrgId(null);
-    setIsDemoMode(false);
     localStorage.clear();
   };
 
@@ -314,20 +261,34 @@ const App: React.FC = () => {
     if (!user) return null;
     if (activeTab === 'settings') {
       return (
-        <PersonnelProfile 
-          user={user} 
-          leaveRequests={leaveRequests} 
-          onRequestLeave={(type, start, end) => {
-             const leaveId = `leave-${Date.now()}`;
-             setLeaveRequests(prev => [...prev, { id: leaveId, userId: user.id, userName: user.name, type, startDate: start, endDate: end, status: 'pending' }]);
-             addNotification({ title: 'New Leave Request', message: `${user.name} requested ${type}`, type: 'info', linkTab: 'dashboard', linkId: leaveId });
-             showToast('LEAVE REQUEST SUBMITTED', 'info');
-          }} 
-          shifts={shifts} 
-          properties={properties} 
-          onUpdateUser={handleUpdateUser} 
-          organization={organization}
-        />
+        <div className="space-y-12 max-w-5xl mx-auto px-1 md:px-4">
+          {user.role === 'admin' && (
+            <section className="space-y-6">
+              <StudioSettings 
+                organization={organization} 
+                setOrganization={setOrganization} 
+                userCount={users.length} 
+                propertyCount={properties.length} 
+                currentOrgId={orgId} 
+              />
+              <div className="h-px bg-slate-200 w-full opacity-50"></div>
+            </section>
+          )}
+          <PersonnelProfile 
+            user={user} 
+            leaveRequests={leaveRequests} 
+            onRequestLeave={(type, start, end) => {
+               const leaveId = `leave-${Date.now()}`;
+               setLeaveRequests(prev => [...prev, { id: leaveId, userId: user.id, userName: user.name, type, startDate: start, endDate: end, status: 'pending' }]);
+               addNotification({ title: 'New Leave Request', message: `${user.name} requested ${type}`, type: 'info', linkTab: 'dashboard', linkId: leaveId });
+               showToast('LEAVE REQUEST SUBMITTED', 'info');
+            }} 
+            shifts={shifts} 
+            properties={properties} 
+            onUpdateUser={handleUpdateUser} 
+            organization={organization}
+          />
+        </div>
       );
     }
 
@@ -403,11 +364,11 @@ const App: React.FC = () => {
     }
   };
 
-  if (!user) return <Login onLogin={handleLogin} onSignupClick={() => {}} onDemoLogin={handleDemoLogin} />;
+  if (!user) return <Login onLogin={handleLogin} onSignupClick={() => {}} />;
 
   return (
     <div className="flex h-screen bg-[#F0FDFA] overflow-hidden">
-      {isLoading && shifts.length === 0 ? (
+      {isLoading && (shifts.length === 0 || !orgId) ? (
         <div className="flex-1 flex flex-col items-center justify-center py-40 animate-pulse">
            <div className="w-12 h-12 border-4 border-teal-50 border-t-teal-600 rounded-full animate-spin"></div>
            <p className="text-[10px] font-black uppercase tracking-widest mt-6 text-teal-600">Synchronizing Session Core...</p>
@@ -431,20 +392,6 @@ const App: React.FC = () => {
           )}
           {renderContent()}
         </Layout>
-      )}
-
-      {isDemoMode && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[3000] bg-slate-900 border border-teal-500/30 p-2 rounded-2xl flex items-center gap-2 shadow-2xl animate-in slide-in-from-bottom-2">
-           <div className="px-3 border-r border-slate-700">
-              <p className="text-[7px] font-black text-teal-400 uppercase tracking-widest">Previewing</p>
-              <p className="text-[9px] font-bold text-white uppercase">{user.role}</p>
-           </div>
-           <div className="flex gap-1">
-              {[{ r: 'admin', i: '💼' }, { r: 'cleaner', i: '🧹' }, { r: 'driver', i: '🚚' }, { r: 'laundry', i: '🧺' }].map(item => (
-                <button key={item.r} onClick={() => handleDemoLogin(item.r as UserRole)} className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg transition-all ${user.role === item.r ? 'bg-teal-600 text-white shadow-lg' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>{item.i}</button>
-              ))}
-           </div>
-        </div>
       )}
 
       {showActivityCenter && (
