@@ -67,19 +67,6 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({
     );
   }, [shifts]);
 
-  const handleForceClockOut = (shiftId: string, propertyName: string) => {
-    if (!window.confirm(`EMERGENCY ACTION: Forcefully clock-out staff from ${propertyName}?\n\nThis will move the shift to Audit for review.`)) {
-      return;
-    }
-    setShifts(prev => prev.map(s => s.id === shiftId ? ({
-      ...s,
-      status: 'completed',
-      actualEndTime: Date.now(),
-      approvalStatus: 'pending',
-      approvalComment: 'SYSTEM: Management Emergency Force Clock-Out.'
-    } as Shift) : s));
-  };
-
   const handleApproveSupplies = (batch: SupplyRequest[]) => {
     if (!setSupplyRequests || !setShifts) return;
     
@@ -392,13 +379,6 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({
                         <span className="text-[8px] md:text-[10px] font-mono text-green-700 font-black bg-green-100 px-2 md:px-3 py-0.5 md:py-1 rounded-lg border border-green-200">
                           {s.actualStartTime ? Math.floor((Date.now() - s.actualStartTime) / 60000) : 0}m
                         </span>
-                        <button 
-                          onClick={() => handleForceClockOut(s.id, s.propertyName)}
-                          className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center hover:bg-rose-600 hover:text-white transition-all shadow-sm"
-                          title="Emergency Force Stop"
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>
-                        </button>
                       </div>
                    </div>
                 ))

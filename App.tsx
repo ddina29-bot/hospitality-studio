@@ -39,6 +39,7 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>(() => (localStorage.getItem('studio_active_tab') as TabType) || 'dashboard');
   
   const [targetLogisticsUserId, setTargetLogisticsUserId] = useState<string | null>(null);
+  const [selectedAuditShiftId, setSelectedAuditShiftId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const isHydrating = useRef(false);
 
@@ -70,6 +71,15 @@ const App: React.FC = () => {
   const showToast = (message: string, type: 'success' | 'error' | 'info') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
+  };
+
+  const handleAuditDeepLink = (id: string) => {
+    setSelectedAuditShiftId(id);
+    setActiveTab('shifts');
+  };
+
+  const handleConsumedAuditDeepLink = () => {
+    setSelectedAuditShiftId(null);
   };
 
   const addNotification = (notif: Partial<AppNotification>) => {
@@ -128,30 +138,31 @@ const App: React.FC = () => {
     hydrateState();
   }, [user?.email, isDemoMode]);
 
+  const saveAllLocal = useCallback(() => {
+    safeSave('studio_users', users);
+    safeSave('studio_shifts', shifts);
+    safeSave('studio_props', properties);
+    safeSave('studio_clients', clients);
+    safeSave('studio_invoices', invoices);
+    safeSave('studio_time_entries', timeEntries);
+    safeSave('studio_tutorials', tutorials);
+    safeSave('studio_inventory', inventoryItems);
+    safeSave('studio_supply_requests', supplyRequests);
+    safeSave('studio_anomalies', anomalyReports);
+    safeSave('studio_manual_tasks', manualTasks);
+    safeSave('studio_leave_requests', leaveRequests);
+    safeSave('studio_notifications', notifications);
+    localStorage.setItem('studio_active_tab', activeTab);
+    safeSave('studio_org_settings', organization);
+    if (user) safeSave('current_user_obj', user);
+    safeSave('studio_auth_laundry_ids', authorizedLaundryUserIds);
+  }, [users, shifts, properties, clients, invoices, timeEntries, tutorials, activeTab, user, organization, inventoryItems, supplyRequests, anomalyReports, authorizedLaundryUserIds, manualTasks, leaveRequests, notifications]);
+
   useEffect(() => {
     if (!user) return;
 
     if (localPersistenceTimeoutRef.current) clearTimeout(localPersistenceTimeoutRef.current);
-    
-    localPersistenceTimeoutRef.current = setTimeout(() => {
-      safeSave('studio_users', users);
-      safeSave('studio_shifts', shifts);
-      safeSave('studio_props', properties);
-      safeSave('studio_clients', clients);
-      safeSave('studio_invoices', invoices);
-      safeSave('studio_time_entries', timeEntries);
-      safeSave('studio_tutorials', tutorials);
-      safeSave('studio_inventory', inventoryItems);
-      safeSave('studio_supply_requests', supplyRequests);
-      safeSave('studio_anomalies', anomalyReports);
-      safeSave('studio_manual_tasks', manualTasks);
-      safeSave('studio_leave_requests', leaveRequests);
-      safeSave('studio_notifications', notifications);
-      localStorage.setItem('studio_active_tab', activeTab);
-      safeSave('studio_org_settings', organization);
-      safeSave('current_user_obj', user);
-      safeSave('studio_auth_laundry_ids', authorizedLaundryUserIds);
-    }, 1000); 
+    localPersistenceTimeoutRef.current = setTimeout(saveAllLocal, 1000); 
 
     if (!orgId || isHydrating.current || isDemoMode) return;
 
@@ -177,7 +188,14 @@ const App: React.FC = () => {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
       if (localPersistenceTimeoutRef.current) clearTimeout(localPersistenceTimeoutRef.current);
     };
-  }, [users, shifts, properties, clients, invoices, timeEntries, tutorials, activeTab, user, orgId, organization, inventoryItems, supplyRequests, anomalyReports, authorizedLaundryUserIds, manualTasks, leaveRequests, notifications, isDemoMode]);
+  }, [saveAllLocal, user, orgId, isDemoMode, users, shifts, properties, clients, invoices, timeEntries, tutorials, activeTab, organization, inventoryItems, supplyRequests, anomalyReports, authorizedLaundryUserIds, manualTasks, leaveRequests, notifications]);
+
+  // Force save on tab close
+  useEffect(() => {
+    const handleUnload = () => saveAllLocal();
+    window.addEventListener('beforeunload', handleUnload);
+    return () => window.removeEventListener('beforeunload', handleUnload);
+  }, [saveAllLocal]);
 
   const handleSupplyRequest = (batch: Record<string, number>) => {
     if (!user) return;
@@ -268,7 +286,6 @@ const App: React.FC = () => {
     };
     setIsDemoMode(true);
     localStorage.setItem('studio_is_demo', 'true');
-    const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase();
     handleLogin(demoUser, { 
         id: 'demo-org', 
         users: [demoUser],
@@ -324,6 +341,7 @@ const App: React.FC = () => {
           leaveRequests={leaveRequests}
           onUpdateLeaveStatus={handleUpdateLeaveStatus}
           onLogisticsAlertClick={(uid) => { setTargetLogisticsUserId(uid); setActiveTab('logistics'); }} 
+          onAuditDeepLink={handleAuditDeepLink}
           onLogout={handleLogout} 
           onUpdateUser={handleUpdateUser} 
         />
@@ -331,8 +349,8 @@ const App: React.FC = () => {
       case 'properties': return <AdminPortal user={user} view="properties" properties={properties} setProperties={setProperties} clients={clients} setClients={setClients} setActiveTab={setActiveTab} setSelectedClientIdFilter={() => {}} selectedPropertyIdToEdit={selectedPropertyIdToEdit} setSelectedPropertyIdToEdit={setSelectedPropertyIdToEdit} />;
       case 'clients': return <AdminPortal user={user} view="clients" clients={clients} setClients={setClients} properties={properties} setActiveTab={setActiveTab} setSelectedClientIdFilter={() => {}} />;
       case 'shifts': 
-        if (['admin', 'housekeeping'].includes(currentRole)) return <AdminPortal user={user} view="scheduling" shifts={shifts} setShifts={setShifts} properties={properties} users={users} setActiveTab={setActiveTab} setSelectedClientIdFilter={() => {}} leaveRequests={leaveRequests} />;
-        return <CleanerPortal user={user} shifts={shifts} setShifts={setShifts} properties={properties} users={users} inventoryItems={inventoryItems} onAddSupplyRequest={handleSupplyRequest} onUpdateUser={handleUpdateUser} />;
+        if (['admin', 'housekeeping'].includes(currentRole)) return <AdminPortal user={user} view="scheduling" shifts={shifts} setShifts={setShifts} properties={properties} users={users} setActiveTab={setActiveTab} setSelectedClientIdFilter={() => {}} leaveRequests={leaveRequests} initialSelectedShiftId={selectedAuditShiftId} onConsumedDeepLink={handleConsumedAuditDeepLink} />;
+        return <CleanerPortal user={user} shifts={shifts} setShifts={setShifts} properties={properties} users={users} inventoryItems={inventoryItems} onAddSupplyRequest={handleSupplyRequest} onUpdateUser={handleUpdateUser} initialSelectedShiftId={selectedAuditShiftId} onConsumedDeepLink={handleConsumedAuditDeepLink} />;
       case 'logistics': return <DriverPortal user={user} shifts={shifts} setShifts={setShifts} properties={properties} users={users} setActiveTab={setActiveTab} timeEntries={timeEntries} setTimeEntries={setTimeEntries} initialOverrideId={targetLogisticsUserId} onResetOverrideId={() => setTargetLogisticsUserId(null)} manualTasks={manualTasks} setManualTasks={setManualTasks} />;
       case 'laundry': return (
         <LaundryDashboard 

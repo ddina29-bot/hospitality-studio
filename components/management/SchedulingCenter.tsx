@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Shift, Property, User, AuditReport, LeaveRequest, TabType } from '../../types';
 import { SERVICE_TYPES } from '../../constants';
@@ -268,10 +269,11 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
         } else {
             setReviewShift(shift);
         }
+        // Consume link after setting shift to prevent effect from resetting it
         if (onConsumedDeepLink) onConsumedDeepLink();
       }
     }
-  }, [initialSelectedShiftId, shifts]);
+  }, [initialSelectedShiftId, shifts, onConsumedDeepLink]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -567,6 +569,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
     const auditorName = currentUser.name || 'Management';
     const finalComment = status === 'approved' ? (reviewShift.approvalComment || 'Quality Verified.') : (rejectionReason || reviewShift.approvalComment || 'Remediation Required.');
     const finalShift = { ...reviewShift };
+    
     setShifts((prev: Shift[]): Shift[] => {
         let next: Shift[] = prev.map(s => {
             if (s.id === finalShift.id) {
@@ -609,8 +612,14 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
         }
         return next;
     });
+
     if (showToast) showToast(status === 'approved' ? 'WORK AUTHORIZED' : 'WORK REPORTED', 'success');
-    if (status !== 'rejected') setReviewShift(null); // Keep active if rejecting & fixing next
+    
+    // Logic: If rejecting, we usually want to trigger the "REPORT & FIX" flow immediately or keep modal for that.
+    // However, setShifts above is async-like. We should clear the reviewShift state to close the modal IF we are approving.
+    if (status === 'approved') {
+        setReviewShift(null);
+    }
     setRejectionReason('');
   };
 
@@ -654,7 +663,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
 
   const handleCloseMonitor = () => {
     setReviewShift(null);
-    if (setActiveTab) setActiveTab('dashboard');
+    if (onConsumedDeepLink) onConsumedDeepLink();
   };
 
   const isTeamSameAsOriginal = useMemo(() => {
