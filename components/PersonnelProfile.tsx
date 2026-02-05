@@ -14,8 +14,7 @@ interface PersonnelProfileProps {
 }
 
 const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests = [], onRequestLeave, shifts = [], properties = [], onUpdateUser, organization, initialDocView }) => {
-  const [showDossier, setShowDossier] = useState(false);
-  const [viewingDoc, setViewingDoc] = useState<'payslip' | 'worksheet' | 'fs3' | null>(null);
+  const [viewingDoc, setViewingDoc] = useState<'payslip' | 'worksheet' | 'fs3' | null>(initialDocView || null);
   const [isPrinting, setIsPrinting] = useState(false);
   
   // 2026 COMPLIANCE STATES
@@ -23,12 +22,20 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
   const [payPeriodFrom, setPayPeriodFrom] = useState('2026-01-01');
   const [payPeriodUntil, setPayPeriodUntil] = useState('2026-01-31');
   
-  const [contractualGross, setContractualGross] = useState<number | null>(1333.33); 
+  // DYNAMIC WAGE STATE
+  const [contractualGross, setContractualGross] = useState<number | null>(user.payRate || 1333.33); 
   const [manualGrossPay, setManualGrossPay] = useState<number | null>(null);
+
+  // SYNC: Ensure contractual gross updates if the user object changes (e.g. clicking different staff)
+  useEffect(() => {
+    if (user.payRate) {
+      setContractualGross(user.payRate);
+    }
+  }, [user.id, user.payRate]);
   
   const printContentRef = useRef<HTMLDivElement>(null);
 
-  // Auto-initialize dates when month dropdown changes
+  // Sync dates when month dropdown changes
   useEffect(() => {
     const d = new Date(Date.parse(`1 ${selectedDocMonth}`));
     if (!isNaN(d.getTime())) {
@@ -68,7 +75,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     });
   }, [shifts, user.id, payPeriodFrom, payPeriodUntil]);
 
-  // --- MALTESE COMPLIANCE CORE ---
+  // --- MALTESE COMPLIANCE CORE 2026 ---
 
   const countMondaysInRange = (startStr: string, endStr: string) => {
     if (!startStr || !endStr) return 0;
@@ -77,7 +84,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     const end = new Date(endStr);
     const cur = new Date(start);
     while (cur <= end) {
-      if (cur.getDay() === 1) count++; // 1 = Monday
+      if (cur.getDay() === 1) count++; 
       cur.setDate(cur.getDate() + 1);
     }
     return count;
@@ -89,32 +96,43 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     if (monthLabel.includes('JUN') || monthLabel.includes('DEC')) baseAmount = 135.10;
     if (baseAmount === 0) return 0;
     
-    // Pro-rata Factor (Hours worked vs Standard 173)
     const factor = isFixed ? (daysInPeriod / daysInMonth) : (actualHours / 173);
     return baseAmount * Math.min(1, factor);
   };
 
-  const calculateMalteseTax = (annualGross: number, status: 'Single' | 'Married' | 'Parent', children: number = 0) => {
-    let tax = 0;
+  const calculateMalteseTax = (annualGross: number, status: string, isParent: boolean, childrenCount: number) => {
+    // 2026 PRIORITY: If "Has Children" is checked, we use Parent Computation regardless of Marital Status
+    // because it usually provides the most beneficial tax-free threshold.
+    if (isParent) {
+        // 2026 Parent Bands: Tax-free bracket is €18,500 for Parent Computation (2+ Kids)
+        const threshold = (childrenCount || 0) >= 2 ? 18500 : 10500;
+        
+        if (annualGross <= threshold) return 0;
+        
+        if (childrenCount >= 2) {
+            if (annualGross <= 60000) return (annualGross - threshold) * 0.25;
+            else return (annualGross - 60000) * 0.35 + (60000 - threshold) * 0.25;
+        } else {
+            // Standard Parent (1 Child)
+            if (annualGross <= 15800) return (annualGross - 10500) * 0.15;
+            else if (annualGross <= 60000) return (annualGross - 15800) * 0.25 + 795;
+            else return (annualGross - 60000) * 0.35 + 11845;
+        }
+    } 
+    
+    // Otherwise check Marital Status
     if (status === 'Married') {
-        if (annualGross <= 12700) tax = 0;
-        else if (annualGross <= 21200) tax = (annualGross - 12700) * 0.15;
-        else if (annualGross <= 60000) tax = (annualGross - 21200) * 0.25 + 1275;
-        else tax = (annualGross - 60000) * 0.35 + 10975;
-    } else if (status === 'Parent') {
-        // 2026 Parent Bands
-        if (annualGross <= 10500) tax = 0;
-        else if (annualGross <= 15800) tax = (annualGross - 10500) * 0.15;
-        else if (annualGross <= 60000) tax = (annualGross - 15800) * 0.25 + 795;
-        else tax = (annualGross - 60000) * 0.35 + 11845;
-        if (children >= 2) tax = Math.max(0, tax - 450); // family rebate
-    } else {
-        if (annualGross <= 9100) tax = 0;
-        else if (annualGross <= 14500) tax = (annualGross - 9100) * 0.15;
-        else if (annualGross <= 60000) tax = (annualGross - 14500) * 0.25 + 810;
-        else tax = (annualGross - 60000) * 0.35 + 12185;
+        if (annualGross <= 12700) return 0;
+        else if (annualGross <= 21200) return (annualGross - 12700) * 0.15;
+        else if (annualGross <= 60000) return (annualGross - 21200) * 0.25 + 1275;
+        else return (annualGross - 60000) * 0.35 + 10975;
     }
-    return Math.max(0, tax);
+
+    // Default: Single
+    if (annualGross <= 9100) return 0;
+    else if (annualGross <= 14500) return (annualGross - 9100) * 0.15;
+    else if (annualGross <= 60000) return (annualGross - 14500) * 0.25 + 810;
+    else return (annualGross - 60000) * 0.35 + 12185;
   };
 
   const payrollData = useMemo(() => {
@@ -128,7 +146,8 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     let totalBonus = 0;
     let totalHours = 0;
 
-    if (contractualGross && contractualGross > 0) {
+    // Use current profile wage settings
+    if (contractualGross && contractualGross > 0 && user.paymentType === 'Fixed Wage') {
        totalBase = (contractualGross / totalDaysInMonth) * daysWorked;
        totalHours = (173 / totalDaysInMonth) * daysWorked;
     } else {
@@ -149,26 +168,22 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         });
     }
 
-    const govBonus = getStatutoryBonus(selectedDocMonth, totalHours, !!contractualGross, daysWorked, totalDaysInMonth);
+    const govBonus = getStatutoryBonus(selectedDocMonth, totalHours, user.paymentType === 'Fixed Wage', daysWorked, totalDaysInMonth);
     const finalGross = manualGrossPay !== null ? manualGrossPay : (totalBase + totalBonus + govBonus);
     
     // --- 2026 SSC/NI COMPLIANCE ---
-    // Calculate Weekly Basic from Monthly Contract (Formula: Monthly*12/52)
     const weeklyBasic = contractualGross ? (contractualGross * 12) / 52 : (totalBase / (daysWorked/7));
-    // Category B (10% Rule)
     const weeklyNI = Math.max(22.94, Math.min(60.12, weeklyBasic * 0.10)); 
+    
     const niWeeks = countMondaysInRange(payPeriodFrom, payPeriodUntil);
     const totalNI = weeklyNI * niWeeks;
     
     // --- 2026 MATERNITY COMPLIANCE ---
-    const employeeMaternity = 0; // Employer cost exclusively
+    const employeeMaternity = 0; 
     
-    // --- TAX CALCULATION ---
+    // --- TAX CALCULATION (STRICT 2026 RULES) ---
     const annualProj = (contractualGross || (finalGross * (totalDaysInMonth/daysWorked))) * 12;
-    let taxCategory: 'Single' | 'Married' | 'Parent' = 'Single';
-    if (user.maritalStatus === 'Married') taxCategory = 'Married';
-    else if (user.isParent) taxCategory = 'Parent';
-    const annualTax = calculateMalteseTax(annualProj, taxCategory, user.childrenCount || 0);
+    const annualTax = calculateMalteseTax(annualProj, user.maritalStatus || 'Single', !!user.isParent, user.childrenCount || 0);
     const monthlyTax = annualTax / 12;
     const proRataTax = (monthlyTax / totalDaysInMonth) * daysWorked;
 
@@ -193,7 +208,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     if (printWindow) {
         printWindow.document.open();
         printWindow.document.write(`
-            <html><head><title>Official Record</title><script src="https://cdn.tailwindcss.com"></script><style>@media print { .no-print { display: none; } body { background: white; margin: 0; padding: 20px; } }</style></head><body>${content}</body><script>window.onload=function(){setTimeout(function(){window.print();},500);}</script></html>
+            <html><head><title>Payroll Record</title><script src="https://cdn.tailwindcss.com"></script><style>@media print { .no-print { display: none; } body { background: white; margin: 0; padding: 20px; } }</style></head><body>${content}</body><script>window.onload=function(){setTimeout(function(){window.print();},500);}</script></html>
         `);
         printWindow.document.close();
         setTimeout(() => setIsPrinting(false), 1000);
@@ -215,7 +230,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 px-8">
-        {/* Personnel Details */}
+        {/* Profile Card */}
         <section className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-sm space-y-8 h-fit">
            <div className="flex justify-between items-start">
               <div className="flex items-center gap-6">
@@ -223,7 +238,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                     {user.photoUrl ? <img src={user.photoUrl} className="w-full h-full object-cover" /> : user.name.charAt(0)}
                  </div>
                  <div>
-                    <p className={subLabelStyle}>Operator: {user.email}</p>
+                    <p className={subLabelStyle}>ID: {user.email}</p>
                     <h3 className="text-2xl font-bold text-slate-900 uppercase tracking-tight">{user.name}</h3>
                  </div>
               </div>
@@ -234,17 +249,9 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
 
            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 border-t border-slate-50 pt-8">
               <div>
-                 <p className={subLabelStyle}>Verified Phone</p>
-                 {isEditingProfile ? (
-                   <input className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold" value={editPhone} onChange={e => setEditPhone(e.target.value)} />
-                 ) : (
-                   <p className={detailValueStyle}>{user.phone || 'NONE'}</p>
-                 )}
-              </div>
-              <div>
                  <p className={subLabelStyle}>Marital Status</p>
                  {isEditingProfile ? (
-                   <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold" value={editMaritalStatus} onChange={e => setEditMaritalStatus(e.target.value)}>
+                   <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold uppercase" value={editMaritalStatus} onChange={e => setEditMaritalStatus(e.target.value)}>
                      <option value="Single">Single</option>
                      <option value="Married">Married</option>
                      <option value="Separated">Separated</option>
@@ -265,12 +272,14 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                         {editIsParent && (
                            <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-1 text-[10px] font-bold uppercase" value={editChildrenCount} onChange={e => setEditChildrenCount(parseInt(e.target.value))}>
                               <option value={1}>1 Child (Standard)</option>
-                              <option value={2}>2+ Children (Rebate)</option>
+                              <option value={2}>2+ Children (2026 Rebate)</option>
                            </select>
                         )}
                      </div>
                    ) : (
-                     <p className={detailValueStyle}>{user.isParent ? `PARENT RATE (${user.childrenCount || 1} CHILD${(user.childrenCount || 1) > 1 ? 'REN' : ''})` : 'STANDARD RATE'}</p>
+                     <p className={detailValueStyle}>
+                       {user.isParent ? `PARENT (${user.childrenCount || 1} CHILD${(user.childrenCount || 1) > 1 ? 'REN' : ''})` : 'STANDARD RATE'}
+                     </p>
                    )}
                  </div>
               </div>
@@ -282,7 +291,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
            </div>
         </section>
 
-        {/* Payslip Terminal */}
+        {/* Payslip Generator */}
         <section className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-sm space-y-8">
            <div className="flex justify-between items-center border-b border-slate-50 pb-6">
               <div className="space-y-1">
@@ -313,26 +322,26 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                     <input type="number" step="0.01" className="w-full bg-white border border-indigo-200 rounded-xl px-4 py-3 text-sm font-black text-indigo-900" placeholder="1333.33" value={contractualGross || ''} onChange={e => setContractualGross(parseFloat(e.target.value) || null)} />
                  </div>
                  <div className="space-y-2">
-                    <label className={subLabelStyle}>NI Weeks (Mondays)</label>
-                    <div className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-3 text-xs font-black text-slate-500">
-                        {payrollData.niWeeks} WEEKS AUTO-DETECTED
+                    <label className={subLabelStyle}>NI Weeks (Mondays Rule)</label>
+                    <div className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-3 text-xs font-black text-slate-500 uppercase">
+                        {payrollData.niWeeks} WEEKS DETECTED
                     </div>
                  </div>
               </div>
 
               <div className="bg-indigo-50 border border-indigo-100 p-5 rounded-2xl space-y-2">
-                 <p className="text-[8px] font-black text-indigo-600 uppercase tracking-widest">Statutory Registry Log</p>
+                 <p className="text-[8px] font-black text-indigo-600 uppercase tracking-widest">2026 Compliance Log</p>
                  <div className="flex justify-between text-[10px] font-bold text-slate-700 uppercase">
-                    <span>Days in Range:</span>
-                    <span>{payrollData.daysInPeriod} / {payrollData.totalDaysInMonth}</span>
+                    <span>Tax Basis:</span>
+                    <span>{user.isParent ? `Parent (${user.childrenCount}+ children)` : user.maritalStatus || 'Single'}</span>
                  </div>
                  <div className="flex justify-between text-[10px] font-bold text-slate-700 uppercase">
                     <span>NI Category:</span>
-                    <span>Class 1 (B) - 10% Rate</span>
+                    <span>Class 1 (B) - 10% Basis</span>
                  </div>
                  {payrollData.govBonus > 0 && (
                    <div className="flex justify-between text-[10px] font-black text-emerald-600 uppercase pt-1 border-t border-indigo-200 mt-1">
-                      <span>Statutory Bonus Active:</span>
+                      <span>Statutory Bonus:</span>
                       <span>+€{payrollData.govBonus.toFixed(2)}</span>
                    </div>
                  )}
@@ -352,11 +361,11 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         </section>
       </div>
 
-      {/* Official Doc Viewer Modal */}
+      {/* Official Doc Modal */}
       {viewingDoc && (
         <div className="fixed inset-0 bg-slate-900/60 z-[500] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
            <div className="bg-white rounded-[3rem] w-full max-w-3xl p-10 md:p-14 space-y-12 shadow-2xl relative text-left my-auto animate-in zoom-in-95">
-              <button onClick={() => setViewingDoc(null)} className="absolute top-10 right-10 text-slate-300 hover:text-slate-900 transition-colors no-print font-black text-xl">&times;</button>
+              <button onClick={() => setViewingDoc(null)} className="absolute top-10 right-10 text-slate-300 hover:text-slate-900 no-print font-black text-xl">&times;</button>
               
               <div ref={printContentRef} className="space-y-12">
                  <header className="flex justify-between items-start border-b-2 border-slate-900 pb-10">
@@ -372,8 +381,8 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                        <h2 className="text-lg font-black uppercase tracking-[0.2em] bg-slate-900 text-white px-6 py-1.5 inline-block">OFFICIAL PAYSLIP</h2>
                        <div className="text-right">
                           <p className="text-sm font-black text-slate-900 uppercase leading-none">{user.name}</p>
-                          <p className="text-[9px] font-mono font-bold text-slate-400 mt-2 uppercase">ID Card: {user.idPassportNumber || '---'}</p>
-                          <p className="text-[9px] font-mono font-bold text-slate-400 uppercase">NI Number: {user.niNumber || '---'}</p>
+                          <p className="text-[9px] font-mono font-bold text-slate-400 mt-2 uppercase">ID: {user.idPassportNumber || '---'}</p>
+                          <p className="text-[9px] font-mono font-bold text-slate-400 uppercase">NI: {user.niNumber || '---'}</p>
                        </div>
                     </div>
                  </header>
@@ -408,7 +417,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2">Deductions (Malta 2026 Statutory)</p>
                        <div className="space-y-4 text-xs font-bold">
                           <div className="flex justify-between items-center">
-                             <span className="text-slate-500 uppercase">FSS PAYE Tax ({user.isParent ? `Parent ${user.childrenCount || 1}+` : 'Standard'} Rate)</span>
+                             <span className="text-slate-500 uppercase">FSS PAYE Tax ({user.isParent ? `Parent ${user.childrenCount}+` : user.maritalStatus || 'Single'} Computation)</span>
                              <span className="text-slate-900 font-black">-€{payrollData.tax.toFixed(2)}</span>
                           </div>
                           <div className="flex justify-between items-center">
