@@ -15,10 +15,11 @@ interface FinanceDashboardProps {
   clients?: Client[];
   organization?: OrganizationSettings;
   manualTasks?: ManualTask[];
+  onUpdateUser?: (user: User) => void;
 }
 
 const FinanceDashboard: React.FC<FinanceDashboardProps> = ({ 
-  setActiveTab, onLogout, shifts = [], setShifts, users = [], properties = [], invoices = [], setInvoices, clients = [], organization, manualTasks = [] 
+  setActiveTab, onLogout, shifts = [], setShifts, users = [], properties = [], invoices = [], setInvoices, clients = [], organization, manualTasks = [], onUpdateUser
 }) => {
   const [activeModule, setActiveModule] = useState<'payroll' | 'invoicing' | 'records'>('payroll');
   const [payrollSubView, setPayrollSubView] = useState<'pending' | 'registry'>('pending');
@@ -670,6 +671,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                    organization={organization}
                    initialDocView={initialDocMode}
                    initialHistoricalPayslip={selectedHistoricalPayslip}
+                   onUpdateUser={onUpdateUser}
                  />
               </div>
            </div>
