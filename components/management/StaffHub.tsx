@@ -10,16 +10,17 @@ interface StaffHubProps {
   showToast?: (message: string, type: 'success' | 'error' | 'info') => void;
   shouldOpenAddModal?: boolean;
   setShouldOpenAddModal?: (val: boolean) => void;
+  orgId?: string | null;
 }
 
-const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldOpenAddModal, setShouldOpenAddModal }) => {
+const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldOpenAddModal, setShouldOpenAddModal, orgId }) => {
   const [search, setSearch] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   
   const [inviteToken, setInviteToken] = useState<string | null>(null);
-  const [invitedUserEmail, setInvitedUserEmail] = useState<string | null>(null);
+  const [invitedUserEmail, setInvitedUserEmailState] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [newUser, setNewUser] = useState<Partial<User>>({ name: '', email: '', role: 'cleaner' });
 
@@ -40,7 +41,7 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
 
   const staffGroups = useMemo(() => {
     const query = search.toLowerCase();
-    const filtered = users.filter(u => u.name.toLowerCase().includes(query));
+    const filtered = users.filter(u => (u.name || '').toLowerCase().includes(query));
     
     const activeMembers = filtered.filter(u => u.status !== 'inactive');
     const suspendedMembers = filtered.filter(u => u.status === 'inactive');
@@ -56,22 +57,41 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUser.email || !newUser.name) return;
+    
+    const cleanOrgId = orgId || localStorage.getItem('current_org_id');
+    if (!cleanOrgId) {
+        alert("Session error: Organization ID not found. Please log out and log back in.");
+        return;
+    }
+
     setIsSending(true);
 
     try {
       const response = await fetch('/api/auth/invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orgId: 'current', newUser })
+        body: JSON.stringify({ orgId: cleanOrgId, newUser })
       });
+      
       const data = await response.json();
-      setUsers(prev => [...prev, data.user]);
-      setInviteToken(data.user.activationToken);
-      setInvitedUserEmail(newUser.email);
-      setShowSuccessModal(true);
-      setShowAddModal(false);
-    } catch (err) {
-      console.error(err);
+      
+      if (!response.ok) {
+          throw new Error(data.error || "Failed to generate invite.");
+      }
+
+      if (data.user) {
+        setUsers(prev => [...prev, data.user]);
+        setInviteToken(data.user.activationToken || null);
+        setInvitedUserEmailState(newUser.email!);
+        setShowSuccessModal(true);
+        setShowAddModal(false);
+        setNewUser({ name: '', email: '', role: 'cleaner' });
+      } else {
+        throw new Error("Server returned an empty user object.");
+      }
+    } catch (err: any) {
+      console.error("Invite Error:", err);
+      alert(err.message || "Invite failed. Please check your connection.");
     } finally {
       setIsSending(false);
     }
@@ -153,7 +173,7 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4 min-w-0">
                       <div className="w-12 h-12 rounded-2xl bg-white border border-teal-100 flex items-center justify-center font-bold text-teal-600 text-lg group-hover:scale-110 transition-transform overflow-hidden shadow-sm">
-                        {u.photoUrl ? <img src={u.photoUrl} className="w-full h-full object-cover" /> : u.name.charAt(0)}
+                        {u.photoUrl ? <img src={u.photoUrl} className="w-full h-full object-cover" /> : (u.name || '?').charAt(0)}
                       </div>
                       <div className="min-w-0">
                         <h3 className="text-sm font-bold uppercase truncate text-slate-900">{u.name}</h3>
@@ -181,7 +201,7 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
         ))}
       </div>
 
-      {/* EDIT/VIEW MODAL (EMPLOYEE Master File) */}
+      {/* EDIT/VIEW MODAL */}
       {showEditModal && editingUser && (
         <div className="fixed inset-0 bg-slate-900/60 z-[500] flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
           <div className="bg-white rounded-[3rem] w-full max-w-6xl p-8 md:p-12 shadow-2xl relative text-left my-auto animate-in slide-in-from-bottom-8">
@@ -202,11 +222,7 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
             </header>
 
             <form onSubmit={handleSaveEdit} className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-               
-               {/* Left Block: Identity & Compliance (7 Cols) */}
                <div className="lg:col-span-7 space-y-8">
-                  
-                  {/* ONBOARDING DETAILS (Admin Editable) */}
                   <div className="p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100 space-y-8 shadow-inner">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-3">Onboarding Data Registry</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
@@ -297,16 +313,12 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
                   </div>
                </div>
 
-               {/* Right Block: Financials (5 Cols) */}
                <div className="lg:col-span-5 space-y-8">
-                  
-                  {/* FINANCIAL REGISTRY (Teal/White Theme) */}
                   <div className="p-8 bg-teal-50/50 rounded-[3rem] border border-teal-100 space-y-8 shadow-xl">
                      <div className="flex items-center gap-4 border-b border-teal-200/40 pb-4">
                         <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-teal-600 shadow-sm">💳</div>
                         <p className="text-[11px] font-black text-teal-800 uppercase tracking-[0.2em]">Financial Ledger Registry</p>
                      </div>
-                     
                      <div className="space-y-6">
                         <div>
                            <label className={labelStyle}>Employment Basis</label>
@@ -335,7 +347,6 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
                         </div>
                      </div>
                   </div>
-
                   <div className="flex flex-row gap-3">
                     <button type="submit" className="flex-1 bg-[#0D9488] text-white py-3.5 rounded-xl shadow-xl shadow-teal-900/10 text-[9px] uppercase tracking-[0.2em] font-black active:scale-95 transition-transform">
                        Verify and save
@@ -353,7 +364,7 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
       {/* INVITE MODAL */}
       {showAddModal && (
         <div className="fixed inset-0 bg-slate-900/60 z-[500] flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
-           <div className="bg-white rounded-[2.5rem] w-full max-w-lg p-10 space-y-10 shadow-2xl relative text-left my-auto">
+           <div className="bg-white rounded-[2.5rem] w-full max-w-lg p-10 space-y-10 shadow-2xl relative text-left my-auto animate-in zoom-in-95">
               <button onClick={() => setShowAddModal(false)} className="absolute top-10 right-10 text-slate-300 hover:text-slate-900 text-2xl">&times;</button>
               <h2 className="text-2xl font-bold text-slate-900 tracking-tight uppercase">New Employee Invite</h2>
               <form onSubmit={handleInvite} className="space-y-6">
@@ -362,20 +373,25 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
                  <div>
                     <label className={labelStyle}>Assigned Role</label>
                     <select className={inputStyle} value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value as UserRole})}>
+                       <option value="admin">ADMIN (FULL ACCESS)</option>
                        <option value="cleaner">CLEANER</option>
                        <option value="supervisor">SUPERVISOR</option>
                        <option value="driver">DRIVER</option>
                        <option value="laundry">LAUNDRY STAFF</option>
-                       <option value="admin">ADMIN</option>
+                       <option value="housekeeping">HOUSEKEEPING</option>
+                       <option value="maintenance">MAINTENANCE</option>
+                       <option value="finance">FINANCE</option>
                     </select>
                  </div>
-                 <button type="submit" className="w-full btn-teal py-5 shadow-2xl shadow-teal-900/10 text-xs uppercase tracking-[0.3em] font-black">Initialize Invite</button>
+                 <button type="submit" disabled={isSending} className="w-full btn-teal py-5 shadow-2xl shadow-teal-900/10 text-xs uppercase tracking-[0.3em] font-black disabled:opacity-50">
+                    {isSending ? 'Generating Link...' : 'Initialize Invite'}
+                 </button>
               </form>
            </div>
         </div>
       )}
 
-      {/* SUCCESS MODAL FOR INVITE */}
+      {/* SUCCESS MODAL */}
       {showSuccessModal && (
         <div className="fixed inset-0 bg-slate-900/80 z-[600] flex items-center justify-center p-6 backdrop-blur-md">
            <div className="bg-white rounded-[3rem] p-10 max-w-md w-full text-center space-y-6 shadow-2xl animate-in zoom-in-95">

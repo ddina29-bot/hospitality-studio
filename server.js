@@ -52,6 +52,7 @@ const saveOrgToDb = (org) => {
 };
 
 const getOrgById = (id) => {
+  if (!id || id === 'null') return null;
   const row = db.prepare('SELECT data FROM organizations WHERE id = ?').get(id);
   return row ? JSON.parse(row.data) : null;
 };
@@ -126,8 +127,18 @@ app.get('/api/state', (req, res) => {
 
 app.post('/api/auth/invite', async (req, res) => {
   const { orgId, newUser } = req.body;
+  console.log(`Processing invite for org: ${orgId}`);
   const org = getOrgById(orgId);
-  if (!org) return res.status(404).json({ error: 'Org not found.' });
+  if (!org) {
+    console.error(`Invite failed: Org ${orgId} not found.`);
+    return res.status(404).json({ error: 'Organization context lost. Please refresh.' });
+  }
+  
+  // Check for duplicate email within the same org
+  if (org.users.some(u => u.email.toLowerCase() === newUser.email.toLowerCase())) {
+      return res.status(400).json({ error: 'User with this email already exists in your Studio.' });
+  }
+
   const createdUser = { ...newUser, id: `u-${Date.now()}`, status: 'pending', activationToken: Math.random().toString(36).substring(7) };
   org.users.push(createdUser);
   saveOrgToDb(org);

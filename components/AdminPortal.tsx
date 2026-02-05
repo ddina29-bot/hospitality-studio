@@ -22,11 +22,10 @@ interface AdminPortalProps {
   selectedPropertyIdToEdit?: string | null;
   setSelectedPropertyIdToEdit?: (id: string | null) => void;
   onSelectPropertyToEdit?: (id: string) => void;
-  // Added leaveRequests to props to resolve TS error in App.tsx
   leaveRequests?: LeaveRequest[];
-  // Added to support deep linking from Dashboard/Activity Center
   initialSelectedShiftId?: string | null;
   onConsumedDeepLink?: () => void;
+  orgId?: string | null;
 }
 
 const AdminPortal: React.FC<AdminPortalProps> = ({ 
@@ -34,11 +33,10 @@ const AdminPortal: React.FC<AdminPortalProps> = ({
   users = [], setUsers, shifts = [], setShifts,
   setActiveTab, setSelectedClientIdFilter,
   selectedPropertyIdToEdit, setSelectedPropertyIdToEdit, onSelectPropertyToEdit,
-  // Destructured leaveRequests from props
   leaveRequests = [],
-  // Destructured deep link props
   initialSelectedShiftId,
-  onConsumedDeepLink
+  onConsumedDeepLink,
+  orgId
 }) => {
   if (view === 'properties' && setProperties && setClients) return (
     <PropertyPortfolio 
@@ -61,8 +59,8 @@ const AdminPortal: React.FC<AdminPortalProps> = ({
       onSelectPropertyToEdit={onSelectPropertyToEdit}
     />
   );
-  if (view === 'users' && setUsers) return <StaffHub users={users} setUsers={setUsers} />;
-  // Added leaveRequests and deep link props to SchedulingCenter
+  if (view === 'users' && setUsers) return <StaffHub users={users} setUsers={setUsers} orgId={orgId} />;
+  
   if (view === 'scheduling' && setShifts) return (
     <SchedulingCenter 
       shifts={shifts} 
