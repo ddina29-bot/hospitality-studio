@@ -117,16 +117,22 @@ app.post('/api/auth/signup', async (req, res) => {
 
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
-  console.log(`Login attempt for: ${email}`);
   const org = findOrgByUserEmail(email);
+  
   if (!org) {
-    console.warn(`User ${email} not found in database.`);
-    return res.status(401).json({ error: 'User not found.' });
+    return res.status(401).json({ error: 'User not found in system registry.' });
   }
+  
   const user = org.users.find(u => u.email.toLowerCase() === email.toLowerCase());
-  if (user.status !== 'pending' && user.password !== password) {
-    return res.status(401).json({ error: 'Invalid credentials.' });
+  
+  if (user.status === 'pending') {
+    return res.status(403).json({ error: 'Account pending activation. Please use the secure link provided by your supervisor.' });
   }
+
+  if (user.password !== password) {
+    return res.status(401).json({ error: 'Invalid access key provided.' });
+  }
+  
   res.json({ success: true, user, organization: org });
 });
 
@@ -154,10 +160,16 @@ app.post('/api/auth/invite', async (req, res) => {
 
 app.get('/api/auth/verify-token', (req, res) => {
   const { token } = req.query;
+  console.log(`[VERIFY] Token requested: ${token}`);
   const org = findOrgByToken(token);
-  if (!org) return res.status(404).json({ error: 'Invalid link.' });
+  if (!org) {
+      console.warn(`[VERIFY] Invalid token: ${token}`);
+      return res.status(404).json({ error: 'Invalid or expired link.' });
+  }
   const user = org.users.find(u => u.activationToken === token);
-  if (!user) return res.status(404).json({ error: 'User not found.' });
+  if (!user) return res.status(404).json({ error: 'User session not found.' });
+  
+  console.log(`[VERIFY] Success: ${user.name} (${user.role})`);
   res.json({ success: true, name: user.name, role: user.role, email: user.email });
 });
 

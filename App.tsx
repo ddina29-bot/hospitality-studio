@@ -21,7 +21,6 @@ import { TabType, Shift, User, Client, Property, Invoice, TimeEntry, Tutorial, U
 const load = <T,>(k: string, f: T): T => {
   if (typeof window === 'undefined') return f;
   
-  // If an activation code is present, we NEVER load old data
   const params = new URLSearchParams(window.location.search);
   if (params.get('code')) return f;
 
@@ -42,7 +41,6 @@ const safeSave = (key: string, data: any) => {
 };
 
 const App: React.FC = () => {
-  // Determine if we are in an activation flow before initializing any user state
   const activationToken = useMemo(() => {
     if (typeof window === 'undefined') return null;
     const params = new URLSearchParams(window.location.search);
@@ -292,7 +290,7 @@ const App: React.FC = () => {
     showToast('LINEN PREPARATION STATUS UPDATED', 'success');
   };
 
-  // FORCE ACTIVATION MODE IF TOKEN IS PRESENT
+  // If a code is present, we ignore any user session and force activation
   if (activationToken) {
     return (
       <UserActivation 
