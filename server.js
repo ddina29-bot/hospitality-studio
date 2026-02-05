@@ -70,6 +70,18 @@ const findOrgByUserEmail = (email) => {
   return null;
 };
 
+const findOrgByToken = (token) => {
+  if (!token) return null;
+  const stmt = db.prepare('SELECT data FROM organizations');
+  for (const row of stmt.iterate()) {
+    const org = JSON.parse(row.data);
+    if (org.users && org.users.some(u => u.activationToken === token)) {
+      return org;
+    }
+  }
+  return null;
+};
+
 // --- FILE STORAGE ---
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads'); 
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -127,22 +139,40 @@ app.get('/api/state', (req, res) => {
 
 app.post('/api/auth/invite', async (req, res) => {
   const { orgId, newUser } = req.body;
-  console.log(`Processing invite for org: ${orgId}`);
   const org = getOrgById(orgId);
-  if (!org) {
-    console.error(`Invite failed: Org ${orgId} not found.`);
-    return res.status(404).json({ error: 'Organization context lost. Please refresh.' });
-  }
+  if (!org) return res.status(404).json({ error: 'Org not found.' });
   
-  // Check for duplicate email within the same org
   if (org.users.some(u => u.email.toLowerCase() === newUser.email.toLowerCase())) {
-      return res.status(400).json({ error: 'User with this email already exists in your Studio.' });
+      return res.status(400).json({ error: 'User already exists.' });
   }
 
-  const createdUser = { ...newUser, id: `u-${Date.now()}`, status: 'pending', activationToken: Math.random().toString(36).substring(7) };
+  const createdUser = { ...newUser, id: `u-${Date.now()}`, status: 'pending', activationToken: Math.random().toString(36).substring(2, 10) };
   org.users.push(createdUser);
   saveOrgToDb(org);
   res.json({ success: true, user: createdUser });
+});
+
+app.post('/api/auth/activate', async (req, res) => {
+  const { token, profileData } = req.body;
+  const org = findOrgByToken(token);
+  if (!org) return res.status(404).json({ error: 'Invalid or expired activation link.' });
+
+  const userIndex = org.users.findIndex(u => u.activationToken === token);
+  if (userIndex === -1) return res.status(404).json({ error: 'User not found.' });
+
+  const existingUser = org.users[userIndex];
+  const updatedUser = {
+    ...existingUser,
+    ...profileData,
+    status: 'active',
+    activationToken: null,
+    activationDate: new Date().toISOString()
+  };
+
+  org.users[userIndex] = updatedUser;
+  saveOrgToDb(org);
+
+  res.json({ success: true, user: updatedUser, organization: org });
 });
 
 app.post('/api/sync', async (req, res) => {
@@ -150,9 +180,18 @@ app.post('/api/sync', async (req, res) => {
   const org = getOrgById(orgId);
   if (!org) return res.status(404).json({ error: "Org not found" });
   
-  const isSuspicious = (org.properties && org.properties.length > 3 && (!data.properties || data.properties.length === 0));
-  if (isSuspicious) {
-    return res.status(422).json({ error: "Data integrity violation blocked." });
+  // ACTIVATION SHIELD: 
+  // If we have users in the payload, compare them with existing users.
+  // Never allow an incoming 'pending' status to overwrite an 'active' status.
+  if (data.users && Array.isArray(data.users)) {
+    data.users = data.users.map(incomingUser => {
+      const serverUser = org.users.find(u => u.id === incomingUser.id);
+      if (serverUser && serverUser.status === 'active' && incomingUser.status === 'pending') {
+        // Protect the active status and clear token from incoming data
+        return { ...incomingUser, status: 'active', activationToken: null };
+      }
+      return incomingUser;
+    });
   }
 
   Object.keys(data).forEach(key => {

@@ -5,7 +5,7 @@ import { uploadFile } from '../services/storageService';
 
 interface UserActivationProps {
   token: string;
-  onActivationComplete: (user: User) => void;
+  onActivationComplete: (user: User, orgData?: any) => void;
   onCancel: () => void;
 }
 
@@ -14,6 +14,7 @@ const UserActivation: React.FC<UserActivationProps> = ({ token, onActivationComp
   const [isLoading, setIsLoading] = useState(false);
   const [isVerifying, setIsVerifying] = useState(true);
   const [tempUser, setTempUser] = useState<User | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     password: '',
@@ -26,22 +27,17 @@ const UserActivation: React.FC<UserActivationProps> = ({ token, onActivationComp
     photoUrl: ''
   });
 
-  // Verify Token on Mount
   useEffect(() => {
+    // SECURITY: Clear any old session data immediately to prevent data leaks
+    localStorage.clear();
+    
     const verifyToken = async () => {
-      // Simulating a token validation fetch
+      // In a real app, we'd fetch user info by token from server
+      // For now we assume the token is valid but we'll use it in handleFinalize
       setTimeout(() => {
-        const mockPendingUser: User = {
-          id: 'u-pending',
-          name: 'New Staff Member',
-          email: 'staff@reset.studio',
-          role: 'cleaner',
-          status: 'pending',
-          activationToken: token
-        };
-        setTempUser(mockPendingUser);
+        setTempUser({ id: 'pending', name: 'Authorized Personnel', email: '', role: 'cleaner', status: 'pending' });
         setIsVerifying(false);
-      }, 1200);
+      }, 800);
     };
     verifyToken();
   }, [token]);
@@ -59,8 +55,8 @@ const UserActivation: React.FC<UserActivationProps> = ({ token, onActivationComp
         alert("Please choose a secure password (min 6 characters).");
         return;
       }
-      if (formData.phone.trim().length < 10) {
-        alert("Please enter a valid Maltese phone number.");
+      if (formData.phone.trim().length < 8) {
+        alert("Please enter a valid phone number.");
         return;
       }
       if (!formData.dateOfBirth) {
@@ -82,21 +78,30 @@ const UserActivation: React.FC<UserActivationProps> = ({ token, onActivationComp
   };
 
   const handleFinalize = async () => {
-    if (!tempUser) return;
+    setError(null);
     setIsLoading(true);
 
-    const activatedUser: User = {
-      ...tempUser,
-      ...formData,
-      status: 'active',
-      activationToken: undefined,
-      activationDate: new Date().toISOString()
-    };
+    try {
+      const response = await fetch('/api/auth/activate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token,
+          profileData: formData
+        })
+      });
 
-    // Simulate Server Update
-    setTimeout(() => {
-      onActivationComplete(activatedUser);
-    }, 1800);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Activation failed.');
+      }
+
+      onActivationComplete(data.user, data.organization);
+    } catch (err: any) {
+      setError(err.message);
+      setIsLoading(false);
+    }
   };
 
   const labelStyle = "text-[8px] font-black text-teal-600 uppercase tracking-[0.4em] mb-2 block px-1";
@@ -124,6 +129,11 @@ const UserActivation: React.FC<UserActivationProps> = ({ token, onActivationComp
         </div>
 
         <div className="bg-white p-8 md:p-12 rounded-[3rem] border border-slate-100 shadow-2xl text-left">
+          {error && (
+            <div className="bg-rose-50 border border-rose-100 p-4 rounded-2xl text-rose-600 text-[10px] font-black uppercase text-center mb-6">
+              {error}
+            </div>
+          )}
           
           {step === 1 && (
             <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
@@ -202,12 +212,12 @@ const UserActivation: React.FC<UserActivationProps> = ({ token, onActivationComp
                        ) : (
                          <div className="text-center opacity-30">
                             <span className="text-4xl block mb-1">📷</span>
-                            <span className="text-[8px] font-black uppercase">Required? NO</span>
+                            <span className="text-[8px] font-black uppercase">Optional</span>
                          </div>
                        )}
                     </div>
                     <div className="flex-1">
-                       <label className="text-[9px] font-black text-teal-800 uppercase mb-2 block tracking-widest">Profile Picture (Optional)</label>
+                       <label className="text-[9px] font-black text-teal-800 uppercase mb-2 block tracking-widest">Profile Picture</label>
                        <input type="file" accept="image/*" onChange={handlePhotoUpload} className="text-[10px] text-slate-400 file:mr-4 file:py-1.5 file:px-4 file:rounded-full file:border-0 file:text-[9px] file:font-black file:bg-teal-600 file:text-white hover:file:bg-teal-700 cursor-pointer" />
                     </div>
                   </div>
@@ -215,12 +225,10 @@ const UserActivation: React.FC<UserActivationProps> = ({ token, onActivationComp
                   <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100 space-y-2">
                      <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.4em]">Confirmation Summary</p>
                      <div className="grid grid-cols-2 gap-y-2">
-                        <p className="text-[10px] font-bold text-slate-500 uppercase">Identity</p>
-                        <p className="text-[10px] font-bold text-slate-900 uppercase text-right">{tempUser?.name}</p>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase">Status</p>
+                        <p className="text-[10px] font-bold text-teal-600 uppercase text-right">READY TO DEPLOY</p>
                         <p className="text-[10px] font-bold text-slate-500 uppercase">Maltese Mobile</p>
                         <p className="text-[10px] font-bold text-slate-900 uppercase text-right">{formData.phone}</p>
-                        <p className="text-[10px] font-bold text-slate-500 uppercase">Tax Category</p>
-                        <p className="text-[10px] font-bold text-teal-600 uppercase text-right">{formData.maritalStatus} {formData.isParent ? '+ Parent' : ''}</p>
                      </div>
                   </div>
                </div>

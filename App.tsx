@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
 import AdminPortal from './components/AdminPortal';
@@ -20,6 +20,10 @@ import { TabType, Shift, User, Client, Property, Invoice, TimeEntry, Tutorial, U
 
 const load = <T,>(k: string, f: T): T => {
   if (typeof window === 'undefined') return f;
+  const sessionUser = localStorage.getItem('current_user_obj');
+  // If no user is logged in, do not load historical data from localStorage
+  if (!sessionUser) return f;
+  
   const s = localStorage.getItem(k);
   if (!s) return f;
   try { return JSON.parse(s); } catch (e) { return f; }
@@ -34,7 +38,13 @@ const safeSave = (key: string, data: any) => {
 };
 
 const App: React.FC = () => {
-  const [user, setUser] = useState<User | null>(() => load('current_user_obj', null));
+  const [user, setUser] = useState<User | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const s = localStorage.getItem('current_user_obj');
+    if (!s) return null;
+    try { return JSON.parse(s); } catch (e) { return null; }
+  });
+  
   const [authView, setAuthView] = useState<'login' | 'signup'>('login');
   const [orgId, setOrgId] = useState<string | null>(() => localStorage.getItem('current_org_id'));
   const [activeTab, setActiveTab] = useState<TabType>(() => (localStorage.getItem('studio_active_tab') as TabType) || 'dashboard');
@@ -47,6 +57,12 @@ const App: React.FC = () => {
   
   const [hasHydrated, setHasHydrated] = useState(false);
   const isHydratingInProgress = useRef(false);
+
+  const activationToken = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    return params.get('code');
+  }, []);
 
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>(() => load('studio_notifications', []));
@@ -99,47 +115,51 @@ const App: React.FC = () => {
     setNotifications(prev => [fullNotif, ...prev]);
   };
 
-  useEffect(() => {
-    const hydrateState = async () => {
-      if (!user || isHydratingInProgress.current) return;
-      
-      isHydratingInProgress.current = true;
-      setIsLoading(true);
-      try {
-        const response = await fetch(`/api/state?email=${encodeURIComponent(user.email)}`);
-        if (!response.ok) throw new Error("Sync failed");
-        const data = await response.json();
-        if (data.success && data.organization) {
-          const org = data.organization;
-          setOrgId(org.id);
-          localStorage.setItem('current_org_id', org.id);
-          
-          if (org.users) setUsers(org.users);
-          if (org.shifts) setShifts(org.shifts);
-          if (org.properties) setProperties(org.properties);
-          if (org.clients) setClients(org.clients);
-          if (org.invoices) setInvoices(org.invoices);
-          if (org.timeEntries) setTimeEntries(org.timeEntries);
-          if (org.tutorials) setTutorials(org.tutorials);
-          if (org.inventoryItems) setInventoryItems(org.inventoryItems);
-          if (org.supplyRequests) setSupplyRequests(org.supplyRequests);
-          if (org.anomalyReports) setAnomalyReports(org.anomalyReports);
-          if (org.manualTasks) setManualTasks(org.manualTasks);
-          if (org.leaveRequests) setLeaveRequests(org.leaveRequests);
-          if (org.settings) setOrganization(org.settings);
-          if (org.authorizedLaundryUserIds) setAuthorizedLaundryUserIds(org.authorizedLaundryUserIds);
-          
-          setHasHydrated(true);
-        }
-      } catch (err) {
-        console.error("Hydration Error:", err);
-      } finally {
-        setIsLoading(false);
-        isHydratingInProgress.current = false;
+  const hydrateState = useCallback(async (emailToUse?: string) => {
+    const targetEmail = emailToUse || user?.email;
+    if (!targetEmail || isHydratingInProgress.current) return;
+    
+    isHydratingInProgress.current = true;
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/state?email=${encodeURIComponent(targetEmail)}`);
+      if (!response.ok) throw new Error("Sync failed");
+      const data = await response.json();
+      if (data.success && data.organization) {
+        const org = data.organization;
+        setOrgId(org.id);
+        localStorage.setItem('current_org_id', org.id);
+        
+        if (org.users) setUsers(org.users);
+        if (org.shifts) setShifts(org.shifts);
+        if (org.properties) setProperties(org.properties);
+        if (org.clients) setClients(org.clients);
+        if (org.invoices) setInvoices(org.invoices);
+        if (org.timeEntries) setTimeEntries(org.timeEntries);
+        if (org.tutorials) setTutorials(org.tutorials);
+        if (org.inventoryItems) setInventoryItems(org.inventoryItems);
+        if (org.supplyRequests) setSupplyRequests(org.supplyRequests);
+        if (org.anomalyReports) setAnomalyReports(org.anomalyReports);
+        if (org.manualTasks) setManualTasks(org.manualTasks);
+        if (org.leaveRequests) setLeaveRequests(org.leaveRequests);
+        if (org.settings) setOrganization(org.settings);
+        if (org.authorizedLaundryUserIds) setAuthorizedLaundryUserIds(org.authorizedLaundryUserIds);
+        
+        setHasHydrated(true);
       }
-    };
-    hydrateState();
+    } catch (err) {
+      console.error("Hydration Error:", err);
+    } finally {
+      setIsLoading(false);
+      isHydratingInProgress.current = false;
+    }
   }, [user?.email]);
+
+  useEffect(() => {
+    if (user) {
+      hydrateState();
+    }
+  }, [user?.email, hydrateState]);
 
   const saveAllLocal = useCallback(() => {
     if (!hasHydrated && user) return;
@@ -163,15 +183,12 @@ const App: React.FC = () => {
     safeSave('studio_auth_laundry_ids', authorizedLaundryUserIds);
   }, [users, shifts, properties, clients, invoices, timeEntries, tutorials, activeTab, user, organization, inventoryItems, supplyRequests, anomalyReports, authorizedLaundryUserIds, manualTasks, leaveRequests, notifications, hasHydrated]);
 
-  // Handle immediate UI persistence (Local Storage)
   useEffect(() => {
     if (!user || !hasHydrated) return;
     if (localPersistenceTimeoutRef.current) clearTimeout(localPersistenceTimeoutRef.current);
     localPersistenceTimeoutRef.current = setTimeout(saveAllLocal, 200);
   }, [users, shifts, properties, clients, invoices, timeEntries, organization, manualTasks, leaveRequests, activeTab, notifications, saveAllLocal, user, hasHydrated]);
 
-  // Handle Cloud Sync (Debounced Server Push)
-  // Removed UI-only states like activeTab and search queries from here
   useEffect(() => {
     if (!user || !orgId || !hasHydrated || isHydratingInProgress.current) return;
 
@@ -199,7 +216,7 @@ const App: React.FC = () => {
         console.error("Cloud Sync error:", err); 
         setIsSyncing(false);
       }
-    }, 800); // Reduced delay for more aggressive cloud syncing
+    }, 800);
 
     return () => {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
@@ -227,10 +244,14 @@ const App: React.FC = () => {
   };
 
   const handleLogin = (u: User, organizationData?: any) => {
+    // Clear old storage to prevent leak between sessions
+    localStorage.clear();
+    
     setUser(u);
     if (organizationData) {
         setOrgId(organizationData.id);
         localStorage.setItem('current_org_id', organizationData.id);
+        localStorage.setItem('current_user_obj', JSON.stringify(u));
         if (organizationData.users) setUsers(organizationData.users);
         if (organizationData.shifts) setShifts(organizationData.shifts);
         if (organizationData.properties) setProperties(organizationData.properties);
@@ -244,9 +265,14 @@ const App: React.FC = () => {
         if (organizationData.timeEntries) setTimeEntries(organizationData.timeEntries);
         setHasHydrated(true);
     }
+    
     if (u.role === 'supervisor') setActiveTab('shifts');
     else if (u.role === 'laundry') setActiveTab('laundry');
     else setActiveTab('dashboard');
+    
+    if (window.location.search) {
+       window.history.replaceState({}, '', window.location.pathname);
+    }
   };
 
   const handleLogout = () => {
@@ -261,6 +287,16 @@ const App: React.FC = () => {
     setShifts(prev => prev.map(s => s.id === shiftId ? { ...s, isLaundryPrepared: !s.isLaundryPrepared } : s));
     showToast('LINEN PREPARATION STATUS UPDATED', 'success');
   };
+
+  if (activationToken && !user) {
+    return (
+      <UserActivation 
+        token={activationToken} 
+        onActivationComplete={(activatedUser, orgData) => handleLogin(activatedUser, orgData)} 
+        onCancel={() => window.location.href = '/'}
+      />
+    );
+  }
 
   const renderContent = () => {
     if (!user) return null;

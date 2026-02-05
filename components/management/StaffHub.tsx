@@ -18,6 +18,7 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [invitedUserEmail, setInvitedUserEmailState] = useState<string | null>(null);
@@ -35,6 +36,25 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
       if (setShouldOpenAddModal) setShouldOpenAddModal(false);
     }
   }, [shouldOpenAddModal, setShouldOpenAddModal]);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    const currentUser = JSON.parse(localStorage.getItem('current_user_obj') || '{}');
+    if (!currentUser.email) return;
+
+    try {
+      const response = await fetch(`/api/state?email=${encodeURIComponent(currentUser.email)}`);
+      const data = await response.json();
+      if (data.success && data.organization?.users) {
+        setUsers(data.organization.users);
+        if (showToast) showToast('STATUS SYNCED', 'success');
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const labelStyle = "text-[7px] font-black text-[#0D9488] uppercase tracking-[0.4em] opacity-80 mb-1.5 block px-1 text-left";
   const inputStyle = "w-full bg-white border border-slate-200 rounded-2xl px-5 py-3 text-sm font-semibold outline-none focus:border-[#0D9488] focus:ring-4 focus:ring-teal-50 transition-all";
@@ -147,6 +167,9 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
           <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wide mt-2">Manage personnel profiles, roles, and compliance documentation.</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto items-center">
+          <button onClick={handleRefresh} disabled={isRefreshing} className="p-3 rounded-2xl bg-white border border-slate-100 hover:border-teal-200 transition-all text-slate-400 hover:text-teal-600 disabled:opacity-50">
+             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className={isRefreshing ? 'animate-spin' : ''}><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+          </button>
           <div className="relative flex-1 sm:w-64">
              <input type="text" placeholder="SEARCH EMPLOYEES..." className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-10 py-2.5 text-[10px] font-bold uppercase tracking-widest outline-none focus:bg-white focus:border-teal-400 transition-all" value={search} onChange={e => setSearch(e.target.value)} />
              <div className="absolute left-4 top-3 text-slate-300">🔍</div>
