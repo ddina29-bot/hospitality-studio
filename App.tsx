@@ -41,11 +41,16 @@ const safeSave = (key: string, data: any) => {
 };
 
 const App: React.FC = () => {
-  const activationToken = useMemo(() => {
+  // DYNAMIC TOKEN STATE: This allows us to "turn off" the activation view once complete
+  const [activationToken, setActivationToken] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
     const params = new URLSearchParams(window.location.search);
-    return params.get('code');
-  }, []);
+    const code = params.get('code');
+    if (code) {
+        localStorage.clear(); // Pure purge on cold boot activation
+    }
+    return code;
+  });
 
   const [user, setUser] = useState<User | null>(() => {
     if (typeof window === 'undefined' || activationToken) return null;
@@ -233,7 +238,7 @@ const App: React.FC = () => {
 
   const handleUpdateLeaveStatus = (id: string, status: 'approved' | 'rejected') => {
     const leave = leaveRequests.find(l => l.id === id);
-    setLeaveRequests(prev => prev.map(l => l.id === id ? { ...l, status } : l));
+    setLeaveRequests(prev => prev.map(l => id === id ? { ...l, status } : l));
     if (leave) {
       addNotification({
         title: `Leave ${status.toUpperCase()}`,
@@ -247,8 +252,13 @@ const App: React.FC = () => {
   };
 
   const handleLogin = (u: User, organizationData?: any) => {
+    // 1. Kill the activation token state to flip the view
+    setActivationToken(null);
+    
+    // 2. Clear old residues
     localStorage.clear();
     
+    // 3. Set new operational state
     setUser(u);
     if (organizationData) {
         setOrgId(organizationData.id);
@@ -265,6 +275,8 @@ const App: React.FC = () => {
         if (organizationData.notifications) setNotifications(organizationData.notifications);
         if (organizationData.inventoryItems) setInventoryItems(organizationData.inventoryItems);
         if (organizationData.timeEntries) setTimeEntries(organizationData.timeEntries);
+        
+        // 4. Force hydrate to true so the app renders immediately
         setHasHydrated(true);
     }
     
@@ -272,6 +284,7 @@ const App: React.FC = () => {
     else if (u.role === 'laundry') setActiveTab('laundry');
     else setActiveTab('dashboard');
     
+    // 5. Clean the URL completely
     if (window.location.search) {
        window.history.replaceState({}, '', window.location.pathname);
     }
@@ -281,6 +294,7 @@ const App: React.FC = () => {
     setUser(null);
     setOrgId(null);
     setHasHydrated(false);
+    setActivationToken(null);
     localStorage.clear();
     setAuthView('login');
   };
@@ -291,12 +305,15 @@ const App: React.FC = () => {
   };
 
   // If a code is present, we ignore any user session and force activation
-  if (activationToken) {
+  if (activationToken && !user) {
     return (
       <UserActivation 
         token={activationToken} 
         onActivationComplete={(activatedUser, orgData) => handleLogin(activatedUser, orgData)} 
-        onCancel={() => window.location.href = '/'}
+        onCancel={() => {
+            setActivationToken(null);
+            window.history.replaceState({}, '', window.location.pathname);
+        }}
       />
     );
   }

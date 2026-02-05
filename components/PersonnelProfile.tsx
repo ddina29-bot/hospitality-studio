@@ -40,7 +40,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
   const [editPhone, setEditPhone] = useState(user.phone || '');
   const [editMaritalStatus, setEditMaritalStatus] = useState(user.maritalStatus || 'Single');
   const [editIsParent, setEditIsParent] = useState(user.isParent || false);
-  const [editPassword, setEditPassword] = useState('');
+  const [editChildrenCount, setEditChildrenCount] = useState(user.childrenCount || 0);
 
   const subLabelStyle = "text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5";
   const detailValueStyle = "text-sm font-bold text-slate-900 uppercase tracking-tight";
@@ -75,7 +75,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
   }, [allMyShifts, selectedDocMonth]);
 
   // MALTA 2026 STATUTORY LOGIC
-  const calculateMalteseTax = (annualGross: number, status: 'Single' | 'Married' | 'Parent') => {
+  const calculateMalteseTax = (annualGross: number, status: 'Single' | 'Married' | 'Parent', children: number = 0) => {
     let tax = 0;
     if (status === 'Married') {
         if (annualGross <= 12700) tax = 0;
@@ -83,10 +83,16 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         else if (annualGross <= 60000) tax = (annualGross - 21200) * 0.25 + 1275;
         else tax = (annualGross - 60000) * 0.35 + 10975;
     } else if (status === 'Parent') {
+        // Parent Rate Brackets
         if (annualGross <= 10500) tax = 0;
         else if (annualGross <= 15800) tax = (annualGross - 10500) * 0.15;
         else if (annualGross <= 60000) tax = (annualGross - 15800) * 0.25 + 795;
         else tax = (annualGross - 60000) * 0.35 + 11845;
+
+        // 2026 Special Family Allowance Rebate (Simulation for 2+ kids)
+        if (children >= 2) {
+            tax = Math.max(0, tax - 450); // Additional family rebate for 2+ children
+        }
     } else {
         if (annualGross <= 9100) tax = 0;
         else if (annualGross <= 14500) tax = (annualGross - 9100) * 0.15;
@@ -132,7 +138,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
       const shiftBase = hours * hourlyRate;
       totalBase += shiftBase;
 
-      // Special performance bonus / per-clean logic
       if (s.approvalStatus === 'approved') {
           const prop = properties?.find(p => p.id === s.propertyId);
           if (prop && user.paymentType === 'Per Clean') {
@@ -158,7 +163,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     if (user.maritalStatus === 'Married') taxCategory = 'Married';
     else if (user.isParent) taxCategory = 'Parent';
     
-    const annualTax = calculateMalteseTax(annualProj, taxCategory);
+    const annualTax = calculateMalteseTax(annualProj, taxCategory, user.childrenCount || 0);
     const tax = annualTax / 12;
 
     return {
@@ -192,7 +197,8 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         ...user,
         phone: editPhone,
         maritalStatus: editMaritalStatus,
-        isParent: editIsParent
+        isParent: editIsParent,
+        childrenCount: editChildrenCount
       });
     }
     setIsEditingProfile(false);
@@ -246,14 +252,22 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
               </div>
               <div>
                  <p className={subLabelStyle}>Tax Category</p>
-                 <div className="flex items-center gap-3">
+                 <div className="flex flex-col gap-3">
                    {isEditingProfile ? (
-                     <>
-                        <input type="checkbox" id="pcheck" className="w-5 h-5 accent-teal-600" checked={editIsParent} onChange={e => setEditIsParent(e.target.checked)} />
-                        <label htmlFor="pcheck" className="text-[10px] font-bold text-slate-500 uppercase">Apply Parent Rates</label>
-                     </>
+                     <div className="space-y-3">
+                        <div className="flex items-center gap-3">
+                           <input type="checkbox" id="pcheck" className="w-5 h-5 accent-teal-600" checked={editIsParent} onChange={e => setEditIsParent(e.target.checked)} />
+                           <label htmlFor="pcheck" className="text-[10px] font-bold text-slate-500 uppercase">Parent Rates</label>
+                        </div>
+                        {editIsParent && (
+                           <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-1 text-[10px] font-bold uppercase" value={editChildrenCount} onChange={e => setEditChildrenCount(parseInt(e.target.value))}>
+                              <option value={1}>1 Child (Standard Parent)</option>
+                              <option value={2}>2+ Children (Rebate Active)</option>
+                           </select>
+                        )}
+                     </div>
                    ) : (
-                     <p className={detailValueStyle}>{user.isParent ? 'PARENT RATE' : 'STANDARD RATE'}</p>
+                     <p className={detailValueStyle}>{user.isParent ? `PARENT RATE (${user.childrenCount || 1} CHILD${(user.childrenCount || 1) > 1 ? 'REN' : ''})` : 'STANDARD RATE'}</p>
                    )}
                  </div>
               </div>
@@ -372,7 +386,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2">Deductions (Malta 2026)</p>
                        <div className="space-y-4 text-xs font-bold">
                           <div className="flex justify-between items-center">
-                             <span className="text-slate-500 uppercase">FSS PAYE Tax ({user.isParent ? 'Parent' : 'Standard'} Rate)</span>
+                             <span className="text-slate-500 uppercase">FSS PAYE Tax ({user.isParent ? `Parent ${user.childrenCount || 1}+` : 'Standard'} Rate)</span>
                              <span className="text-rose-600 font-black">-€{payrollData.tax.toFixed(2)}</span>
                           </div>
                           <div className="flex justify-between items-center">

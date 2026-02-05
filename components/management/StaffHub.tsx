@@ -147,7 +147,7 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
   };
 
   const openEditModal = (u: User) => {
-    setEditingUser({ ...u });
+    setEditingUser({ ...u, childrenCount: u.childrenCount || 0 });
     setNewPassword('');
     setShowEditModal(true);
   };
@@ -282,9 +282,21 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
                             <option value="Divorced">Divorced</option>
                         </select>
                       </div>
-                      <div className="flex items-center gap-4 bg-white p-4 rounded-2xl border border-slate-200 h-[54px] self-end">
-                        <input type="checkbox" id="editParentCheck" className="w-5 h-5 accent-[#0D9488]" checked={editingUser.isParent} onChange={e => setEditingUser({...editingUser, isParent: e.target.checked})} />
-                        <label htmlFor="editParentCheck" className="text-[9px] font-black text-slate-500 uppercase tracking-widest cursor-pointer leading-tight">Tax: Has children</label>
+                      <div className="grid grid-cols-1 gap-2">
+                        <div className="flex items-center gap-4 bg-white p-4 rounded-2xl border border-slate-200 h-[54px]">
+                            <input type="checkbox" id="editParentCheck" className="w-5 h-5 accent-[#0D9488]" checked={editingUser.isParent} onChange={e => setEditingUser({...editingUser, isParent: e.target.checked})} />
+                            <label htmlFor="editParentCheck" className="text-[9px] font-black text-slate-500 uppercase tracking-widest cursor-pointer leading-tight">Tax: Has children</label>
+                        </div>
+                        {editingUser.isParent && (
+                            <div className="animate-in slide-in-from-left-2 flex items-center gap-2">
+                                <label className="text-[7px] font-black text-indigo-600 uppercase tracking-widest whitespace-nowrap">How many?</label>
+                                <select className="flex-1 bg-white border border-slate-200 rounded-lg px-2 py-1 text-[10px] font-bold" value={editingUser.childrenCount} onChange={e => setEditingUser({...editingUser, childrenCount: parseInt(e.target.value)})}>
+                                    <option value={0}>0</option>
+                                    <option value={1}>1</option>
+                                    <option value={2}>2+</option>
+                                </select>
+                            </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -362,7 +374,6 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
                         </div>
                         <div className="bg-white/80 p-6 rounded-[2rem] border border-teal-200/50 shadow-sm">
                            <label className={labelStyle}>Base Remuneration Rate (€)</label>
-                           {/* FIXED: step="0.01" to allow cents without browser errors */}
                            <input type="number" step="0.01" className="w-full bg-transparent text-3xl font-black text-teal-900 outline-none" value={editingUser.payRate} onChange={e => setEditingUser({...editingUser, payRate: parseFloat(e.target.value) || 0})} placeholder="0.00" />
                         </div>
                         <div>

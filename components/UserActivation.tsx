@@ -28,6 +28,7 @@ const UserActivation: React.FC<UserActivationProps> = ({ token, onActivationComp
     idPassportNumber: '',
     maritalStatus: 'Single',
     isParent: false,
+    childrenCount: 0,
     photoUrl: ''
   });
 
@@ -251,11 +252,30 @@ const UserActivation: React.FC<UserActivationProps> = ({ token, onActivationComp
                             <option value="Separated">Separated</option>
                         </select>
                     </div>
-                    <div className="flex items-center gap-4 bg-teal-50/50 p-4 rounded-2xl border border-teal-100/50 h-[60px] self-end">
-                        <input type="checkbox" id="parentCheck" className="w-6 h-6 accent-[#0D9488] cursor-pointer" checked={formData.isParent} onChange={e => setFormData({...formData, isParent: e.target.checked})} />
-                        <label htmlFor="parentCheck" className="text-[10px] font-bold text-teal-800 uppercase tracking-widest cursor-pointer leading-tight">Tax: I have children</label>
+                    <div className="space-y-3 self-end">
+                       <div className="flex items-center gap-4 bg-teal-50/50 p-4 rounded-2xl border border-teal-100/50 h-[60px]">
+                           <input type="checkbox" id="parentCheck" className="w-6 h-6 accent-[#0D9488] cursor-pointer" checked={formData.isParent} onChange={e => setFormData({...formData, isParent: e.target.checked})} />
+                           <label htmlFor="parentCheck" className="text-[10px] font-bold text-teal-800 uppercase tracking-widest cursor-pointer leading-tight">Tax: I have children</label>
+                       </div>
                     </div>
                   </div>
+                  {formData.isParent && (
+                    <div className="animate-in slide-in-from-top-4 duration-300">
+                       <label className={labelStyle}>How many children under 18?</label>
+                       <div className="flex gap-2">
+                          {[1, 2, 3].map(n => (
+                            <button 
+                              key={n} 
+                              type="button"
+                              onClick={() => setFormData({...formData, childrenCount: n})}
+                              className={`flex-1 py-4 rounded-xl text-xs font-bold transition-all border ${formData.childrenCount === n ? 'bg-teal-600 text-white border-teal-600 shadow-lg' : 'bg-white text-slate-400 border-slate-200'}`}
+                            >
+                              {n}{n === 3 ? '+' : ''} {n === 1 ? 'Child' : 'Children'}
+                            </button>
+                          ))}
+                       </div>
+                    </div>
+                  )}
                </div>
                <div className="flex gap-4">
                   <button onClick={() => setStep(1)} className="px-6 py-5 border border-slate-100 text-slate-300 rounded-2xl uppercase text-[10px] font-bold tracking-widest">Back</button>
@@ -295,6 +315,10 @@ const UserActivation: React.FC<UserActivationProps> = ({ token, onActivationComp
                         <p className="text-[10px] font-bold text-teal-600 uppercase text-right">READY TO DEPLOY</p>
                         <p className="text-[10px] font-bold text-slate-500 uppercase">Phone</p>
                         <p className="text-[10px] font-bold text-slate-900 uppercase text-right">{formData.phone}</p>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase">Tax Class</p>
+                        <p className="text-[10px] font-bold text-slate-900 uppercase text-right">
+                          {formData.isParent ? `PARENT (${formData.childrenCount})` : 'SINGLE'}
+                        </p>
                      </div>
                   </div>
                </div>

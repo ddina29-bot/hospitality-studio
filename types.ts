@@ -261,6 +261,7 @@ export interface User {
   paymentType?: PaymentType;
   maritalStatus?: string;
   isParent?: boolean;
+  childrenCount?: number;
   photoUrl?: string;
   idPassportNumber?: string;
   niNumber?: string;
