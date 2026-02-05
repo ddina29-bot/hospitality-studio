@@ -48,14 +48,14 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
           <p className="text-[10px] font-bold text-teal-600 uppercase tracking-[0.5em] mt-1">HOSPITALITY STUDIO</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-white p-10 rounded-[2.5rem] border border-teal-100 shadow-2xl space-y-8 text-left">
+        <div className="bg-white p-10 rounded-[2.5rem] border border-teal-100 shadow-2xl space-y-8 text-left">
           {error && (
             <div className="bg-rose-50 border border-rose-100 text-rose-800 p-4 rounded-xl text-[10px] font-black uppercase text-center animate-in fade-in">
               {error}
             </div>
           )}
           
-          <div className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
                 <label className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.3em] px-2">Operator ID</label>
                 <input 
@@ -80,9 +80,6 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
                   className="w-full bg-[#F0FDFA] border border-transparent rounded-2xl px-6 py-4 text-sm font-semibold text-[#1E293B] outline-none focus:bg-white focus:border-[#0D9488] transition-all uppercase tracking-widest placeholder:text-slate-300" 
                 />
             </div>
-          </div>
-          
-          <div className="space-y-4">
             <button 
               type="submit" 
               disabled={isLoading}
@@ -90,11 +87,19 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
             >
               {isLoading ? 'Verifying...' : 'Log in'}
             </button>
+          </form>
+          
+          <div className="space-y-4">
+            <div className="relative py-2">
+                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-100"></div></div>
+                <div className="relative flex justify-center text-[8px] font-black uppercase tracking-widest text-slate-300"><span className="bg-white px-4">OR</span></div>
+            </div>
             
             <button 
               type="button"
               onClick={onSignupClick}
-              className="w-full text-slate-400 hover:text-teal-600 transition-colors py-2 text-[9px] font-black uppercase tracking-widest"
+              disabled={isLoading}
+              className="w-full bg-slate-900 text-[#C5A059] py-5 rounded-2xl text-xs font-black uppercase tracking-[0.3em] shadow-xl active:scale-95 transition-all disabled:opacity-50"
             >
               New Studio? Create Organization
             </button>
@@ -103,7 +108,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
           <div className="pt-4 text-center">
              <p className="text-[8px] text-slate-300 font-bold uppercase tracking-[0.5em] animate-pulse">Session Encrypted • Production v1.0</p>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );

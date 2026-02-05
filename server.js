@@ -22,6 +22,7 @@ app.use(express.json({ limit: '100mb' }));
 app.use(express.static(path.join(__dirname, 'dist')));
 
 // --- SQLITE DATABASE SETUP ---
+// For Railway, ensure you mount a volume at /app/data
 let DATA_DIR = '/app/data';
 
 if (!fs.existsSync(DATA_DIR)) {
@@ -107,7 +108,7 @@ app.post('/api/auth/signup', async (req, res) => {
   const newOrg = { 
     id: newOrgId, 
     settings: organization, 
-    users: [{ ...adminUser, id: `admin-${Date.now()}`, role: 'admin', status: 'active' }], 
+    users: [{ ...adminUser, id: `admin-${Date.now()}`, role: 'admin', status: 'active', payslips: [] }], 
     shifts: [], properties: [], clients: [], supplyRequests: [], inventoryItems: [], 
     manualTasks: [], leaveRequests: [], invoices: [], tutorials: [], timeEntries: [] 
   };
@@ -152,7 +153,16 @@ app.post('/api/auth/invite', async (req, res) => {
       return res.status(400).json({ error: 'User already exists.' });
   }
 
-  const createdUser = { ...newUser, id: `u-${Date.now()}`, status: 'pending', activationToken: Math.random().toString(36).substring(2, 10) };
+  const createdUser = { 
+    ...newUser, 
+    id: `u-${Date.now()}`, 
+    status: 'pending', 
+    payslips: [], 
+    paymentType: 'Per Hour', // Default
+    employmentType: 'Full-Time', // Default
+    payRate: 5.00, // Default
+    activationToken: Math.random().toString(36).substring(2, 10) 
+  };
   org.users.push(createdUser);
   saveOrgToDb(org);
   res.json({ success: true, user: createdUser });
@@ -160,16 +170,13 @@ app.post('/api/auth/invite', async (req, res) => {
 
 app.get('/api/auth/verify-token', (req, res) => {
   const { token } = req.query;
-  console.log(`[VERIFY] Token requested: ${token}`);
   const org = findOrgByToken(token);
   if (!org) {
-      console.warn(`[VERIFY] Invalid token: ${token}`);
       return res.status(404).json({ error: 'Invalid or expired link.' });
   }
   const user = org.users.find(u => u.activationToken === token);
   if (!user) return res.status(404).json({ error: 'User session not found.' });
   
-  console.log(`[VERIFY] Success: ${user.name} (${user.role})`);
   res.json({ success: true, name: user.name, role: user.role, email: user.email });
 });
 

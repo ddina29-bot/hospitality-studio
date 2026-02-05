@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { User, LeaveRequest, LeaveType, Shift, Property, OrganizationSettings } from '../types';
+import { User, LeaveRequest, LeaveType, Shift, Property, OrganizationSettings, SavedPayslip, PaymentType, EmploymentType } from '../types';
 
 interface PersonnelProfileProps {
   user: User;
@@ -14,7 +14,11 @@ interface PersonnelProfileProps {
 }
 
 const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests = [], onRequestLeave, shifts = [], properties = [], onUpdateUser, organization, initialDocView }) => {
+  const currentUserObj = JSON.parse(localStorage.getItem('current_user_obj') || '{}');
+  const isCurrentUserAdmin = currentUserObj.role === 'admin';
+  
   const [viewingDoc, setViewingDoc] = useState<'payslip' | 'worksheet' | 'fs3' | null>(initialDocView || null);
+  const [activeHistoricalPayslip, setActiveHistoricalPayslip] = useState<SavedPayslip | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
   
   // 2026 COMPLIANCE STATES
@@ -26,13 +30,16 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
   const [contractualGross, setContractualGross] = useState<number | null>(user.payRate || 1333.33); 
   const [manualGrossPay, setManualGrossPay] = useState<number | null>(null);
 
-  // SYNC: Ensure contractual gross and local state updates if the user object changes
   useEffect(() => {
     if (user.payRate) setContractualGross(user.payRate);
     setEditMaritalStatus(user.maritalStatus || 'Single');
     setEditIsParent(!!user.isParent);
     setEditChildrenCount(user.childrenCount || 0);
-  }, [user.id, user.payRate, user.maritalStatus, user.isParent, user.childrenCount]);
+    setEditPhone(user.phone || '');
+    setEditPayRate(user.payRate || 5.00);
+    setEditPaymentType(user.paymentType || 'Per Hour');
+    setEditEmploymentType(user.employmentType || 'Full-Time');
+  }, [user.id, user.payRate, user.maritalStatus, user.isParent, user.childrenCount, user.phone, user.paymentType, user.employmentType]);
   
   const printContentRef = useRef<HTMLDivElement>(null);
 
@@ -54,9 +61,13 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
   const [editMaritalStatus, setEditMaritalStatus] = useState(user.maritalStatus || 'Single');
   const [editIsParent, setEditIsParent] = useState(user.isParent || false);
   const [editChildrenCount, setEditChildrenCount] = useState(user.childrenCount || 0);
+  const [editPayRate, setEditPayRate] = useState(user.payRate || 5.00);
+  const [editPaymentType, setEditPaymentType] = useState<PaymentType>(user.paymentType || 'Per Hour');
+  const [editEmploymentType, setEditEmploymentType] = useState<EmploymentType>(user.employmentType || 'Full-Time');
 
   const subLabelStyle = "text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5";
   const detailValueStyle = "text-sm font-bold text-slate-900 uppercase tracking-tight";
+  const editInputStyle = "w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold uppercase outline-none focus:border-teal-500 transition-all";
 
   const monthOptions = useMemo(() => {
     const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
@@ -101,7 +112,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
   };
 
   const calculateMalteseTax = (annualGross: number, status: string, isParent: boolean, childrenCount: number) => {
-    // 2026 PRIORITY: Parent Computation check
     if (isParent) {
         const threshold = childrenCount >= 2 ? 18500 : 10500;
         if (annualGross <= threshold) return 0;
@@ -114,14 +124,12 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
             else return (annualGross - 60000) * 0.35 + 11845;
         }
     } 
-    // Married check
     if (status === 'Married') {
         if (annualGross <= 12700) return 0;
         else if (annualGross <= 21200) return (annualGross - 12700) * 0.15;
         else if (annualGross <= 60000) return (annualGross - 21200) * 0.25 + 1275;
         else return (annualGross - 60000) * 0.35 + 10975;
     }
-    // Single (Default)
     if (annualGross <= 9100) return 0;
     else if (annualGross <= 14500) return (annualGross - 9100) * 0.15;
     else if (annualGross <= 60000) return (annualGross - 14500) * 0.25 + 810;
@@ -129,6 +137,16 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
   };
 
   const payrollData = useMemo(() => {
+    // If viewing a historical payslip, ignore calculations and use fixed values
+    if (activeHistoricalPayslip) {
+      return {
+        ...activeHistoricalPayslip,
+        tax: activeHistoricalPayslip.tax,
+        grossPay: activeHistoricalPayslip.grossPay,
+        totalNet: activeHistoricalPayslip.netPay
+      };
+    }
+
     const from = new Date(payPeriodFrom);
     const until = new Date(payPeriodUntil);
     const daysWorked = Math.ceil((until.getTime() - from.getTime()) / (1000 * 3600 * 24)) + 1;
@@ -152,7 +170,8 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
           if (s.approvalStatus === 'approved') {
               const prop = properties?.find(p => p.id === s.propertyId);
               if (prop && user.paymentType === 'Per Clean') {
-                  const target = prop.cleanerPrice / (s.userIds?.length || 1);
+                  const teamCount = s.userIds?.length || 1;
+                  const target = prop.cleanerPrice / teamCount;
                   totalBonus += Math.max(0, target - shiftBase);
               }
               if (s.serviceType === 'TO FIX' && s.fixWorkPayment) totalBonus += s.fixWorkPayment;
@@ -163,14 +182,11 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     const govBonus = getStatutoryBonus(selectedDocMonth, totalHours, user.paymentType === 'Fixed Wage', daysWorked, totalDaysInMonth);
     const actualGrossPay = manualGrossPay !== null ? manualGrossPay : (totalBase + totalBonus + govBonus);
     
-    // --- 2026 SSC/NI COMPLIANCE ---
-    // RULE: NI is based on ACTUAL earnings, not just contractual.
     const weeklyActual = actualGrossPay / (daysWorked / 7);
     const weeklyNI = Math.max(0, Math.min(60.12, weeklyActual * 0.10)); 
     const niWeeks = countMondaysInRange(payPeriodFrom, payPeriodUntil);
     const totalNI = weeklyNI * niWeeks;
     
-    // --- TAX CALCULATION (BASED ON ACTUAL PROJECTION) ---
     const annualProj = (actualGrossPay * (totalDaysInMonth / daysWorked)) * 12;
     const annualTax = calculateMalteseTax(annualProj, user.maritalStatus || 'Single', !!user.isParent, user.childrenCount || 0);
     const proRataTax = (annualTax / 12 / totalDaysInMonth) * daysWorked;
@@ -185,7 +201,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
       tax: proRataTax,
       totalNet: Math.max(0, actualGrossPay - totalNI - proRataTax)
     };
-  }, [filteredShifts, user, payPeriodFrom, payPeriodUntil, contractualGross, manualGrossPay, properties, selectedDocMonth]);
+  }, [filteredShifts, user, payPeriodFrom, payPeriodUntil, contractualGross, manualGrossPay, properties, selectedDocMonth, activeHistoricalPayslip]);
 
   const handlePrint = () => {
     if (!printContentRef.current) return;
@@ -204,9 +220,49 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
 
   const handleSaveProfile = () => {
     if (onUpdateUser) {
-      onUpdateUser({ ...user, phone: editPhone, maritalStatus: editMaritalStatus, isParent: editIsParent, childrenCount: editChildrenCount });
+      onUpdateUser({ 
+        ...user, 
+        phone: editPhone, 
+        maritalStatus: editMaritalStatus, 
+        isParent: editIsParent, 
+        childrenCount: editChildrenCount,
+        payRate: editPayRate,
+        paymentType: editPaymentType,
+        employmentType: editEmploymentType
+      });
     }
     setIsEditingProfile(false);
+  };
+
+  const handleCommitPayslip = () => {
+    if (!onUpdateUser) return;
+    const confirmCommit = window.confirm(`CONFIRM FINANCIAL COMMITMENT:\n\nYou are about to freeze this record into ${user.name}'s permanent file. This action generates a historical payslip for the employee.`);
+    if (!confirmCommit) return;
+
+    const newPayslip: SavedPayslip = {
+      id: `ps-${Date.now()}`,
+      month: selectedDocMonth,
+      periodFrom: payPeriodFrom,
+      periodUntil: payPeriodUntil,
+      grossPay: payrollData.grossPay,
+      netPay: payrollData.totalNet,
+      tax: payrollData.tax,
+      ni: payrollData.ni,
+      niWeeks: payrollData.niWeeks,
+      govBonus: payrollData.govBonus,
+      daysWorked: payrollData.daysInPeriod,
+      generatedAt: new Date().toISOString(),
+      generatedBy: currentUserObj.name
+    };
+
+    const updatedPayslips = [...(user.payslips || []), newPayslip];
+    onUpdateUser({ ...user, payslips: updatedPayslips });
+    alert("Payslip Committed Successfully.");
+  };
+
+  const viewHistoricalPayslip = (ps: SavedPayslip) => {
+    setActiveHistoricalPayslip(ps);
+    setViewingDoc('payslip');
   };
 
   return (
@@ -229,16 +285,18 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                     <h3 className="text-2xl font-bold text-slate-900 uppercase tracking-tight">{user.name}</h3>
                  </div>
               </div>
-              <button onClick={() => setIsEditingProfile(!isEditingProfile)} className="text-[9px] font-black uppercase text-teal-600 tracking-widest border border-teal-100 px-4 py-2 rounded-xl hover:bg-teal-50 transition-all">
-                 {isEditingProfile ? 'DISCARD' : 'EDIT FILE'}
-              </button>
+              {isCurrentUserAdmin && (
+                <button onClick={() => setIsEditingProfile(!isEditingProfile)} className="text-[9px] font-black uppercase text-teal-600 tracking-widest border border-teal-100 px-4 py-2 rounded-xl hover:bg-teal-50 transition-all">
+                  {isEditingProfile ? 'DISCARD' : 'EDIT FILE'}
+                </button>
+              )}
            </div>
 
            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 border-t border-slate-50 pt-8">
               <div>
                  <p className={subLabelStyle}>Marital Status</p>
                  {isEditingProfile ? (
-                   <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold uppercase" value={editMaritalStatus} onChange={e => setEditMaritalStatus(e.target.value)}>
+                   <select className={editInputStyle} value={editMaritalStatus} onChange={e => setEditMaritalStatus(e.target.value)}>
                      <option value="Single">Single</option>
                      <option value="Married">Married</option>
                      <option value="Separated">Separated</option>
@@ -257,7 +315,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                            <label htmlFor="pcheck" className="text-[10px] font-bold text-slate-500 uppercase">Parent Rates</label>
                         </div>
                         {editIsParent && (
-                           <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-1 text-[10px] font-bold uppercase" value={editChildrenCount} onChange={e => setEditChildrenCount(parseInt(e.target.value))}>
+                           <select className={editInputStyle} value={editChildrenCount} onChange={e => setEditChildrenCount(parseInt(e.target.value))}>
                               <option value={0}>0 Children</option>
                               <option value={1}>1 Child</option>
                               <option value={2}>2+ Children</option>
@@ -271,81 +329,120 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                    )}
                  </div>
               </div>
+
+              {/* Wage Fields for Admins */}
+              {isEditingProfile && isCurrentUserAdmin && (
+                <>
+                  <div>
+                    <p className={subLabelStyle}>Wage Type</p>
+                    <select className={editInputStyle} value={editPaymentType} onChange={e => setEditPaymentType(e.target.value as PaymentType)}>
+                       <option value="Per Hour">Per Hour (Standard)</option>
+                       <option value="Fixed Wage">Fixed Wage (Monthly)</option>
+                       <option value="Per Clean">Per Deployment (Piece-rate)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <p className={subLabelStyle}>Rate (€)</p>
+                    <input type="number" step="0.01" className={editInputStyle} value={editPayRate} onChange={e => setEditPayRate(parseFloat(e.target.value) || 0)} />
+                  </div>
+                  <div className="md:col-span-2">
+                    <p className={subLabelStyle}>Employment Type</p>
+                    <select className={editInputStyle} value={editEmploymentType} onChange={e => setEditEmploymentType(e.target.value as EmploymentType)}>
+                       <option value="Full-Time">Full-Time</option>
+                       <option value="Part-Time">Part-Time</option>
+                       <option value="Casual">Casual</option>
+                       <option value="Contractor">Contractor</option>
+                    </select>
+                  </div>
+                </>
+              )}
+
               {isEditingProfile && (
-                <div className="md:col-span-2">
-                   <button onClick={handleSaveProfile} className="w-full bg-teal-600 text-white font-black py-4 rounded-2xl uppercase text-[10px] tracking-widest shadow-lg">Commit changes to registry</button>
+                <div className="md:col-span-2 pt-4">
+                   <button onClick={handleSaveProfile} className="w-full bg-teal-600 text-white font-black py-4 rounded-2xl uppercase text-[10px] tracking-widest shadow-lg active:scale-95 transition-all">Commit changes to registry</button>
                 </div>
               )}
            </div>
         </section>
 
-        {/* Payslip Generator */}
-        <section className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-sm space-y-8">
+        {/* Payslip Console (Generation for Admin, Archive for User) */}
+        <section className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-sm space-y-8 flex flex-col">
            <div className="flex justify-between items-center border-b border-slate-50 pb-6">
               <div className="space-y-1">
                  <h3 className="text-xl font-bold text-slate-900 uppercase">Payslip Terminal</h3>
-                 <p className="text-[9px] font-black text-indigo-600 uppercase tracking-widest">Maltese 2026 Compliance</p>
+                 <p className="text-[9px] font-black text-indigo-600 uppercase tracking-widest">
+                    {isCurrentUserAdmin ? 'Maltese 2026 Compliance Generator' : 'Official Document Archive'}
+                 </p>
               </div>
-              <button onClick={() => setViewingDoc('payslip')} className="bg-slate-900 text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl active:scale-95 transition-all">GENERATE PDF</button>
+              {isCurrentUserAdmin && (
+                 <button onClick={() => { setActiveHistoricalPayslip(null); setViewingDoc('payslip'); }} className="bg-slate-900 text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl active:scale-95 transition-all">PREVIEW DRAFT</button>
+              )}
            </div>
 
-           <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                 <div className="space-y-2 md:col-span-2">
-                    <label className={subLabelStyle}>Quick-Select Month</label>
-                    <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold uppercase" value={selectedDocMonth} onChange={e => setSelectedDocMonth(e.target.value)}>
-                      {monthOptions.map(m => <option key={m} value={m}>{m}</option>)}
-                    </select>
-                 </div>
-                 <div className="space-y-2">
-                    <label className={subLabelStyle}>Period From</label>
-                    <input type="date" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold" value={payPeriodFrom} onChange={e => setPayPeriodFrom(e.target.value)} />
-                 </div>
-                 <div className="space-y-2">
-                    <label className={subLabelStyle}>Period Until</label>
-                    <input type="date" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold" value={payPeriodUntil} onChange={e => setPayPeriodUntil(e.target.value)} />
-                 </div>
-                 <div className="space-y-2">
-                    <label className={subLabelStyle}>Contractual Monthly Gross (€)</label>
-                    <input type="number" step="0.01" className="w-full bg-white border border-indigo-200 rounded-xl px-4 py-3 text-sm font-black text-indigo-900" placeholder="1333.33" value={contractualGross || ''} onChange={e => setContractualGross(parseFloat(e.target.value) || null)} />
-                 </div>
-                 <div className="space-y-2">
-                    <label className={subLabelStyle}>NI Weeks (Mondays Rule)</label>
-                    <div className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-3 text-xs font-black text-slate-500 uppercase">
-                        {payrollData.niWeeks} WEEKS DETECTED
-                    </div>
-                 </div>
-              </div>
-
-              <div className="bg-indigo-50 border border-indigo-100 p-5 rounded-2xl space-y-2">
-                 <p className="text-[8px] font-black text-indigo-600 uppercase tracking-widest">2026 Compliance Log</p>
-                 <div className="flex justify-between text-[10px] font-bold text-slate-700 uppercase">
-                    <span>Tax Basis:</span>
-                    <span>{user.isParent ? `Parent (${user.childrenCount || 0} kids)` : user.maritalStatus || 'Single'}</span>
-                 </div>
-                 <div className="flex justify-between text-[10px] font-bold text-slate-700 uppercase">
-                    <span>Actual Taxable Gross:</span>
-                    <span>€{payrollData.grossPay.toFixed(2)}</span>
-                 </div>
-                 {payrollData.govBonus > 0 && (
-                   <div className="flex justify-between text-[10px] font-black text-emerald-600 uppercase pt-1 border-t border-indigo-200 mt-1">
-                      <span>Statutory Bonus Included:</span>
-                      <span>+€{payrollData.govBonus.toFixed(2)}</span>
+           {isCurrentUserAdmin ? (
+             <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   <div className="space-y-2 md:col-span-2">
+                      <label className={subLabelStyle}>Quick-Select Month</label>
+                      <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold uppercase" value={selectedDocMonth} onChange={e => setSelectedDocMonth(e.target.value)}>
+                        {monthOptions.map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
                    </div>
-                 )}
-              </div>
+                   <div className="space-y-2">
+                      <label className={subLabelStyle}>Period From</label>
+                      <input type="date" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold" value={payPeriodFrom} onChange={e => setPayPeriodFrom(e.target.value)} />
+                   </div>
+                   <div className="space-y-2">
+                      <label className={subLabelStyle}>Period Until</label>
+                      <input type="date" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold" value={payPeriodUntil} onChange={e => setPayPeriodUntil(e.target.value)} />
+                   </div>
+                </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                 <div className="p-5 bg-emerald-50 border border-emerald-100 rounded-[1.5rem]">
-                    <p className={subLabelStyle}>Net Payout</p>
-                    <p className="text-3xl font-black text-emerald-700 leading-none">€{payrollData.totalNet.toFixed(2)}</p>
-                 </div>
-                 <div className="p-5 bg-rose-50 border border-rose-100 rounded-[1.5rem]">
-                    <p className={subLabelStyle}>Total Deductions</p>
-                    <p className="text-xl font-bold text-rose-700 leading-none">€{(payrollData.ni + payrollData.tax).toFixed(2)}</p>
-                 </div>
-              </div>
-           </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                   <div className="p-5 bg-emerald-50 border border-emerald-100 rounded-[1.5rem]">
+                      <p className={subLabelStyle}>Calc. Net Payout</p>
+                      <p className="text-3xl font-black text-emerald-700 leading-none">€{payrollData.totalNet.toFixed(2)}</p>
+                   </div>
+                   <button 
+                     onClick={handleCommitPayslip}
+                     className="bg-indigo-600 text-white font-black py-4 rounded-[1.5rem] uppercase text-[10px] tracking-[0.2em] shadow-xl hover:bg-indigo-700 active:scale-95 transition-all flex flex-col items-center justify-center gap-1"
+                   >
+                     <span>COMMIT TO RECORD</span>
+                     <span className="text-[7px] opacity-60">Authorize for Employee</span>
+                   </button>
+                </div>
+             </div>
+           ) : (
+             <div className="flex-1 space-y-4">
+                {(user.payslips || []).length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center opacity-20 py-20 grayscale">
+                    <span className="text-4xl mb-4">📑</span>
+                    <p className="text-[10px] font-black uppercase tracking-widest">No generated payslips found.</p>
+                    <p className="text-[8px] font-bold uppercase mt-1">Registry is synchronized with Finance HQ.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3">
+                    {[...(user.payslips || [])].reverse().map(ps => (
+                      <div key={ps.id} className="bg-slate-50 border border-slate-100 p-5 rounded-3xl flex justify-between items-center group hover:border-teal-200 transition-all cursor-pointer shadow-sm" onClick={() => viewHistoricalPayslip(ps)}>
+                        <div className="text-left">
+                           <p className="text-sm font-bold text-slate-900 uppercase leading-none">{ps.month}</p>
+                           <p className="text-[8px] font-black text-slate-400 uppercase mt-1.5 tracking-widest">{ps.periodFrom.split('-').reverse().join('/')} - {ps.periodUntil.split('-').reverse().join('/')}</p>
+                        </div>
+                        <div className="text-right flex items-center gap-6">
+                           <div>
+                              <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">NET RECEIVED</p>
+                              <p className="text-lg font-black text-emerald-600 leading-none">€{ps.netPay.toFixed(2)}</p>
+                           </div>
+                           <div className="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center text-teal-600 group-hover:bg-teal-600 group-hover:text-white transition-all shadow-sm">
+                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="9 18 15 12 9 6"/></svg>
+                           </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+             </div>
+           )}
         </section>
       </div>
 
@@ -353,7 +450,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
       {viewingDoc && (
         <div className="fixed inset-0 bg-slate-900/60 z-[500] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
            <div className="bg-white rounded-[3rem] w-full max-w-3xl p-10 md:p-14 space-y-12 shadow-2xl relative text-left my-auto animate-in zoom-in-95">
-              <button onClick={() => setViewingDoc(null)} className="absolute top-10 right-10 text-slate-300 hover:text-slate-900 no-print font-black text-xl">&times;</button>
+              <button onClick={() => { setViewingDoc(null); setActiveHistoricalPayslip(null); }} className="absolute top-10 right-10 text-slate-300 hover:text-slate-900 no-print font-black text-xl">&times;</button>
               
               <div ref={printContentRef} className="space-y-12">
                  <header className="flex justify-between items-start border-b-2 border-slate-900 pb-10">
@@ -362,7 +459,9 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                        <p className="text-[11px] font-black text-teal-600 uppercase tracking-widest">PE NO: {organization?.peNumber || 'N/A'}</p>
                        <div className="mt-6">
                           <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">Pay Period</p>
-                          <p className="text-[11px] font-black text-slate-900">{payPeriodFrom.split('-').reverse().join('/')} — {payPeriodUntil.split('-').reverse().join('/')}</p>
+                          <p className="text-[11px] font-black text-slate-900">
+                             {activeHistoricalPayslip ? `${activeHistoricalPayslip.periodFrom.split('-').reverse().join('/')} — ${activeHistoricalPayslip.periodUntil.split('-').reverse().join('/')}` : `${payPeriodFrom.split('-').reverse().join('/')} — ${payPeriodUntil.split('-').reverse().join('/')}`}
+                          </p>
                        </div>
                     </div>
                     <div className="text-right space-y-4">
@@ -425,10 +524,15 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                  </div>
 
                  <p className="text-[8px] font-black uppercase text-center text-slate-300 mt-12 tracking-[0.5em]">DIGITALLY VERIFIED BY RESET STUDIO OPS CORE</p>
+                 {activeHistoricalPayslip && (
+                    <div className="text-center mt-2 no-print">
+                       <p className="text-[7px] text-slate-400 italic">Saved on: {new Date(activeHistoricalPayslip.generatedAt).toLocaleString()} by {activeHistoricalPayslip.generatedBy}</p>
+                    </div>
+                 )}
               </div>
 
               <div className="flex justify-end gap-3 no-print pt-6">
-                 <button onClick={() => setViewingDoc(null)} className="px-8 py-3 rounded-xl border border-slate-200 text-slate-400 font-black uppercase text-[10px] tracking-widest">Close</button>
+                 <button onClick={() => { setViewingDoc(null); setActiveHistoricalPayslip(null); }} className="px-8 py-3 rounded-xl border border-slate-200 text-slate-400 font-black uppercase text-[10px] tracking-widest">Close</button>
                  <button onClick={handlePrint} className="bg-black text-white px-10 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-xl">Print PDF</button>
               </div>
            </div>

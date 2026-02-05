@@ -246,6 +246,22 @@ export interface Property {
 export type EmploymentType = 'Full-Time' | 'Part-Time' | 'Casual' | 'Contractor';
 export type PaymentType = 'Per Clean' | 'Per Hour' | 'Fixed Wage';
 
+export interface SavedPayslip {
+  id: string;
+  month: string;
+  periodFrom: string;
+  periodUntil: string;
+  grossPay: number;
+  netPay: number;
+  tax: number;
+  ni: number;
+  niWeeks: number;
+  govBonus: number;
+  daysWorked: number;
+  generatedAt: string;
+  generatedBy: string;
+}
+
 export interface User {
   id: string;
   name: string;
@@ -273,6 +289,7 @@ export interface User {
   homeAddress?: string;
   dateOfBirth?: string;
   lastSupplyRequestDate?: number;
+  payslips?: SavedPayslip[];
 }
 
 export interface Shift {

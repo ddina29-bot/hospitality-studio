@@ -20,13 +20,6 @@ import { TabType, Shift, User, Client, Property, Invoice, TimeEntry, Tutorial, U
 
 const load = <T,>(k: string, f: T): T => {
   if (typeof window === 'undefined') return f;
-  
-  const params = new URLSearchParams(window.location.search);
-  if (params.get('code')) return f;
-
-  const sessionUser = localStorage.getItem('current_user_obj');
-  if (!sessionUser) return f;
-  
   const s = localStorage.getItem(k);
   if (!s) return f;
   try { return JSON.parse(s); } catch (e) { return f; }
@@ -41,15 +34,10 @@ const safeSave = (key: string, data: any) => {
 };
 
 const App: React.FC = () => {
-  // DYNAMIC TOKEN STATE: This allows us to "turn off" the activation view once complete
   const [activationToken, setActivationToken] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
     const params = new URLSearchParams(window.location.search);
-    const code = params.get('code');
-    if (code) {
-        localStorage.clear(); // Pure purge on cold boot activation
-    }
-    return code;
+    return params.get('code');
   });
 
   const [user, setUser] = useState<User | null>(() => {
@@ -67,7 +55,6 @@ const App: React.FC = () => {
   const [selectedAuditShiftId, setSelectedAuditShiftId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [lastSyncTimestamp, setLastSyncTimestamp] = useState<number>(Date.now());
   
   const [hasHydrated, setHasHydrated] = useState(false);
   const isHydratingInProgress = useRef(false);
@@ -125,7 +112,7 @@ const App: React.FC = () => {
 
   const hydrateState = useCallback(async (emailToUse?: string) => {
     const targetEmail = emailToUse || user?.email;
-    if (!targetEmail || isHydratingInProgress.current) return;
+    if (!targetEmail || isHydratingInProgress.current || hasHydrated) return;
     
     isHydratingInProgress.current = true;
     setIsLoading(true);
@@ -136,23 +123,18 @@ const App: React.FC = () => {
       if (data.success && data.organization) {
         const org = data.organization;
         setOrgId(org.id);
-        localStorage.setItem('current_org_id', org.id);
-        
         if (org.users) setUsers(org.users);
         if (org.shifts) setShifts(org.shifts);
         if (org.properties) setProperties(org.properties);
         if (org.clients) setClients(org.clients);
         if (org.invoices) setInvoices(org.invoices);
         if (org.timeEntries) setTimeEntries(org.timeEntries);
-        if (org.tutorials) setTutorials(org.tutorials);
         if (org.inventoryItems) setInventoryItems(org.inventoryItems);
         if (org.supplyRequests) setSupplyRequests(org.supplyRequests);
         if (org.anomalyReports) setAnomalyReports(org.anomalyReports);
         if (org.manualTasks) setManualTasks(org.manualTasks);
         if (org.leaveRequests) setLeaveRequests(org.leaveRequests);
         if (org.settings) setOrganization(org.settings);
-        if (org.authorizedLaundryUserIds) setAuthorizedLaundryUserIds(org.authorizedLaundryUserIds);
-        
         setHasHydrated(true);
       }
     } catch (err) {
@@ -161,13 +143,13 @@ const App: React.FC = () => {
       setIsLoading(false);
       isHydratingInProgress.current = false;
     }
-  }, [user?.email]);
+  }, [user?.email, hasHydrated]);
 
   useEffect(() => {
-    if (user && !activationToken) {
+    if (user && !activationToken && !hasHydrated) {
       hydrateState();
     }
-  }, [user?.email, hydrateState, activationToken]);
+  }, [user, hydrateState, activationToken, hasHydrated]);
 
   const saveAllLocal = useCallback(() => {
     if (!hasHydrated && user) return;
@@ -178,7 +160,6 @@ const App: React.FC = () => {
     safeSave('studio_clients', clients);
     safeSave('studio_invoices', invoices);
     safeSave('studio_time_entries', timeEntries);
-    safeSave('studio_tutorials', tutorials);
     safeSave('studio_inventory', inventoryItems);
     safeSave('studio_supply_requests', supplyRequests);
     safeSave('studio_anomalies', anomalyReports);
@@ -189,7 +170,7 @@ const App: React.FC = () => {
     safeSave('studio_org_settings', organization);
     if (user) safeSave('current_user_obj', user);
     safeSave('studio_auth_laundry_ids', authorizedLaundryUserIds);
-  }, [users, shifts, properties, clients, invoices, timeEntries, tutorials, activeTab, user, organization, inventoryItems, supplyRequests, anomalyReports, authorizedLaundryUserIds, manualTasks, leaveRequests, notifications, hasHydrated]);
+  }, [users, shifts, properties, clients, invoices, timeEntries, activeTab, user, organization, inventoryItems, supplyRequests, anomalyReports, authorizedLaundryUserIds, manualTasks, leaveRequests, notifications, hasHydrated]);
 
   useEffect(() => {
     if (!user || !hasHydrated) return;
@@ -211,34 +192,33 @@ const App: React.FC = () => {
             orgId,
             data: { 
               users, shifts, properties, clients, invoices, timeEntries, 
-              tutorials, inventoryItems, supplyRequests, anomalyReports, manualTasks, leaveRequests,
+              inventoryItems, supplyRequests, anomalyReports, manualTasks, leaveRequests,
               settings: organization, authorizedLaundryUserIds, notifications 
             }
           })
         });
         if (response.ok) {
-           setLastSyncTimestamp(Date.now());
            setTimeout(() => setIsSyncing(false), 500);
         }
       } catch (err) { 
         console.error("Cloud Sync error:", err); 
         setIsSyncing(false);
       }
-    }, 800);
+    }, 1500);
 
     return () => {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     };
-  }, [user, orgId, hasHydrated, users, shifts, properties, clients, invoices, timeEntries, tutorials, organization, inventoryItems, supplyRequests, anomalyReports, authorizedLaundryUserIds, manualTasks, leaveRequests, notifications]);
+  }, [user, orgId, hasHydrated, users, shifts, properties, clients, invoices, timeEntries, organization, inventoryItems, supplyRequests, anomalyReports, authorizedLaundryUserIds, manualTasks, leaveRequests, notifications]);
 
   const handleUpdateUser = (updatedUser: User) => {
-    setUser(updatedUser);
+    if (user && updatedUser.id === user.id) setUser(updatedUser);
     setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
   };
 
   const handleUpdateLeaveStatus = (id: string, status: 'approved' | 'rejected') => {
     const leave = leaveRequests.find(l => l.id === id);
-    setLeaveRequests(prev => prev.map(l => id === id ? { ...l, status } : l));
+    setLeaveRequests(prev => prev.map(l => l.id === id ? { ...l, status } : l));
     if (leave) {
       addNotification({
         title: `Leave ${status.toUpperCase()}`,
@@ -247,44 +227,40 @@ const App: React.FC = () => {
         linkTab: 'settings'
       });
     }
-    setNotifications(prev => prev.filter(n => n.linkId !== id));
     showToast(`LEAVE REQUEST ${status.toUpperCase()}`, status === 'approved' ? 'success' : 'error');
   };
 
   const handleLogin = (u: User, organizationData?: any) => {
-    // 1. Kill the activation token state to flip the view
+    console.info("Initializing User Session:", u.name);
+    localStorage.clear();
     setActivationToken(null);
     
-    // 2. Clear old residues
-    localStorage.clear();
-    
-    // 3. Set new operational state
-    setUser(u);
     if (organizationData) {
-        setOrgId(organizationData.id);
-        localStorage.setItem('current_org_id', organizationData.id);
-        localStorage.setItem('current_user_obj', JSON.stringify(u));
-        if (organizationData.users) setUsers(organizationData.users);
-        if (organizationData.shifts) setShifts(organizationData.shifts);
-        if (organizationData.properties) setProperties(organizationData.properties);
-        if (organizationData.clients) setClients(organizationData.clients);
-        if (organizationData.settings) setOrganization(organizationData.settings);
-        if (organizationData.manualTasks) setManualTasks(organizationData.manualTasks);
-        if (organizationData.leaveRequests) setLeaveRequests(organizationData.leaveRequests);
-        if (organizationData.authorizedLaundryUserIds) setAuthorizedLaundryUserIds(organizationData.authorizedLaundryUserIds);
-        if (organizationData.notifications) setNotifications(organizationData.notifications);
-        if (organizationData.inventoryItems) setInventoryItems(organizationData.inventoryItems);
-        if (organizationData.timeEntries) setTimeEntries(organizationData.timeEntries);
+        const org = organizationData;
+        setOrgId(org.id);
         
-        // 4. Force hydrate to true so the app renders immediately
+        if (org.users) setUsers(org.users);
+        if (org.shifts) setShifts(org.shifts);
+        if (org.properties) setProperties(org.properties);
+        if (org.clients) setClients(org.clients);
+        if (org.settings) setOrganization(org.settings);
+        if (org.manualTasks) setManualTasks(org.manualTasks);
+        if (org.leaveRequests) setLeaveRequests(org.leaveRequests);
+        if (org.inventoryItems) setInventoryItems(org.inventoryItems);
+        if (org.timeEntries) setTimeEntries(org.timeEntries);
+        
         setHasHydrated(true);
+        localStorage.setItem('current_org_id', org.id);
+        localStorage.setItem('current_user_obj', JSON.stringify(u));
     }
+    
+    setUser(u);
     
     if (u.role === 'supervisor') setActiveTab('shifts');
     else if (u.role === 'laundry') setActiveTab('laundry');
+    else if (u.role === 'driver') setActiveTab('logistics');
     else setActiveTab('dashboard');
     
-    // 5. Clean the URL completely
     if (window.location.search) {
        window.history.replaceState({}, '', window.location.pathname);
     }
@@ -304,7 +280,6 @@ const App: React.FC = () => {
     showToast('LINEN PREPARATION STATUS UPDATED', 'success');
   };
 
-  // If a code is present, we ignore any user session and force activation
   if (activationToken && !user) {
     return (
       <UserActivation 
@@ -433,7 +408,7 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-[#F0FDFA] overflow-hidden">
-      {isLoading && (!hasHydrated) ? (
+      {isLoading && !hasHydrated ? (
         <div className="flex-1 flex flex-col items-center justify-center py-40 animate-pulse">
            <div className="w-12 h-12 border-4 border-teal-50 border-t-teal-600 rounded-full animate-spin"></div>
            <p className="text-[10px] font-black uppercase tracking-widest mt-6 text-teal-600">Synchronizing Session Core...</p>

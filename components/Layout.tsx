@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { TabType, UserRole } from '../types';
+import { TabType, UserRole, User } from '../types';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -13,7 +13,10 @@ interface LayoutProps {
   isSyncing?: boolean;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role, onLogout, notificationCount = 0, onOpenNotifications, isSyncing = false }) => {
+const Layout: React.FC<LayoutProps> = ({ 
+  children, activeTab, setActiveTab, role, onLogout, 
+  notificationCount = 0, onOpenNotifications, isSyncing = false
+}) => {
   const [showMenu, setShowMenu] = useState(false);
 
   const navItems: { id: TabType; label: string; icon: string; roles: UserRole[] }[] = [
@@ -60,7 +63,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role
           {/* CLOUD SYNC INDICATOR */}
           <div className="pt-2">
              <div className={`px-4 py-2 rounded-xl border transition-all duration-500 flex items-center gap-3 ${isSyncing ? 'bg-teal-500/10 border-teal-500/30' : 'bg-slate-800/30 border-slate-700/50'}`}>
-                <div className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-teal-400 animate-ping' : 'bg-slate-500'}`}></div>
+                <div className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-teal-400 animate-ping' : 'bg-slate-50'}`}></div>
                 <span className={`text-[7px] font-black uppercase tracking-[0.2em] ${isSyncing ? 'text-teal-400' : 'text-slate-500'}`}>
                    {isSyncing ? 'Cloud Syncing...' : 'Cloud Verified'}
                 </span>
@@ -115,7 +118,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role
                onClick={onLogout}
                className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center shadow-sm active:scale-95 transition-all"
              >
-               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="12" y2="12"/></svg>
              </button>
            </div>
         </header>
