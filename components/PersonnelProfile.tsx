@@ -11,14 +11,15 @@ interface PersonnelProfileProps {
   onUpdateUser?: (user: User) => void;
   organization?: OrganizationSettings;
   initialDocView?: 'fs3' | 'payslip' | 'worksheet' | null;
+  initialHistoricalPayslip?: SavedPayslip | null;
 }
 
-const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests = [], onRequestLeave, shifts = [], properties = [], onUpdateUser, organization, initialDocView }) => {
+const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests = [], onRequestLeave, shifts = [], properties = [], onUpdateUser, organization, initialDocView, initialHistoricalPayslip }) => {
   const currentUserObj = JSON.parse(localStorage.getItem('current_user_obj') || '{}');
   const isCurrentUserAdmin = currentUserObj.role === 'admin';
   
   const [viewingDoc, setViewingDoc] = useState<'payslip' | 'worksheet' | 'fs3' | null>(initialDocView || null);
-  const [activeHistoricalPayslip, setActiveHistoricalPayslip] = useState<SavedPayslip | null>(null);
+  const [activeHistoricalPayslip, setActiveHistoricalPayslip] = useState<SavedPayslip | null>(initialHistoricalPayslip || null);
   const [isPrinting, setIsPrinting] = useState(false);
   
   // 2026 COMPLIANCE STATES
@@ -41,6 +42,13 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     setEditEmploymentType(user.employmentType || 'Full-Time');
   }, [user.id, user.payRate, user.maritalStatus, user.isParent, user.childrenCount, user.phone, user.paymentType, user.employmentType]);
   
+  useEffect(() => {
+    if (initialHistoricalPayslip) {
+      setActiveHistoricalPayslip(initialHistoricalPayslip);
+      setViewingDoc('payslip');
+    }
+  }, [initialHistoricalPayslip]);
+
   const printContentRef = useRef<HTMLDivElement>(null);
 
   // Sync dates when month dropdown changes
@@ -86,8 +94,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
       return d >= from && d <= until;
     });
   }, [shifts, user.id, payPeriodFrom, payPeriodUntil]);
-
-  // --- MALTESE COMPLIANCE CORE 2026 ---
 
   const countMondaysInRange = (startStr: string, endStr: string) => {
     if (!startStr || !endStr) return 0;
@@ -137,7 +143,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
   };
 
   const payrollData = useMemo(() => {
-    // If viewing a historical payslip, ignore calculations and use fixed values
     if (activeHistoricalPayslip) {
       return {
         ...activeHistoricalPayslip,
@@ -330,7 +335,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                  </div>
               </div>
 
-              {/* Wage Fields for Admins */}
               {isEditingProfile && isCurrentUserAdmin && (
                 <>
                   <div>
@@ -365,7 +369,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
            </div>
         </section>
 
-        {/* Payslip Console (Generation for Admin, Archive for User) */}
+        {/* Payslip Console */}
         <section className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-sm space-y-8 flex flex-col">
            <div className="flex justify-between items-center border-b border-slate-50 pb-6">
               <div className="space-y-1">
@@ -421,24 +425,33 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                     <p className="text-[8px] font-bold uppercase mt-1">Registry is synchronized with Finance HQ.</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 gap-3">
-                    {[...(user.payslips || [])].reverse().map(ps => (
-                      <div key={ps.id} className="bg-slate-50 border border-slate-100 p-5 rounded-3xl flex justify-between items-center group hover:border-teal-200 transition-all cursor-pointer shadow-sm" onClick={() => viewHistoricalPayslip(ps)}>
-                        <div className="text-left">
-                           <p className="text-sm font-bold text-slate-900 uppercase leading-none">{ps.month}</p>
-                           <p className="text-[8px] font-black text-slate-400 uppercase mt-1.5 tracking-widest">{ps.periodFrom.split('-').reverse().join('/')} - {ps.periodUntil.split('-').reverse().join('/')}</p>
-                        </div>
-                        <div className="text-right flex items-center gap-6">
-                           <div>
-                              <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">NET RECEIVED</p>
-                              <p className="text-lg font-black text-emerald-600 leading-none">€{ps.netPay.toFixed(2)}</p>
-                           </div>
-                           <div className="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center text-teal-600 group-hover:bg-teal-600 group-hover:text-white transition-all shadow-sm">
-                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="9 18 15 12 9 6"/></svg>
-                           </div>
-                        </div>
-                      </div>
-                    ))}
+                  <div className="bg-white border border-slate-100 rounded-3xl overflow-hidden shadow-sm">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead className="bg-slate-50 border-b border-slate-100">
+                                <tr>
+                                    <th className="px-6 py-4 text-[8px] font-black text-slate-400 uppercase tracking-widest">Month</th>
+                                    <th className="px-6 py-4 text-[8px] font-black text-slate-400 uppercase tracking-widest">Period</th>
+                                    <th className="px-6 py-4 text-[8px] font-black text-slate-400 uppercase tracking-widest">Net (€)</th>
+                                    <th className="px-6 py-4 text-right"></th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-50">
+                                {[...(user.payslips || [])].reverse().map(ps => (
+                                    <tr key={ps.id} className="hover:bg-teal-50/30 cursor-pointer transition-colors group" onClick={() => viewHistoricalPayslip(ps)}>
+                                        <td className="px-6 py-5 text-[11px] font-black text-slate-900 uppercase">{ps.month}</td>
+                                        <td className="px-6 py-5 text-[9px] font-bold text-slate-400">{ps.periodFrom.split('-').reverse().join('/')} - {ps.periodUntil.split('-').reverse().join('/')}</td>
+                                        <td className="px-6 py-5 text-[11px] font-black text-emerald-600">€{ps.netPay.toFixed(2)}</td>
+                                        <td className="px-6 py-5 text-right">
+                                            <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-teal-600 group-hover:bg-teal-600 group-hover:text-white transition-all shadow-sm">
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><polyline points="9 18 15 12 9 6"/></svg>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
                   </div>
                 )}
              </div>

@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { TabType, Shift, User, Property, Invoice, Client, InvoiceItem, OrganizationSettings, ManualTask } from '../../types';
+import { TabType, Shift, User, Property, Invoice, Client, InvoiceItem, OrganizationSettings, ManualTask, SavedPayslip } from '../../types';
 import PersonnelProfile from '../PersonnelProfile';
 
 interface FinanceDashboardProps {
@@ -21,12 +21,14 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
   setActiveTab, onLogout, shifts = [], setShifts, users = [], properties = [], invoices = [], setInvoices, clients = [], organization, manualTasks = [] 
 }) => {
   const [activeModule, setActiveModule] = useState<'payroll' | 'invoicing' | 'records'>('payroll');
+  const [payrollSubView, setPayrollSubView] = useState<'pending' | 'registry'>('pending');
   const [selectedPayslipId, setSelectedPayslipId] = useState<string | null>(null);
   const [invoiceSearch, setInvoiceSearch] = useState('');
   
   const [recordsSearch, setRecordsSearch] = useState('');
   const [viewingRecordsUser, setViewingRecordsUser] = useState<User | null>(null);
   const [initialDocMode, setInitialDocMode] = useState<'fs3' | 'payslip' | 'worksheet' | null>(null);
+  const [selectedHistoricalPayslip, setSelectedHistoricalPayslip] = useState<SavedPayslip | null>(null);
   
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [invoiceForm, setInvoiceForm] = useState({
@@ -75,6 +77,18 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
     return Object.values(data);
   }, [shifts, users]);
 
+  const allSavedPayslips = useMemo(() => {
+    const list: (SavedPayslip & { userName: string, userId: string, userObj: User })[] = [];
+    users.forEach(u => {
+      if (u.payslips) {
+        u.payslips.forEach(ps => {
+          list.push({ ...ps, userName: u.name, userId: u.id, userObj: u });
+        });
+      }
+    });
+    return list.sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime());
+  }, [users]);
+
   const calculatePayslipBreakdown = (staffShifts: Shift[], staff: User) => {
     let totalBase = 0;
     let totalBonus = 0;
@@ -91,26 +105,20 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
       const basePay = hours * hourlyRate;
       const isApproved = s.approvalStatus === 'approved';
 
-      // REMEDIAL LOGIC: TO FIX shifts always get paid (fixed or hourly)
       if (s.serviceType === 'TO FIX') {
           if (s.fixWorkPayment && s.fixWorkPayment > 0) totalBonus += s.fixWorkPayment;
           else totalBase += basePay;
           return;
       }
 
-      // COMMON AREA: Dynamic fixed pay or hourly
       if (s.serviceType === 'Common Area') {
           if (s.fixWorkPayment && s.fixWorkPayment > 0) totalBonus += s.fixWorkPayment;
           else totalBase += basePay;
           return;
       }
 
-      // Standard deployment base pay
       totalBase += basePay;
       
-      // BONUS LOGIC (The "Per Clean" model)
-      // Only pay performance bonus if the work was APPROVED.
-      // If REJECTED, the cleaner only gets basePay (hours * rate) as a penalty.
       if (isApproved && prop && staff.role === 'cleaner' && staff.paymentType === 'Per Clean') {
         const teamCount = s.userIds?.length || 1;
         const targetFee = prop.serviceRates?.[s.serviceType] !== undefined ? prop.serviceRates[s.serviceType] : prop.cleanerPrice;
@@ -137,8 +145,6 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
     alert(`Payment confirmed for ${activePayslip.user.name}.`);
   };
 
-  // --- INVOICE GENERATION LOGIC ---
-
   const handlePreviewInvoice = () => {
     const { clientId, startDate, endDate, dueDate, discountRate } = invoiceForm;
     if (!clientId || !startDate || !endDate || !dueDate) {
@@ -156,7 +162,6 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
     const targetShifts = shifts.filter(s => {
       const dStr = s.date.includes('-') ? s.date : `${s.date} ${new Date().getFullYear()}`;
       const d = new Date(dStr);
-      // NOTE: Clients are billed for ALL completed shifts (approved or rejected).
       return s.propertyId && 
              properties.find(p => p.id === s.propertyId)?.clientId === clientId &&
              s.status === 'completed' &&
@@ -206,7 +211,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
     const subtotal = invoiceItems.reduce((acc, i) => acc + i.amount, 0);
     const discountAmount = subtotal * (discountRate / 100);
     const subtotalAfterDiscount = subtotal - discountAmount;
-    const vat = subtotalAfterDiscount * 0.18; // 18% Maltese VAT
+    const vat = subtotalAfterDiscount * 0.18; 
     const totalAmount = subtotalAfterDiscount + vat;
 
     const preview: Invoice = {
@@ -240,11 +245,16 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
   const labelStyle = "text-[7px] font-black text-slate-500 uppercase tracking-[0.4em] mb-1.5 block px-1";
   const inputStyle = "w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 text-[10px] font-bold uppercase tracking-widest outline-none focus:border-emerald-500 transition-all shadow-inner";
 
-  // Helper to find client details for preview
   const activePreviewClient = useMemo(() => {
     if (!generatedPreview) return null;
     return clients?.find(c => c.id === generatedPreview.clientId);
   }, [generatedPreview, clients]);
+
+  const handleOpenHistoricalDoc = (ps: SavedPayslip & { userObj: User }) => {
+    setViewingRecordsUser(ps.userObj);
+    setInitialDocMode('payslip');
+    setSelectedHistoricalPayslip(ps);
+  };
 
   return (
     <div className="space-y-10 animate-in fade-in duration-700 text-left pb-24">
@@ -261,36 +271,81 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
       </div>
 
       {activeModule === 'payroll' && (
-        <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-8">
-            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-widest">Pending Payout Queue</h3>
-            <div className="space-y-4">
-                {cleanerPayroll.map(entry => {
-                    const totals = calculatePayslipBreakdown(entry.shifts, entry.user);
-                    return (
-                    <div key={entry.user.id} className="bg-slate-50 rounded-3xl border border-slate-100 p-6 flex flex-col md:flex-row items-center justify-between gap-6 hover:border-teal-200 transition-all">
-                        <div className="flex items-center gap-6 flex-1 w-full">
-                          <div className="w-14 h-14 rounded-2xl bg-white border border-slate-200 text-teal-600 flex items-center justify-center font-bold text-2xl shadow-sm">
-                              {entry.user.name.charAt(0)}
+        <div className="space-y-6">
+           <div className="flex gap-4 px-2 border-b border-slate-100">
+              <button onClick={() => setPayrollSubView('pending')} className={`pb-4 text-[10px] font-black uppercase tracking-widest transition-all ${payrollSubView === 'pending' ? 'text-teal-600 border-b-2 border-teal-600' : 'text-slate-400'}`}>Pending Payouts</button>
+              <button onClick={() => setPayrollSubView('registry')} className={`pb-4 text-[10px] font-black uppercase tracking-widest transition-all ${payrollSubView === 'registry' ? 'text-teal-600 border-b-2 border-teal-600' : 'text-slate-400'}`}>Payslip Registry</button>
+           </div>
+
+           {payrollSubView === 'pending' ? (
+              <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-8 animate-in slide-in-from-left-4">
+                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-widest">Awaiting Processing</h3>
+                  <div className="space-y-4">
+                      {cleanerPayroll.map(entry => {
+                          const totals = calculatePayslipBreakdown(entry.shifts, entry.user);
+                          return (
+                          <div key={entry.user.id} className="bg-slate-50 rounded-3xl border border-slate-100 p-6 flex flex-col md:flex-row items-center justify-between gap-6 hover:border-teal-200 transition-all">
+                              <div className="flex items-center gap-6 flex-1 w-full">
+                                <div className="w-14 h-14 rounded-2xl bg-white border border-slate-200 text-teal-600 flex items-center justify-center font-bold text-2xl shadow-sm">
+                                    {entry.user.name.charAt(0)}
+                                </div>
+                                <div>
+                                    <h4 className="text-lg font-bold text-slate-900 uppercase tracking-tight">{entry.user.name}</h4>
+                                    <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">
+                                      {entry.shifts.length} Deployments • {totals.totalHours.toFixed(1)} Hours Logged
+                                    </p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-8 w-full md:w-auto justify-between md:justify-end">
+                                <div className="text-right">
+                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">NET PAYABLE</p>
+                                    <p className="text-2xl font-bold text-emerald-600">€{totals.totalNet.toFixed(2)}</p>
+                                </div>
+                                <button onClick={() => setSelectedPayslipId(entry.user.id)} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">DETAILS</button>
+                              </div>
                           </div>
-                          <div>
-                              <h4 className="text-lg font-bold text-slate-900 uppercase tracking-tight">{entry.user.name}</h4>
-                              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">
-                                {entry.shifts.length} Deployments • {totals.totalHours.toFixed(1)} Hours Logged
-                              </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-8 w-full md:w-auto justify-between md:justify-end">
-                          <div className="text-right">
-                              <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">NET PAYABLE</p>
-                              <p className="text-2xl font-bold text-emerald-600">€{totals.totalNet.toFixed(2)}</p>
-                          </div>
-                          <button onClick={() => setSelectedPayslipId(entry.user.id)} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">DETAILS</button>
-                        </div>
-                    </div>
-                    );
-                })}
-                {cleanerPayroll.length === 0 && <p className="text-center py-20 text-[10px] opacity-20 font-black uppercase">No pending payroll processing needed</p>}
-            </div>
+                          );
+                      })}
+                      {cleanerPayroll.length === 0 && <p className="text-center py-20 text-[10px] opacity-20 font-black uppercase">No pending payroll processing needed</p>}
+                  </div>
+              </div>
+           ) : (
+              <div className="bg-white border border-slate-100 rounded-[40px] shadow-sm overflow-hidden animate-in slide-in-from-right-4">
+                 <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                       <thead className="bg-slate-50 text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
+                          <tr>
+                             <th className="px-8 py-4">Employee</th>
+                             <th className="px-8 py-4">Month</th>
+                             <th className="px-8 py-4">Period</th>
+                             <th className="px-8 py-4">Gross (€)</th>
+                             <th className="px-8 py-4">Net (€)</th>
+                             <th className="px-8 py-4 text-right">Actions</th>
+                          </tr>
+                       </thead>
+                       <tbody className="divide-y divide-slate-50">
+                          {allSavedPayslips.length === 0 ? (
+                            <tr><td colSpan={6} className="px-8 py-20 text-center opacity-20 text-[10px] uppercase font-black">No historical payslips in registry</td></tr>
+                          ) : allSavedPayslips.map(ps => (
+                             <tr key={ps.id} className="hover:bg-slate-50 transition-colors group cursor-pointer" onClick={() => handleOpenHistoricalDoc(ps)}>
+                                <td className="px-8 py-5">
+                                   <p className="text-[11px] font-bold text-slate-900 uppercase">{ps.userName}</p>
+                                   <p className="text-[8px] font-black text-teal-600 uppercase tracking-widest mt-0.5">{ps.userObj.role}</p>
+                                </td>
+                                <td className="px-8 py-5 text-[10px] font-black text-slate-900">{ps.month}</td>
+                                <td className="px-8 py-5 text-[9px] font-bold text-slate-400">{ps.periodFrom.split('-').reverse().join('/')} - {ps.periodUntil.split('-').reverse().join('/')}</td>
+                                <td className="px-8 py-5 text-[11px] font-bold text-slate-900">€{ps.grossPay.toFixed(2)}</td>
+                                <td className="px-8 py-5 text-[11px] font-black text-emerald-600">€{ps.netPay.toFixed(2)}</td>
+                                <td className="px-8 py-5 text-right">
+                                   <button className="text-[8px] font-black bg-white border border-slate-200 text-slate-400 px-4 py-1.5 rounded-lg uppercase tracking-widest group-hover:bg-teal-600 group-hover:text-white group-hover:border-teal-600 transition-all">VIEW DOC</button>
+                                </td>
+                             </tr>
+                          ))}
+                       </tbody>
+                    </table>
+                 </div>
+              </div>
+           )}
         </div>
       )}
 
@@ -339,7 +394,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                               <th className="px-8 py-4">Client</th>
                               <th className="px-8 py-4">Issue Date</th>
                               <th className="px-8 py-4">Amount</th>
-                              <th className="px-8 py-4">Status</th>
+                              <th className="px-8 py-4 Status">Status</th>
                               <th className="px-8 py-4 text-right">Actions</th>
                            </tr>
                         </thead>
@@ -401,8 +456,8 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                           </div>
                        </div>
                        <div className="flex gap-2">
-                          <button onClick={() => { setViewingRecordsUser(u); setInitialDocMode('payslip'); }} className="flex-1 px-4 py-2.5 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-sm">PAYSLIPS</button>
-                          <button onClick={() => { setViewingRecordsUser(u); setInitialDocMode(null); }} className="px-4 py-2.5 bg-slate-50 text-slate-400 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-slate-100">DOSSIER</button>
+                          <button onClick={() => { setViewingRecordsUser(u); setInitialDocMode('payslip'); setSelectedHistoricalPayslip(null); }} className="flex-1 px-4 py-2.5 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-sm">PAYSLIPS</button>
+                          <button onClick={() => { setViewingRecordsUser(u); setInitialDocMode(null); setSelectedHistoricalPayslip(null); }} className="px-4 py-2.5 bg-slate-50 text-slate-400 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-slate-100">DOSSIER</button>
                        </div>
                     </div>
                  ))}
@@ -472,9 +527,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
               ) : (
                 <div className="space-y-8 animate-in slide-in-from-bottom-4">
                    <div className="bg-slate-50 p-6 md:p-10 rounded-[2.5rem] border border-slate-200 space-y-10">
-                      {/* INVOICE HEADER DETAILS */}
                       <div className="grid grid-cols-2 gap-10">
-                         {/* LEFT: BILL TO (CLIENT DETAILS) */}
                          <div className="text-left space-y-4">
                             <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.3em]">BILL TO</p>
                             <div>
@@ -491,7 +544,6 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                             </div>
                          </div>
 
-                         {/* RIGHT: FROM (STUDIO DETAILS) */}
                          <div className="text-right space-y-4">
                             <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.3em]">FROM</p>
                             <div>
@@ -506,7 +558,6 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                          </div>
                       </div>
 
-                      {/* INVOICE METADATA */}
                       <div className="flex justify-between items-center border-y border-slate-200 py-6">
                          <div className="space-y-1">
                             <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">INVOICE NO.</p>
@@ -522,7 +573,6 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                          </div>
                       </div>
                       
-                      {/* LINE ITEMS */}
                       <div className="max-h-60 overflow-y-auto custom-scrollbar pr-2 space-y-2">
                         {generatedPreview.items.map((item, idx) => (
                            <div key={idx} className="flex justify-between items-center text-[10px] bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
@@ -535,7 +585,6 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                         ))}
                       </div>
 
-                      {/* TOTALS BREAKDOWN */}
                       <div className="space-y-3 pt-6 text-right">
                          <div className="flex justify-end gap-12 text-[10px] font-bold text-slate-500 uppercase">
                             <span>Subtotal</span>
@@ -599,7 +648,6 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
         </div>
       )}
 
-      {/* STAFF RECORDS MODAL (Fix for Payslip/Dossier viewing) */}
       {viewingRecordsUser && (
         <div className="fixed inset-0 bg-slate-900/60 z-[700] flex items-center justify-center p-0 md:p-6 backdrop-blur-md overflow-hidden">
            <div className="bg-white w-full h-full md:rounded-[3rem] overflow-hidden flex flex-col relative animate-in zoom-in-95">
@@ -608,7 +656,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                     <h3 className="text-sm font-bold text-slate-900 uppercase tracking-widest">Personnel Review: {viewingRecordsUser.name}</h3>
                  </div>
                  <button 
-                   onClick={() => { setViewingRecordsUser(null); setInitialDocMode(null); }}
+                   onClick={() => { setViewingRecordsUser(null); setInitialDocMode(null); setSelectedHistoricalPayslip(null); }}
                    className="w-10 h-10 rounded-full bg-slate-50 text-slate-400 hover:text-slate-900 flex items-center justify-center transition-all"
                  >
                    &times;
@@ -621,6 +669,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                    properties={properties}
                    organization={organization}
                    initialDocView={initialDocMode}
+                   initialHistoricalPayslip={selectedHistoricalPayslip}
                  />
               </div>
            </div>
