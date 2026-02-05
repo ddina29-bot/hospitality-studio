@@ -21,20 +21,32 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
   const [viewingDoc, setViewingDoc] = useState<'payslip' | 'worksheet' | 'fs3' | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
   
-  // NEW: Precise Calculation States
-  const [manualGrossPay, setManualGrossPay] = useState<number | null>(null);
-  const [weeksInMonth, setWeeksInMonth] = useState<4 | 5>(4);
-  
-  const printContentRef = useRef<HTMLDivElement>(null);
-  
+  // PRECISE DATE RANGE STATES
   const currentMonthStr = useMemo(() => {
     return new Date().toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }).toUpperCase();
   }, []);
 
   const [selectedDocMonth, setSelectedDocMonth] = useState<string>(currentMonthStr);
-  const [worksheetStart, setWorksheetStart] = useState('');
-  const [worksheetEnd, setWorksheetEnd] = useState('');
-  const [fs3Year, setFs3Year] = useState<number>(new Date().getFullYear());
+  const [payPeriodFrom, setPayPeriodFrom] = useState('');
+  const [payPeriodUntil, setPayPeriodUntil] = useState('');
+  
+  const [manualGrossPay, setManualGrossPay] = useState<number | null>(null);
+  const [weeksInMonth, setWeeksInMonth] = useState<4 | 5>(4);
+  
+  const printContentRef = useRef<HTMLDivElement>(null);
+
+  // Initialize dates when month selection changes
+  useEffect(() => {
+    const d = new Date(Date.parse(`1 ${selectedDocMonth}`));
+    if (!isNaN(d.getTime())) {
+      const y = d.getFullYear();
+      const m = d.getMonth();
+      const first = new Date(y, m, 1);
+      const last = new Date(y, m + 1, 0);
+      setPayPeriodFrom(first.toISOString().split('T')[0]);
+      setPayPeriodUntil(last.toISOString().split('T')[0]);
+    }
+  }, [selectedDocMonth]);
 
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editPhone, setEditPhone] = useState(user.phone || '');
@@ -52,27 +64,26 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     }
   }, [initialDocView]);
 
-  const periodDisplay = useMemo(() => {
-    const d = new Date(Date.parse(`1 ${selectedDocMonth}`));
-    if (isNaN(d.getTime())) return { from: '---', till: '---', year: '---' };
-    const y = d.getFullYear();
-    const m = d.getMonth();
-    const from = new Date(y, m, 1).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
-    const till = new Date(y, m + 1, 0).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
-    return { from, till, year: y.toString() };
-  }, [selectedDocMonth]);
+  const monthOptions = useMemo(() => {
+    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    return months.map(m => `${m} 2026`);
+  }, []);
 
   const allMyShifts = useMemo(() => {
     return (shifts || []).filter(s => s.userIds?.includes(user.id) && s.status === 'completed');
   }, [shifts, user.id]);
 
-  const monthlyShifts = useMemo(() => {
+  const filteredShifts = useMemo(() => {
+    if (!payPeriodFrom || !payPeriodUntil) return [];
+    const from = new Date(payPeriodFrom);
+    const until = new Date(payPeriodUntil);
+    until.setHours(23, 59, 59);
+
     return allMyShifts.filter(s => {
       const d = s.date.includes('-') ? new Date(s.date) : new Date(`${s.date} ${new Date().getFullYear()}`);
-      const monthStr = d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }).toUpperCase();
-      return monthStr === selectedDocMonth;
+      return d >= from && d <= until;
     });
-  }, [allMyShifts, selectedDocMonth]);
+  }, [allMyShifts, payPeriodFrom, payPeriodUntil]);
 
   // MALTA 2026 STATUTORY LOGIC
   const calculateMalteseTax = (annualGross: number, status: 'Single' | 'Married' | 'Parent', children: number = 0) => {
@@ -83,16 +94,11 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         else if (annualGross <= 60000) tax = (annualGross - 21200) * 0.25 + 1275;
         else tax = (annualGross - 60000) * 0.35 + 10975;
     } else if (status === 'Parent') {
-        // Parent Rate Brackets
         if (annualGross <= 10500) tax = 0;
         else if (annualGross <= 15800) tax = (annualGross - 10500) * 0.15;
         else if (annualGross <= 60000) tax = (annualGross - 15800) * 0.25 + 795;
         else tax = (annualGross - 60000) * 0.35 + 11845;
-
-        // 2026 Special Family Allowance Rebate (Simulation for 2+ kids)
-        if (children >= 2) {
-            tax = Math.max(0, tax - 450); // Additional family rebate for 2+ children
-        }
+        if (children >= 2) tax = Math.max(0, tax - 450); 
     } else {
         if (annualGross <= 9100) tax = 0;
         else if (annualGross <= 14500) tax = (annualGross - 9100) * 0.15;
@@ -103,20 +109,16 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
   };
 
   const calculateNI = (weeklyGross: number, weeks: number) => {
-    // Malta Class 1 NI - 10% of basic weekly wage, but with min/max caps for 2026
     const rate10 = weeklyGross * 0.10;
-    const minNI = 21.45; // Projected 2026 minimum
-    const maxNI = 60.12; // Projected 2026 maximum
-    
+    const minNI = 21.45; 
+    const maxNI = 60.12; 
     let weeklyNI = rate10;
     if (weeklyNI < minNI && weeklyGross > 0) weeklyNI = minNI; 
     if (weeklyNI > maxNI) weeklyNI = maxNI;
-    
     return weeklyNI * weeks;
   };
 
   const getGovBonus = (monthStr: string) => {
-    // Statutory Government Bonus distributed quarterly
     if (monthStr.includes('MAR')) return 121.16;
     if (monthStr.includes('JUN')) return 135.10;
     if (monthStr.includes('SEP')) return 121.16;
@@ -129,15 +131,13 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     let totalBonus = 0;
     let totalHours = 0;
 
-    monthlyShifts.forEach(s => {
+    filteredShifts.forEach(s => {
       const durationMs = (s.actualEndTime || 0) - (s.actualStartTime || 0);
       const hours = durationMs / (1000 * 60 * 60);
       totalHours += hours;
-      
       const hourlyRate = user.payRate || 5.00;
       const shiftBase = hours * hourlyRate;
       totalBase += shiftBase;
-
       if (s.approvalStatus === 'approved') {
           const prop = properties?.find(p => p.id === s.propertyId);
           if (prop && user.paymentType === 'Per Clean') {
@@ -152,17 +152,13 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
 
     const calculatedGross = totalBase + totalBonus + getGovBonus(selectedDocMonth);
     const finalGross = manualGrossPay !== null ? manualGrossPay : calculatedGross;
-    
     const weeklyGrossForNI = finalGross / weeksInMonth;
     const ni = calculateNI(weeklyGrossForNI, weeksInMonth);
-    
-    const maternity = finalGross * 0.003; // 0.3% Maternity Fund
-    
+    const maternity = finalGross * 0.003;
     const annualProj = finalGross * 12;
     let taxCategory: 'Single' | 'Married' | 'Parent' = 'Single';
     if (user.maritalStatus === 'Married') taxCategory = 'Married';
     else if (user.isParent) taxCategory = 'Parent';
-    
     const annualTax = calculateMalteseTax(annualProj, taxCategory, user.childrenCount || 0);
     const tax = annualTax / 12;
 
@@ -174,7 +170,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
       maternity,
       totalNet: finalGross - ni - tax - maternity
     };
-  }, [monthlyShifts, user, selectedDocMonth, manualGrossPay, weeksInMonth, properties]);
+  }, [filteredShifts, user, selectedDocMonth, manualGrossPay, weeksInMonth, properties]);
 
   const handlePrint = () => {
     if (!printContentRef.current) return;
@@ -184,7 +180,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     if (printWindow) {
         printWindow.document.open();
         printWindow.document.write(`
-            <html><head><title>Payroll Doc</title><script src="https://cdn.tailwindcss.com"></script><style>@media print { .no-print { display: none; } body { background: white; margin: 0; padding: 20px; } }</style></head><body>${content}</body><script>window.onload=function(){setTimeout(function(){window.print();},500);}</script></html>
+            <html><head><title>Payroll Record</title><script src="https://cdn.tailwindcss.com"></script><style>@media print { .no-print { display: none; } body { background: white; margin: 0; padding: 20px; } }</style></head><body>${content}</body><script>window.onload=function(){setTimeout(function(){window.print();},500);}</script></html>
         `);
         printWindow.document.close();
         setTimeout(() => setIsPrinting(false), 1000);
@@ -193,13 +189,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
 
   const handleSaveProfile = () => {
     if (onUpdateUser) {
-      onUpdateUser({
-        ...user,
-        phone: editPhone,
-        maritalStatus: editMaritalStatus,
-        isParent: editIsParent,
-        childrenCount: editChildrenCount
-      });
+      onUpdateUser({ ...user, phone: editPhone, maritalStatus: editMaritalStatus, isParent: editIsParent, childrenCount: editChildrenCount });
     }
     setIsEditingProfile(false);
   };
@@ -284,35 +274,38 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
            <div className="flex justify-between items-center border-b border-slate-50 pb-6">
               <div className="space-y-1">
                  <h3 className="text-xl font-bold text-slate-900 uppercase">Payslip Terminal</h3>
-                 <p className="text-[9px] font-black text-indigo-600 uppercase tracking-widest">Period: {selectedDocMonth}</p>
+                 <p className="text-[9px] font-black text-indigo-600 uppercase tracking-widest">Active Calculator</p>
               </div>
-              <div className="flex items-center gap-2">
-                 <button onClick={() => setViewingDoc('payslip')} className="bg-slate-900 text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl">GENERATE</button>
-              </div>
+              <button onClick={() => setViewingDoc('payslip')} className="bg-slate-900 text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl">GENERATE PDF</button>
            </div>
 
            <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                 <div className="space-y-2">
-                    <label className={subLabelStyle}>Exact Gross Pay (€)</label>
-                    <input 
-                      type="number" 
-                      step="0.01"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-black text-indigo-900 shadow-inner" 
-                      placeholder={payrollData.grossPay.toFixed(2)}
-                      value={manualGrossPay || ''}
-                      onChange={e => setManualGrossPay(parseFloat(e.target.value) || null)}
-                    />
-                    <p className="text-[7px] text-slate-400 italic">* Insert exact amount to override shift-based auto calculations.</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                 <div className="space-y-2 md:col-span-2">
+                    <label className={subLabelStyle}>Quick-Select Month (2026)</label>
+                    <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold uppercase" value={selectedDocMonth} onChange={e => setSelectedDocMonth(e.target.value)}>
+                      {monthOptions.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
                  </div>
                  <div className="space-y-2">
-                    <label className={subLabelStyle}>Weeks in Month</label>
+                    <label className={subLabelStyle}>Period From</label>
+                    <input type="date" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold" value={payPeriodFrom} onChange={e => setPayPeriodFrom(e.target.value)} />
+                 </div>
+                 <div className="space-y-2">
+                    <label className={subLabelStyle}>Period Until</label>
+                    <input type="date" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold" value={payPeriodUntil} onChange={e => setPayPeriodUntil(e.target.value)} />
+                 </div>
+                 <div className="space-y-2">
+                    <label className={subLabelStyle}>Exact Gross Pay (€)</label>
+                    <input type="number" step="0.01" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-black text-indigo-900 shadow-inner" placeholder={payrollData.grossPay.toFixed(2)} value={manualGrossPay || ''} onChange={e => setManualGrossPay(parseFloat(e.target.value) || null)} />
+                 </div>
+                 <div className="space-y-2">
+                    <label className={subLabelStyle}>Weeks for NI</label>
                     <div className="flex p-1 bg-slate-100 rounded-xl gap-1">
                        {[4, 5].map(w => (
                          <button key={w} onClick={() => setWeeksInMonth(w as any)} className={`flex-1 py-2 rounded-lg text-[10px] font-black transition-all ${weeksInMonth === w ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>{w} WEEKS</button>
                        ))}
                     </div>
-                    <p className="text-[7px] text-slate-400 italic">* Changes NI & Tax contribution based on Malta 2026 law.</p>
                  </div>
               </div>
 
@@ -343,7 +336,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                        <p className="text-[11px] font-black text-teal-600 uppercase tracking-widest">PE NO: {organization?.peNumber || 'N/A'}</p>
                        <div className="mt-6">
                           <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">Pay Period</p>
-                          <p className="text-[11px] font-black text-slate-900">{periodDisplay.from} — {periodDisplay.till}</p>
+                          <p className="text-[11px] font-black text-slate-900">{payPeriodFrom.split('-').reverse().join('/')} — {payPeriodUntil.split('-').reverse().join('/')}</p>
                        </div>
                     </div>
                     <div className="text-right space-y-4">
