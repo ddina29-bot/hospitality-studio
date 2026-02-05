@@ -41,7 +41,10 @@ const App: React.FC = () => {
   const [selectedAuditShiftId, setSelectedAuditShiftId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const isHydrating = useRef(false);
+  
+  // CRITICAL FIX: Track if we have successfully loaded data from the server at least once this session
+  const [hasHydrated, setHasHydrated] = useState(false);
+  const isHydratingInProgress = useRef(false);
   const lastLocalUpdate = useRef<number>(0);
 
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
@@ -95,13 +98,12 @@ const App: React.FC = () => {
     setNotifications(prev => [fullNotif, ...prev]);
   };
 
+  // HYDRATION: Fetching from Server
   useEffect(() => {
     const hydrateState = async () => {
-      if (!user || isHydrating.current) return;
+      if (!user || isHydratingInProgress.current) return;
       
-      if (Date.now() - lastLocalUpdate.current < 3000) return;
-
-      isHydrating.current = true;
+      isHydratingInProgress.current = true;
       setIsLoading(true);
       try {
         const response = await fetch(`/api/state?email=${encodeURIComponent(user.email)}`);
@@ -111,34 +113,39 @@ const App: React.FC = () => {
           const org = data.organization;
           setOrgId(org.id);
           localStorage.setItem('current_org_id', org.id);
-          if (Date.now() - lastLocalUpdate.current > 3000) {
-              if (org.users) setUsers(org.users);
-              if (org.shifts) setShifts(org.shifts);
-              if (org.properties) setProperties(org.properties);
-              if (org.clients) setClients(org.clients);
-              if (org.invoices) setInvoices(org.invoices);
-              if (org.timeEntries) setTimeEntries(org.timeEntries);
-              if (org.tutorials) setTutorials(org.tutorials);
-              if (org.inventoryItems) setInventoryItems(org.inventoryItems);
-              if (org.supplyRequests) setSupplyRequests(org.supplyRequests);
-              if (org.anomalyReports) setAnomalyReports(org.anomalyReports);
-              if (org.manualTasks) setManualTasks(org.manualTasks);
-              if (org.leaveRequests) setLeaveRequests(org.leaveRequests);
-              if (org.settings) setOrganization(org.settings);
-              if (org.authorizedLaundryUserIds) setAuthorizedLaundryUserIds(org.authorizedLaundryUserIds);
-          }
+          
+          if (org.users) setUsers(org.users);
+          if (org.shifts) setShifts(org.shifts);
+          if (org.properties) setProperties(org.properties);
+          if (org.clients) setClients(org.clients);
+          if (org.invoices) setInvoices(org.invoices);
+          if (org.timeEntries) setTimeEntries(org.timeEntries);
+          if (org.tutorials) setTutorials(org.tutorials);
+          if (org.inventoryItems) setInventoryItems(org.inventoryItems);
+          if (org.supplyRequests) setSupplyRequests(org.supplyRequests);
+          if (org.anomalyReports) setAnomalyReports(org.anomalyReports);
+          if (org.manualTasks) setManualTasks(org.manualTasks);
+          if (org.leaveRequests) setLeaveRequests(org.leaveRequests);
+          if (org.settings) setOrganization(org.settings);
+          if (org.authorizedLaundryUserIds) setAuthorizedLaundryUserIds(org.authorizedLaundryUserIds);
+          
+          // CRITICAL: Mark as hydrated so sync is allowed to start
+          setHasHydrated(true);
         }
       } catch (err) {
         console.error("Hydration Error:", err);
       } finally {
         setIsLoading(false);
-        isHydrating.current = false;
+        isHydratingInProgress.current = false;
       }
     };
     hydrateState();
   }, [user?.email]);
 
   const saveAllLocal = useCallback(() => {
+    // Only save local if we are sure we have the latest from server or we are the first login
+    if (!hasHydrated && user) return;
+
     lastLocalUpdate.current = Date.now();
     safeSave('studio_users', users);
     safeSave('studio_shifts', shifts);
@@ -157,15 +164,14 @@ const App: React.FC = () => {
     safeSave('studio_org_settings', organization);
     if (user) safeSave('current_user_obj', user);
     safeSave('studio_auth_laundry_ids', authorizedLaundryUserIds);
-  }, [users, shifts, properties, clients, invoices, timeEntries, tutorials, activeTab, user, organization, inventoryItems, supplyRequests, anomalyReports, authorizedLaundryUserIds, manualTasks, leaveRequests, notifications]);
+  }, [users, shifts, properties, clients, invoices, timeEntries, tutorials, activeTab, user, organization, inventoryItems, supplyRequests, anomalyReports, authorizedLaundryUserIds, manualTasks, leaveRequests, notifications, hasHydrated]);
 
+  // SYNC: Sending to Server
   useEffect(() => {
-    if (!user) return;
+    if (!user || !orgId || !hasHydrated || isHydratingInProgress.current) return;
 
     if (localPersistenceTimeoutRef.current) clearTimeout(localPersistenceTimeoutRef.current);
     localPersistenceTimeoutRef.current = setTimeout(saveAllLocal, 500); 
-
-    if (!orgId || isHydrating.current) return;
 
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     syncTimeoutRef.current = setTimeout(async () => {
@@ -190,13 +196,13 @@ const App: React.FC = () => {
         console.error("Cloud Sync error:", err); 
         setIsSyncing(false);
       }
-    }, 1500);
+    }, 2000); // 2 second debounce for safety
 
     return () => {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
       if (localPersistenceTimeoutRef.current) clearTimeout(localPersistenceTimeoutRef.current);
     };
-  }, [saveAllLocal, user, orgId, users, shifts, properties, clients, invoices, timeEntries, tutorials, activeTab, organization, inventoryItems, supplyRequests, anomalyReports, authorizedLaundryUserIds, manualTasks, leaveRequests, notifications]);
+  }, [saveAllLocal, user, orgId, hasHydrated, users, shifts, properties, clients, invoices, timeEntries, tutorials, activeTab, organization, inventoryItems, supplyRequests, anomalyReports, authorizedLaundryUserIds, manualTasks, leaveRequests, notifications]);
 
   useEffect(() => {
     const handleUnload = () => saveAllLocal();
@@ -240,6 +246,7 @@ const App: React.FC = () => {
         if (organizationData.notifications) setNotifications(organizationData.notifications);
         if (organizationData.inventoryItems) setInventoryItems(organizationData.inventoryItems);
         if (organizationData.timeEntries) setTimeEntries(organizationData.timeEntries);
+        setHasHydrated(true);
     }
     if (u.role === 'supervisor') setActiveTab('shifts');
     else if (u.role === 'laundry') setActiveTab('laundry');
@@ -249,6 +256,7 @@ const App: React.FC = () => {
   const handleLogout = () => {
     setUser(null);
     setOrgId(null);
+    setHasHydrated(false);
     localStorage.clear();
   };
 
@@ -368,7 +376,7 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-[#F0FDFA] overflow-hidden">
-      {isLoading && (shifts.length === 0 || !orgId) ? (
+      {isLoading && (!hasHydrated) ? (
         <div className="flex-1 flex flex-col items-center justify-center py-40 animate-pulse">
            <div className="w-12 h-12 border-4 border-teal-50 border-t-teal-600 rounded-full animate-spin"></div>
            <p className="text-[10px] font-black uppercase tracking-widest mt-6 text-teal-600">Synchronizing Session Core...</p>

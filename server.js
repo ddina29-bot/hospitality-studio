@@ -23,25 +23,22 @@ app.use(express.json({ limit: '100mb' }));
 app.use(express.static(path.join(__dirname, 'dist')));
 
 // --- SQLITE DATABASE SETUP ---
-let DATA_DIR;
-if (process.env.RAILWAY_VOLUME_MOUNT_PATH) {
-  DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH;
-} else if (fs.existsSync('/app/data')) {
-  DATA_DIR = '/app/data';
-} else {
-  DATA_DIR = path.join(__dirname, 'data');
-}
+// Specifically targeting /app/data for persistent volumes as requested
+let DATA_DIR = '/app/data';
 
 if (!fs.existsSync(DATA_DIR)) {
   try {
+    // Try to create the directory if it doesn't exist (useful for Docker/Local hybrid)
     fs.mkdirSync(DATA_DIR, { recursive: true });
   } catch (e) {
-    DATA_DIR = '/tmp/data';
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+    // Fallback to a local folder if /app/data is strictly read-only or unavailable (e.g., local windows dev)
+    DATA_DIR = path.join(__dirname, 'data');
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
   }
 }
 
-const DB_PATH = path.join(DATA_DIR, 'studio.db');
+// Updated filename from studio.db to database.sqlite at the requested path
+const DB_PATH = path.join(DATA_DIR, 'database.sqlite');
 const db = new Database(DB_PATH);
 
 db.exec(`
@@ -142,6 +139,15 @@ app.post('/api/sync', async (req, res) => {
     return res.status(404).json({ error: "Org not found" });
   }
   
+  // INTEGRITY CHECK: 
+  // If the server has a large amount of properties/users and the incoming data is empty,
+  // reject the sync as it is likely a race condition from a non-hydrated client.
+  const isSuspicious = (org.properties && org.properties.length > 3 && (!data.properties || data.properties.length === 0));
+  if (isSuspicious) {
+    console.warn(`Sync blocked: Possible data wipe attempt detected for Org ${orgId}`);
+    return res.status(422).json({ error: "Data integrity violation: client sent empty state for non-empty environment." });
+  }
+
   // Merge data
   Object.keys(data).forEach(key => {
     org[key] = data[key];

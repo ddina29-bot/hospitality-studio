@@ -312,6 +312,8 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
 
   const [currentWeekStart, setCurrentWeekStart] = useState(() => {
     const d = new Date();
+    // Use Midnight relative to Local Time to ensure rollover is consistent
+    d.setHours(0,0,0,0);
     const day = d.getDay();
     const diff = d.getDate() - day + (day === 0 ? -6 : 1);
     return new Date(d.setDate(diff));
@@ -586,7 +588,6 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
                     approvalStatus: status, 
                     decidedBy: auditorName,
                     approvalComment: finalComment,
-                    // PRESERVE ORIGINAL USERIDS SO SHIFT DOESN'T DISAPPEAR FROM THE Grid
                 };
             }
             return s;
@@ -651,7 +652,6 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
         return next;
     });
 
-    // We close the review modal and open the fix modal
     handleRescheduleFix(originalToFix, finalComment);
   };
 
@@ -709,12 +709,9 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
   const categorizedGridUsers = useMemo(() => {
     const query = search.toLowerCase();
     const filtered = users.filter(u => {
-      // STRICTLY ONLY CLEANERS AND SUPERVISORS
       if (!['cleaner', 'supervisor'].includes(u.role)) return false;
-      
       const matchesSearch = u.name.toLowerCase().includes(query);
       if (!matchesSearch) return false;
-      
       return true;
     });
     return [
@@ -722,7 +719,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
     ].filter(g => g.members.length > 0);
   }, [users, search]);
 
-  const labelStyle = "text-[7px] font-black text-black uppercase tracking-[0.4em] opacity-80 mb-0.5 block px-1";
+  const labelStyle = "text-[7px] font-black text-black uppercase tracking-[0.4em] opacity-80 mb-1.5 block px-1";
   const inputStyle = "w-full bg-teal-50 border border-slate-200 rounded-lg px-2 py-1.5 text-[#1A1A1A] text-[9px] font-bold uppercase tracking-widest outline-none focus:border-[#0D9488] h-10 transition-all";
 
   const reviewDuration = useMemo(() => {
@@ -738,7 +735,13 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
         <div className="flex flex-col lg:flex-row lg:items-center gap-4">
            <div className="flex bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm h-10 w-fit">
               <button onClick={() => navigateWeek(-1)} className="px-4 flex items-center text-slate-400 hover:text-slate-600 border-r border-slate-200 transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="15 18 9 12 15 6"/></svg></button>
-              <button onClick={() => setCurrentWeekStart(new Date())} className="px-6 flex items-center text-[9px] font-black text-black uppercase tracking-widest border-r border-slate-200 transition-colors hover:bg-teal-50">TODAY</button>
+              <button onClick={() => {
+                  const d = new Date();
+                  d.setHours(0,0,0,0);
+                  const day = d.getDay();
+                  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+                  setCurrentWeekStart(new Date(d.setDate(diff)));
+              }} className="px-6 flex items-center text-[9px] font-black text-black uppercase tracking-widest border-r border-slate-200 transition-colors hover:bg-teal-50">TODAY</button>
               <button onClick={() => navigateWeek(1)} className="px-4 flex items-center text-slate-400 hover:text-slate-600 transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="15 18 9 12 15 6"/></svg></button>
            </div>
            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
@@ -765,7 +768,6 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
            </div>
         </div>
 
-        {/* Status Legend Row */}
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-1 pt-3 border-t border-slate-100 mt-1">
            <div className="flex items-center gap-2">
               <div className="w-1.5 h-1.5 rounded-full bg-slate-100 border border-slate-200"></div>
@@ -794,14 +796,13 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
         </div>
       </header>
 
-      {/* Grid View */}
       {viewMode === 'grid' ? (
         <div className="bg-white rounded-[32px] border border-slate-200 overflow-hidden shadow-2xl mt-2 relative">
           <div className="overflow-x-auto custom-scrollbar">
             <table className="w-full border-collapse table-fixed min-w-[1200px]">
               <thead>
                 <tr className="bg-white border-b border-slate-200">
-                  <th className="p-4 text-left w-48 border-r border-slate-300 bg-teal-600 text-white sticky left-0 z-20 shadow-[10px_0_20px_-10px_rgba(0,0,0,0.4)]">
+                  <th className="p-4 text-left w-48 border-r border-slate-300 bg-teal-600 text-white sticky left-0 z-20 shadow-[10px_0_20_px_-10px_rgba(0,0,0,0.4)]">
                     <span className="text-[9px] font-black text-white/60 uppercase tracking-[0.2em]">Personnel</span>
                   </th>
                   {weekDates.map((date, idx) => (
@@ -827,7 +828,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
                       const isActiveNow = isUserActiveNow(cleaner.id);
                       return (
                       <tr key={cleaner.id} className={`group hover:bg-teal-50/10 ${isActiveNow ? 'bg-teal-50/20' : ''}`}>
-                        <td className={`p-4 border-r border-slate-300 bg-white sticky left-0 z-10 shadow-[10px_0_20px_-10px_rgba(0,0,0,0.3)] transition-colors ${isActiveNow ? 'bg-teal-50/10' : ''}`}>
+                        <td className={`p-4 border-r border-slate-300 bg-white sticky left-0 z-10 shadow-[10px_0_20_px_-10px_rgba(0,0,0,0.3)] transition-colors ${isActiveNow ? 'bg-teal-50/10' : ''}`}>
                           <div className="flex items-center gap-3">
                             <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-serif-brand text-xs font-bold relative ${isActiveNow ? 'bg-green-500 text-white shadow-[0_0_15px_rgba(34,197,94,0.5)]' : 'bg-teal-50 border border-teal-100 text-teal-700'}`}>
                                 {cleaner.name.charAt(0)}
@@ -1224,7 +1225,6 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
                        </div>
                     </div>
 
-                    {/* Personnel Insight Card */}
                     <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 space-y-4">
                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.4em]">Personnel Details</p>
                        <div className="flex flex-wrap gap-4">
@@ -1246,7 +1246,6 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
 
                  <div className="space-y-6">
                     {(reviewShift.approvalStatus !== 'pending') ? (
-                        /* DECISION MADE VIEW (LOCKED BUT INFORMATIVE) */
                         <div className={`p-8 rounded-3xl border space-y-8 animate-in slide-in-from-right-4 ${reviewShift.approvalStatus === 'approved' ? 'bg-emerald-50 border-emerald-100' : 'bg-rose-50 border-rose-100'}`}>
                            <div className="flex items-center justify-between border-b border-black/5 pb-4">
                               <div className="space-y-1">
@@ -1303,7 +1302,6 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
                            </div>
                         </div>
                     ) : reviewShift.status === 'active' ? (
-                        /* LIVE MONITOR VIEW (NON-INTERACTIVE AUDIT) */
                         <div className="p-8 rounded-3xl border border-violet-100 bg-violet-50/50 space-y-8 animate-pulse">
                            <div className="flex items-center justify-between border-b border-violet-100 pb-4">
                               <div className="space-y-1">
@@ -1327,7 +1325,6 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
                            </div>
                         </div>
                     ) : (
-                        /* INTERACTIVE REVIEW VIEW (FOR COMPLETED WORK) */
                         <>
                             <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
                                 <div className="flex justify-between items-center mb-3">
