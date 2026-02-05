@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { TabType, UserRole } from '../types';
 
@@ -9,9 +10,10 @@ interface LayoutProps {
   onLogout: () => void;
   notificationCount?: number;
   onOpenNotifications?: () => void;
+  isSyncing?: boolean;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role, onLogout, notificationCount = 0, onOpenNotifications }) => {
+const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role, onLogout, notificationCount = 0, onOpenNotifications, isSyncing = false }) => {
   const [showMenu, setShowMenu] = useState(false);
 
   const navItems: { id: TabType; label: string; icon: string; roles: UserRole[] }[] = [
@@ -35,28 +37,38 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role
   return (
     <div className="flex h-screen bg-[#F0FDFA] overflow-hidden w-full">
       {/* SECONDARY SIDEBAR: DARK SLATE (DESKTOP) */}
-      <aside className="hidden md:flex flex-col w-64 bg-[#1E293B] text-white shrink-0">
-        <div className="p-8 flex justify-between items-start">
-          <div className="flex flex-col">
-            <h1 className="font-brand text-2xl text-white tracking-tighter uppercase leading-none">RESET</h1>
-            <p className="text-[9px] font-bold text-teal-400 uppercase tracking-[0.25em] mt-2">HOSPITALITY STUDIO</p>
+      <aside className="hidden md:flex flex-col w-64 bg-[#1E293B] text-white shrink-0 shadow-2xl relative z-50">
+        <div className="p-8 flex flex-col gap-4">
+          <div className="flex justify-between items-start">
+            <div className="flex flex-col">
+              <h1 className="font-brand text-2xl text-white tracking-tighter uppercase leading-none">RESET</h1>
+              <p className="text-[9px] font-bold text-teal-400 uppercase tracking-[0.25em] mt-2">HOSPITALITY STUDIO</p>
+            </div>
+            <button 
+              onClick={onOpenNotifications}
+              className="relative p-2 rounded-xl hover:bg-white/5 transition-colors"
+            >
+              <span className="text-xl">🔔</span>
+              {notificationCount > 0 && (
+                <span className="absolute top-0 right-0 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center text-[8px] font-black animate-bounce shadow-lg">
+                  {notificationCount}
+                </span>
+              )}
+            </button>
           </div>
-          {/* Notification Bell - Enabled for ALL users */}
-          <button 
-            onClick={onOpenNotifications}
-            className="relative p-2 rounded-xl hover:bg-white/5 transition-colors"
-            aria-label="Notifications"
-          >
-            <span className="text-xl">🔔</span>
-            {notificationCount > 0 && (
-              <span className="absolute top-0 right-0 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center text-[8px] font-black animate-bounce shadow-lg">
-                {notificationCount}
-              </span>
-            )}
-          </button>
+
+          {/* CLOUD SYNC INDICATOR */}
+          <div className="pt-2">
+             <div className={`px-4 py-2 rounded-xl border transition-all duration-500 flex items-center gap-3 ${isSyncing ? 'bg-teal-500/10 border-teal-500/30' : 'bg-slate-800/30 border-slate-700/50'}`}>
+                <div className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-teal-400 animate-ping' : 'bg-slate-500'}`}></div>
+                <span className={`text-[7px] font-black uppercase tracking-[0.2em] ${isSyncing ? 'text-teal-400' : 'text-slate-500'}`}>
+                   {isSyncing ? 'Cloud Syncing...' : 'Cloud Verified'}
+                </span>
+             </div>
+          </div>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-4 space-y-1.5 custom-scrollbar">
+        <nav className="flex-1 overflow-y-auto px-4 space-y-1.5 custom-scrollbar mt-4">
           {visibleItems.map(item => (
             <button
               key={item.id}
@@ -82,14 +94,16 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role
       {/* MAIN CONTENT */}
       <main className="flex-1 flex flex-col min-w-0 relative w-full overflow-hidden">
         {/* MOBILE HEADER */}
-        <header className="md:hidden bg-[#F0FDFA] border-b border-teal-100 px-4 py-3 flex justify-between items-center sticky top-0 z-40">
+        <header className="md:hidden bg-white border-b border-teal-100 px-4 py-3 flex justify-between items-center sticky top-0 z-40 shadow-sm">
            <div className="flex flex-col">
               <h2 className="font-brand font-bold text-[#1E293B] text-lg leading-none tracking-tighter">RESET</h2>
-              <span className="text-[6px] font-black text-[#0D9488] uppercase tracking-widest mt-0.5">STUDIO</span>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                 <div className={`w-1 h-1 rounded-full ${isSyncing ? 'bg-teal-500 animate-pulse' : 'bg-slate-300'}`}></div>
+                 <span className="text-[6px] font-black text-slate-400 uppercase tracking-widest">{isSyncing ? 'SYNCING' : 'VERIFIED'}</span>
+              </div>
            </div>
            <div className="flex items-center gap-3">
-             {/* Mobile Notification Bell - Enabled for ALL users */}
-             <button onClick={onOpenNotifications} className="relative p-2" aria-label="Notifications">
+             <button onClick={onOpenNotifications} className="relative p-2">
                <span className="text-xl">🔔</span>
                {notificationCount > 0 && (
                  <span className="absolute top-0 right-0 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center text-[8px] font-black shadow-lg">
@@ -97,13 +111,9 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role
                  </span>
                )}
              </button>
-             <div className="w-8 h-8 rounded-full bg-white border border-teal-100 text-[#0D9488] flex items-center justify-center text-[9px] font-bold uppercase shadow-sm">
-              {role.charAt(0)}
-             </div>
              <button 
                onClick={onLogout}
                className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center shadow-sm active:scale-95 transition-all"
-               title="Exit App"
              >
                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
              </button>
@@ -150,7 +160,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, role
              </div>
              
              <div className="grid grid-cols-2 gap-3 flex-1 mb-6">
-                {visibleItems.map(item => (
+                {navItems.filter(item => item.roles.includes(role)).map(item => (
                   <button 
                     key={item.id} 
                     onClick={() => { setActiveTab(item.id); setShowMenu(false); }}

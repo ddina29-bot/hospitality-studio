@@ -43,6 +43,7 @@ const App: React.FC = () => {
   const [selectedAuditShiftId, setSelectedAuditShiftId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncTimestamp, setLastSyncTimestamp] = useState<number>(Date.now());
   
   const [hasHydrated, setHasHydrated] = useState(false);
   const isHydratingInProgress = useRef(false);
@@ -162,11 +163,17 @@ const App: React.FC = () => {
     safeSave('studio_auth_laundry_ids', authorizedLaundryUserIds);
   }, [users, shifts, properties, clients, invoices, timeEntries, tutorials, activeTab, user, organization, inventoryItems, supplyRequests, anomalyReports, authorizedLaundryUserIds, manualTasks, leaveRequests, notifications, hasHydrated]);
 
+  // Handle immediate UI persistence (Local Storage)
+  useEffect(() => {
+    if (!user || !hasHydrated) return;
+    if (localPersistenceTimeoutRef.current) clearTimeout(localPersistenceTimeoutRef.current);
+    localPersistenceTimeoutRef.current = setTimeout(saveAllLocal, 200);
+  }, [users, shifts, properties, clients, invoices, timeEntries, organization, manualTasks, leaveRequests, activeTab, notifications, saveAllLocal, user, hasHydrated]);
+
+  // Handle Cloud Sync (Debounced Server Push)
+  // Removed UI-only states like activeTab and search queries from here
   useEffect(() => {
     if (!user || !orgId || !hasHydrated || isHydratingInProgress.current) return;
-
-    if (localPersistenceTimeoutRef.current) clearTimeout(localPersistenceTimeoutRef.current);
-    localPersistenceTimeoutRef.current = setTimeout(saveAllLocal, 500); 
 
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     syncTimeoutRef.current = setTimeout(async () => {
@@ -185,19 +192,19 @@ const App: React.FC = () => {
           })
         });
         if (response.ok) {
-           setTimeout(() => setIsSyncing(false), 1000);
+           setLastSyncTimestamp(Date.now());
+           setTimeout(() => setIsSyncing(false), 500);
         }
       } catch (err) { 
         console.error("Cloud Sync error:", err); 
         setIsSyncing(false);
       }
-    }, 2000);
+    }, 800); // Reduced delay for more aggressive cloud syncing
 
     return () => {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-      if (localPersistenceTimeoutRef.current) clearTimeout(localPersistenceTimeoutRef.current);
     };
-  }, [saveAllLocal, user, orgId, hasHydrated, users, shifts, properties, clients, invoices, timeEntries, tutorials, activeTab, organization, inventoryItems, supplyRequests, anomalyReports, authorizedLaundryUserIds, manualTasks, leaveRequests, notifications]);
+  }, [user, orgId, hasHydrated, users, shifts, properties, clients, invoices, timeEntries, tutorials, organization, inventoryItems, supplyRequests, anomalyReports, authorizedLaundryUserIds, manualTasks, leaveRequests, notifications]);
 
   const handleUpdateUser = (updatedUser: User) => {
     setUser(updatedUser);
@@ -383,15 +390,8 @@ const App: React.FC = () => {
           onLogout={handleLogout}
           notificationCount={notifications.length}
           onOpenNotifications={() => setShowActivityCenter(true)}
+          isSyncing={isSyncing}
         >
-          {isSyncing && (
-             <div className="fixed top-4 right-10 z-[5000] animate-in slide-in-from-top-2">
-                <div className="bg-slate-900/90 text-white px-3 py-1.5 rounded-full border border-teal-500/30 flex items-center gap-2 shadow-2xl backdrop-blur-sm">
-                   <div className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-ping"></div>
-                   <span className="text-[7px] font-black uppercase tracking-widest">Cloud Syncing</span>
-                </div>
-             </div>
-          )}
           {renderContent()}
         </Layout>
       )}
