@@ -17,10 +17,10 @@ interface PersonnelProfileProps {
 const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests = [], onRequestLeave, shifts = [], properties = [], onUpdateUser, organization, initialDocView, initialHistoricalPayslip }) => {
   const currentUserObj = JSON.parse(localStorage.getItem('current_user_obj') || '{}');
   const isCurrentUserAdmin = currentUserObj.role === 'admin';
-  const isViewingSelf = user.id === currentUserObj.id;
   
-  // Rule: Admins can manage anyone. Users can manage themselves in "My Studio".
-  const canManagePayslip = isCurrentUserAdmin || isViewingSelf;
+  // Rule: ONLY Admins can manage/generate payslips. 
+  // Standard users can only view their history in the archive.
+  const canManagePayslip = isCurrentUserAdmin;
   
   const [viewingDoc, setViewingDoc] = useState<'payslip' | 'worksheet' | 'fs3' | null>(initialDocView || null);
   const [activeHistoricalPayslip, setActiveHistoricalPayslip] = useState<SavedPayslip | null>(initialHistoricalPayslip || null);
@@ -253,11 +253,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         return;
     }
     
-    const confirmCommit = window.confirm(
-      isViewingSelf && !isCurrentUserAdmin
-        ? "CONFIRM PAY PERIOD FINALIZATION:\n\nYou are about to verify your earnings for this period and submit them to the record."
-        : `CONFIRM FINANCIAL COMMITMENT:\n\nYou are about to freeze this record into ${user.name}'s permanent file. This action generates a historical payslip for the employee.`
-    );
+    const confirmCommit = window.confirm(`CONFIRM FINANCIAL COMMITMENT:\n\nYou are about to freeze this record into ${user.name}'s permanent file. This action generates a historical payslip for the employee.`);
 
     if (!confirmCommit) return;
 
@@ -274,7 +270,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
       govBonus: payrollData.govBonus,
       daysWorked: payrollData.daysInPeriod,
       generatedAt: new Date().toISOString(),
-      generatedBy: currentUserObj.name || 'System User'
+      generatedBy: currentUserObj.name || 'Admin User'
     };
 
     const updatedPayslips = [...(user.payslips || []), newPayslip];
@@ -388,14 +384,14 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
 
         {/* Payslip & Registry Suite */}
         <div className="lg:col-span-8 space-y-8 flex flex-col">
-           {/* Terminal Strip */}
+           {/* Terminal Strip - ONLY FOR ADMIN */}
            {canManagePayslip && (
              <section className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-sm space-y-8 animate-in slide-in-from-top-4">
                 <div className="flex justify-between items-center border-b border-slate-50 pb-6">
                    <div className="space-y-1">
                       <h3 className="text-xl font-bold text-slate-900 uppercase">Payslip Terminal</h3>
                       <p className="text-[9px] font-black text-indigo-600 uppercase tracking-widest">
-                         {isCurrentUserAdmin ? 'Maltese 2026 Compliance Generator' : 'Official Earnings Review'}
+                         Maltese 2026 Compliance Generator
                       </p>
                    </div>
                    <button 
@@ -441,7 +437,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                         onClick={handleCommitPayslip}
                         className="bg-indigo-600 text-white font-black py-5 rounded-[1.5rem] uppercase text-[10px] tracking-[0.2em] shadow-xl hover:bg-indigo-700 active:scale-95 transition-all flex flex-col items-center justify-center gap-1"
                       >
-                        <span>{isCurrentUserAdmin ? 'COMMIT TO RECORD' : 'VERIFY & ARCHIVE PERIOD'}</span>
+                        <span>COMMIT TO RECORD</span>
                         <span className="text-[7px] opacity-60 uppercase">Finalize financial record</span>
                       </button>
                    </div>
