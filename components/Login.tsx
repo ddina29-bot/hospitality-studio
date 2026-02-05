@@ -7,7 +7,7 @@ interface LoginProps {
   onSignupClick: () => void;
 }
 
-const Login: React.FC<LoginProps> = ({ onLogin }) => {
+const Login: React.FC<LoginProps> = ({ onLogin, onSignupClick }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -89,6 +89,14 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
               className="w-full btn-teal py-5 shadow-2xl shadow-teal-900/20 text-xs uppercase tracking-[0.3em] disabled:opacity-50"
             >
               {isLoading ? 'Verifying...' : 'Log in'}
+            </button>
+            
+            <button 
+              type="button"
+              onClick={onSignupClick}
+              className="w-full text-slate-400 hover:text-teal-600 transition-colors py-2 text-[9px] font-black uppercase tracking-widest"
+            >
+              New Studio? Create Organization
             </button>
           </div>
           

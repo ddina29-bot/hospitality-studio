@@ -14,6 +14,7 @@ import LaundryDashboard from './components/dashboards/LaundryDashboard';
 import PersonnelProfile from './components/PersonnelProfile';
 import ActivityCenter from './components/ActivityCenter';
 import Login from './components/Login';
+import Signup from './components/Signup';
 import UserActivation from './components/UserActivation';
 import { TabType, Shift, User, Client, Property, Invoice, TimeEntry, Tutorial, UserRole, OrganizationSettings, SupplyItem, SupplyRequest, AnomalyReport, ManualTask, LeaveRequest, AppNotification } from './types';
 
@@ -34,6 +35,7 @@ const safeSave = (key: string, data: any) => {
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(() => load('current_user_obj', null));
+  const [authView, setAuthView] = useState<'login' | 'signup'>('login');
   const [orgId, setOrgId] = useState<string | null>(() => localStorage.getItem('current_org_id'));
   const [activeTab, setActiveTab] = useState<TabType>(() => (localStorage.getItem('studio_active_tab') as TabType) || 'dashboard');
   
@@ -42,10 +44,8 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   
-  // CRITICAL FIX: Track if we have successfully loaded data from the server at least once this session
   const [hasHydrated, setHasHydrated] = useState(false);
   const isHydratingInProgress = useRef(false);
-  const lastLocalUpdate = useRef<number>(0);
 
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>(() => load('studio_notifications', []));
@@ -98,7 +98,6 @@ const App: React.FC = () => {
     setNotifications(prev => [fullNotif, ...prev]);
   };
 
-  // HYDRATION: Fetching from Server
   useEffect(() => {
     const hydrateState = async () => {
       if (!user || isHydratingInProgress.current) return;
@@ -129,7 +128,6 @@ const App: React.FC = () => {
           if (org.settings) setOrganization(org.settings);
           if (org.authorizedLaundryUserIds) setAuthorizedLaundryUserIds(org.authorizedLaundryUserIds);
           
-          // CRITICAL: Mark as hydrated so sync is allowed to start
           setHasHydrated(true);
         }
       } catch (err) {
@@ -143,10 +141,8 @@ const App: React.FC = () => {
   }, [user?.email]);
 
   const saveAllLocal = useCallback(() => {
-    // Only save local if we are sure we have the latest from server or we are the first login
     if (!hasHydrated && user) return;
 
-    lastLocalUpdate.current = Date.now();
     safeSave('studio_users', users);
     safeSave('studio_shifts', shifts);
     safeSave('studio_props', properties);
@@ -166,7 +162,6 @@ const App: React.FC = () => {
     safeSave('studio_auth_laundry_ids', authorizedLaundryUserIds);
   }, [users, shifts, properties, clients, invoices, timeEntries, tutorials, activeTab, user, organization, inventoryItems, supplyRequests, anomalyReports, authorizedLaundryUserIds, manualTasks, leaveRequests, notifications, hasHydrated]);
 
-  // SYNC: Sending to Server
   useEffect(() => {
     if (!user || !orgId || !hasHydrated || isHydratingInProgress.current) return;
 
@@ -196,19 +191,13 @@ const App: React.FC = () => {
         console.error("Cloud Sync error:", err); 
         setIsSyncing(false);
       }
-    }, 2000); // 2 second debounce for safety
+    }, 2000);
 
     return () => {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
       if (localPersistenceTimeoutRef.current) clearTimeout(localPersistenceTimeoutRef.current);
     };
   }, [saveAllLocal, user, orgId, hasHydrated, users, shifts, properties, clients, invoices, timeEntries, tutorials, activeTab, organization, inventoryItems, supplyRequests, anomalyReports, authorizedLaundryUserIds, manualTasks, leaveRequests, notifications]);
-
-  useEffect(() => {
-    const handleUnload = () => saveAllLocal();
-    window.addEventListener('beforeunload', handleUnload);
-    return () => window.removeEventListener('beforeunload', handleUnload);
-  }, [saveAllLocal]);
 
   const handleUpdateUser = (updatedUser: User) => {
     setUser(updatedUser);
@@ -258,6 +247,7 @@ const App: React.FC = () => {
     setOrgId(null);
     setHasHydrated(false);
     localStorage.clear();
+    setAuthView('login');
   };
 
   const onToggleLaundryPrepared = (shiftId: string) => {
@@ -372,7 +362,11 @@ const App: React.FC = () => {
     }
   };
 
-  if (!user) return <Login onLogin={handleLogin} onSignupClick={() => {}} />;
+  if (!user) {
+    return authView === 'login' 
+      ? <Login onLogin={handleLogin} onSignupClick={() => setAuthView('signup')} />
+      : <Signup onSignupComplete={handleLogin} onBackToLogin={() => setAuthView('login')} />;
+  }
 
   return (
     <div className="flex h-screen bg-[#F0FDFA] overflow-hidden">

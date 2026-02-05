@@ -6,7 +6,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
 import fs from 'fs';
-import nodemailer from 'nodemailer';
 import Database from 'better-sqlite3';
 
 // Load environment variables
@@ -23,22 +22,21 @@ app.use(express.json({ limit: '100mb' }));
 app.use(express.static(path.join(__dirname, 'dist')));
 
 // --- SQLITE DATABASE SETUP ---
-// Specifically targeting /app/data for persistent volumes as requested
 let DATA_DIR = '/app/data';
 
 if (!fs.existsSync(DATA_DIR)) {
   try {
-    // Try to create the directory if it doesn't exist (useful for Docker/Local hybrid)
     fs.mkdirSync(DATA_DIR, { recursive: true });
+    console.log(`Created persistent directory at ${DATA_DIR}`);
   } catch (e) {
-    // Fallback to a local folder if /app/data is strictly read-only or unavailable (e.g., local windows dev)
+    console.error(`Failed to create ${DATA_DIR}, falling back to local:`, e.message);
     DATA_DIR = path.join(__dirname, 'data');
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
   }
 }
 
-// Updated filename from studio.db to database.sqlite at the requested path
 const DB_PATH = path.join(DATA_DIR, 'database.sqlite');
+console.log(`Database initialized at: ${DB_PATH}`);
 const db = new Database(DB_PATH);
 
 db.exec(`
@@ -75,7 +73,6 @@ const findOrgByUserEmail = (email) => {
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads'); 
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
-// SERVE THE UPLOADED FILES SO LINKS WORK
 app.use('/uploads', express.static(UPLOADS_DIR));
 
 const diskStorage = multer.diskStorage({
@@ -107,10 +104,16 @@ app.post('/api/auth/signup', async (req, res) => {
 
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
+  console.log(`Login attempt for: ${email}`);
   const org = findOrgByUserEmail(email);
-  if (!org) return res.status(401).json({ error: 'User not found.' });
+  if (!org) {
+    console.warn(`User ${email} not found in database.`);
+    return res.status(401).json({ error: 'User not found.' });
+  }
   const user = org.users.find(u => u.email.toLowerCase() === email.toLowerCase());
-  if (user.status !== 'pending' && user.password !== password) return res.status(401).json({ error: 'Invalid credentials.' });
+  if (user.status !== 'pending' && user.password !== password) {
+    return res.status(401).json({ error: 'Invalid credentials.' });
+  }
   res.json({ success: true, user, organization: org });
 });
 
@@ -134,27 +137,18 @@ app.post('/api/auth/invite', async (req, res) => {
 app.post('/api/sync', async (req, res) => {
   const { orgId, data } = req.body;
   const org = getOrgById(orgId);
-  if (!org) {
-    console.error(`Sync Fail: Org ${orgId} not found.`);
-    return res.status(404).json({ error: "Org not found" });
-  }
+  if (!org) return res.status(404).json({ error: "Org not found" });
   
-  // INTEGRITY CHECK: 
-  // If the server has a large amount of properties/users and the incoming data is empty,
-  // reject the sync as it is likely a race condition from a non-hydrated client.
   const isSuspicious = (org.properties && org.properties.length > 3 && (!data.properties || data.properties.length === 0));
   if (isSuspicious) {
-    console.warn(`Sync blocked: Possible data wipe attempt detected for Org ${orgId}`);
-    return res.status(422).json({ error: "Data integrity violation: client sent empty state for non-empty environment." });
+    return res.status(422).json({ error: "Data integrity violation blocked." });
   }
 
-  // Merge data
   Object.keys(data).forEach(key => {
     org[key] = data[key];
   });
   
   saveOrgToDb(org);
-  console.log(`Sync Success: Org ${orgId} updated at ${new Date().toLocaleTimeString()}`);
   res.json({ success: true });
 });
 
