@@ -20,8 +20,12 @@ import { TabType, Shift, User, Client, Property, Invoice, TimeEntry, Tutorial, U
 
 const load = <T,>(k: string, f: T): T => {
   if (typeof window === 'undefined') return f;
+  
+  // If an activation code is present, we NEVER load old data
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('code')) return f;
+
   const sessionUser = localStorage.getItem('current_user_obj');
-  // If no user is logged in, do not load historical data from localStorage
   if (!sessionUser) return f;
   
   const s = localStorage.getItem(k);
@@ -38,16 +42,23 @@ const safeSave = (key: string, data: any) => {
 };
 
 const App: React.FC = () => {
-  const [user, setUser] = useState<User | null>(() => {
+  // Determine if we are in an activation flow before initializing any user state
+  const activationToken = useMemo(() => {
     if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    return params.get('code');
+  }, []);
+
+  const [user, setUser] = useState<User | null>(() => {
+    if (typeof window === 'undefined' || activationToken) return null;
     const s = localStorage.getItem('current_user_obj');
     if (!s) return null;
     try { return JSON.parse(s); } catch (e) { return null; }
   });
   
   const [authView, setAuthView] = useState<'login' | 'signup'>('login');
-  const [orgId, setOrgId] = useState<string | null>(() => localStorage.getItem('current_org_id'));
-  const [activeTab, setActiveTab] = useState<TabType>(() => (localStorage.getItem('studio_active_tab') as TabType) || 'dashboard');
+  const [orgId, setOrgId] = useState<string | null>(() => activationToken ? null : localStorage.getItem('current_org_id'));
+  const [activeTab, setActiveTab] = useState<TabType>(() => activationToken ? 'dashboard' : (localStorage.getItem('studio_active_tab') as TabType) || 'dashboard');
   
   const [targetLogisticsUserId, setTargetLogisticsUserId] = useState<string | null>(null);
   const [selectedAuditShiftId, setSelectedAuditShiftId] = useState<string | null>(null);
@@ -57,12 +68,6 @@ const App: React.FC = () => {
   
   const [hasHydrated, setHasHydrated] = useState(false);
   const isHydratingInProgress = useRef(false);
-
-  const activationToken = useMemo(() => {
-    if (typeof window === 'undefined') return null;
-    const params = new URLSearchParams(window.location.search);
-    return params.get('code');
-  }, []);
 
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>(() => load('studio_notifications', []));
@@ -156,10 +161,10 @@ const App: React.FC = () => {
   }, [user?.email]);
 
   useEffect(() => {
-    if (user) {
+    if (user && !activationToken) {
       hydrateState();
     }
-  }, [user?.email, hydrateState]);
+  }, [user?.email, hydrateState, activationToken]);
 
   const saveAllLocal = useCallback(() => {
     if (!hasHydrated && user) return;
@@ -244,7 +249,6 @@ const App: React.FC = () => {
   };
 
   const handleLogin = (u: User, organizationData?: any) => {
-    // Clear old storage to prevent leak between sessions
     localStorage.clear();
     
     setUser(u);
@@ -288,7 +292,8 @@ const App: React.FC = () => {
     showToast('LINEN PREPARATION STATUS UPDATED', 'success');
   };
 
-  if (activationToken && !user) {
+  // FORCE ACTIVATION MODE IF TOKEN IS PRESENT
+  if (activationToken) {
     return (
       <UserActivation 
         token={activationToken} 

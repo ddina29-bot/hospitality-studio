@@ -13,7 +13,7 @@ const UserActivation: React.FC<UserActivationProps> = ({ token, onActivationComp
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [isVerifying, setIsVerifying] = useState(true);
-  const [tempUser, setTempUser] = useState<User | null>(null);
+  const [tempUser, setTempUser] = useState<{name: string, role: string, email: string} | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
@@ -28,16 +28,26 @@ const UserActivation: React.FC<UserActivationProps> = ({ token, onActivationComp
   });
 
   useEffect(() => {
-    // SECURITY: Clear any old session data immediately to prevent data leaks
+    // SECURITY: Clear any old session data immediately to prevent data leaks from old accounts
     localStorage.clear();
     
     const verifyToken = async () => {
-      // In a real app, we'd fetch user info by token from server
-      // For now we assume the token is valid but we'll use it in handleFinalize
-      setTimeout(() => {
-        setTempUser({ id: 'pending', name: 'Authorized Personnel', email: '', role: 'cleaner', status: 'pending' });
+      try {
+        const response = await fetch(`/api/auth/verify-token?token=${encodeURIComponent(token)}`);
+        const data = await response.json();
+        
+        if (!response.ok) {
+          setError(data.error || 'Invalid or expired activation link.');
+          setIsVerifying(false);
+          return;
+        }
+
+        setTempUser(data);
         setIsVerifying(false);
-      }, 800);
+      } catch (err) {
+        setError("Network error verifying link.");
+        setIsVerifying(false);
+      }
     };
     verifyToken();
   }, [token]);
@@ -118,6 +128,21 @@ const UserActivation: React.FC<UserActivationProps> = ({ token, onActivationComp
     );
   }
 
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#FDF8EE] p-8">
+        <div className="max-w-md w-full bg-white p-10 rounded-[3rem] border border-rose-100 shadow-2xl text-center space-y-6">
+           <div className="w-20 h-20 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center text-4xl mx-auto shadow-sm">!</div>
+           <div className="space-y-2">
+             <h2 className="text-2xl font-bold uppercase text-slate-900 tracking-tight">Deployment Failed</h2>
+             <p className="text-sm text-slate-500 font-medium leading-relaxed">{error}</p>
+           </div>
+           <button onClick={onCancel} className="w-full bg-slate-900 text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest">Return to Home</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 md:p-12 overflow-y-auto">
       <div className="max-w-xl w-full space-y-10 animate-in slide-in-from-bottom-8 duration-700 py-10">
@@ -125,16 +150,11 @@ const UserActivation: React.FC<UserActivationProps> = ({ token, onActivationComp
         <div className="text-center space-y-2">
           <div className="w-16 h-16 bg-[#0D9488] rounded-[1.5rem] flex items-center justify-center text-white text-3xl font-black mx-auto shadow-xl mb-6">R</div>
           <h1 className="font-brand text-3xl text-slate-900 tracking-tight uppercase">USER DEPLOYMENT</h1>
-          <p className="text-[10px] font-bold text-teal-600 uppercase tracking-[0.5em]">PHASE {step} OF 3</p>
+          <p className="text-[10px] font-bold text-teal-600 uppercase tracking-[0.5em]">WELCOME, {tempUser?.name.toUpperCase()}</p>
+          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest italic">{tempUser?.role.toUpperCase()} • STAGE {step} OF 3</p>
         </div>
 
         <div className="bg-white p-8 md:p-12 rounded-[3rem] border border-slate-100 shadow-2xl text-left">
-          {error && (
-            <div className="bg-rose-50 border border-rose-100 p-4 rounded-2xl text-rose-600 text-[10px] font-black uppercase text-center mb-6">
-              {error}
-            </div>
-          )}
-          
           {step === 1 && (
             <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
                <div className="space-y-1">

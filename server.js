@@ -152,6 +152,15 @@ app.post('/api/auth/invite', async (req, res) => {
   res.json({ success: true, user: createdUser });
 });
 
+app.get('/api/auth/verify-token', (req, res) => {
+  const { token } = req.query;
+  const org = findOrgByToken(token);
+  if (!org) return res.status(404).json({ error: 'Invalid link.' });
+  const user = org.users.find(u => u.activationToken === token);
+  if (!user) return res.status(404).json({ error: 'User not found.' });
+  res.json({ success: true, name: user.name, role: user.role, email: user.email });
+});
+
 app.post('/api/auth/activate', async (req, res) => {
   const { token, profileData } = req.body;
   const org = findOrgByToken(token);
@@ -180,14 +189,10 @@ app.post('/api/sync', async (req, res) => {
   const org = getOrgById(orgId);
   if (!org) return res.status(404).json({ error: "Org not found" });
   
-  // ACTIVATION SHIELD: 
-  // If we have users in the payload, compare them with existing users.
-  // Never allow an incoming 'pending' status to overwrite an 'active' status.
   if (data.users && Array.isArray(data.users)) {
     data.users = data.users.map(incomingUser => {
       const serverUser = org.users.find(u => u.id === incomingUser.id);
       if (serverUser && serverUser.status === 'active' && incomingUser.status === 'pending') {
-        // Protect the active status and clear token from incoming data
         return { ...incomingUser, status: 'active', activationToken: null };
       }
       return incomingUser;
