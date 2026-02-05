@@ -362,7 +362,8 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
                         </div>
                         <div className="bg-white/80 p-6 rounded-[2rem] border border-teal-200/50 shadow-sm">
                            <label className={labelStyle}>Base Remuneration Rate (€)</label>
-                           <input type="number" className="w-full bg-transparent text-3xl font-black text-teal-900 outline-none" value={editingUser.payRate} onChange={e => setEditingUser({...editingUser, payRate: parseFloat(e.target.value)})} placeholder="0.00" />
+                           {/* FIXED: step="0.01" to allow cents without browser errors */}
+                           <input type="number" step="0.01" className="w-full bg-transparent text-3xl font-black text-teal-900 outline-none" value={editingUser.payRate} onChange={e => setEditingUser({...editingUser, payRate: parseFloat(e.target.value) || 0})} placeholder="0.00" />
                         </div>
                         <div>
                            <label className={labelStyle}>Official SEPA IBAN (PAYOUTS)</label>
