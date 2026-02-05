@@ -18,12 +18,13 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
   const currentUserObj = JSON.parse(localStorage.getItem('current_user_obj') || '{}');
   const isCurrentUserAdmin = currentUserObj.role === 'admin';
   
-  // Rule: ONLY Admins can manage/generate payslips. 
-  // Standard users can only view their history in the archive.
+  // Rule: ONLY Admins can access the generator/terminal.
   const canManagePayslip = isCurrentUserAdmin;
   
   const [viewingDoc, setViewingDoc] = useState<'payslip' | 'worksheet' | 'fs3' | null>(initialDocView || null);
   const [activeHistoricalPayslip, setActiveHistoricalPayslip] = useState<SavedPayslip | null>(initialHistoricalPayslip || null);
+  const [activeModule, setActiveModule] = useState<'PAYROLL' | 'INVOICING' | 'RECORDS'>('PAYROLL');
+  const [activeSubTab, setActiveSubTab] = useState<'PENDING PAYOUTS' | 'PAYSLIP REGISTRY'>('PAYSLIP REGISTRY');
   const [isPrinting, setIsPrinting] = useState(false);
   
   // 2026 COMPLIANCE STATES
@@ -248,12 +249,9 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
   };
 
   const handleCommitPayslip = () => {
-    if (!onUpdateUser) {
-        console.warn("Update handler missing from prop chain.");
-        return;
-    }
+    if (!onUpdateUser) return;
     
-    const confirmCommit = window.confirm(`CONFIRM FINANCIAL COMMITMENT:\n\nYou are about to freeze this record into ${user.name}'s permanent file. This action generates a historical payslip for the employee.`);
+    const confirmCommit = window.confirm(`CONFIRM FINANCIAL COMMITMENT:\n\nYou are about to freeze this record into ${user.name}'s permanent file. This action generates a historical payslip.`);
 
     if (!confirmCommit) return;
 
@@ -283,232 +281,216 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     setViewingDoc('payslip');
   };
 
-  return (
-    <div className="bg-slate-50 min-h-screen space-y-10 animate-in fade-in duration-700 text-left pb-24">
-      <header className="space-y-1 px-8 pt-8">
-        <h2 className="text-3xl font-bold text-slate-900 uppercase tracking-tight font-brand">Personnel File</h2>
-        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Digital Employment Dossier</p>
-      </header>
+  const formatDateRange = (from: string, until: string) => {
+    const f = from.split('-').reverse().join('/');
+    const u = until.split('-').reverse().join('/');
+    return `${f} - ${u}`;
+  };
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 px-8">
-        {/* Profile Card */}
-        <section className="lg:col-span-4 bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-sm space-y-8 h-fit">
-           <div className="flex justify-between items-start">
-              <div className="flex items-center gap-6">
-                 <div className="w-20 h-20 rounded-[1.5rem] bg-teal-50 flex items-center justify-center text-teal-600 font-bold text-3xl shadow-inner overflow-hidden">
-                    {user.photoUrl ? <img src={user.photoUrl} className="w-full h-full object-cover" /> : user.name.charAt(0)}
-                 </div>
-                 <div>
-                    <p className={subLabelStyle}>ID: {user.email}</p>
-                    <h3 className="text-2xl font-bold text-slate-900 uppercase tracking-tight">{user.name}</h3>
-                 </div>
+  const visibleSubTabs = useMemo(() => {
+    return canManagePayslip ? ['PENDING PAYOUTS', 'PAYSLIP REGISTRY'] : ['PAYSLIP REGISTRY'];
+  }, [canManagePayslip]);
+
+  return (
+    <div className="bg-[#F0FDFA] min-h-screen text-left pb-24 font-brand animate-in fade-in duration-500">
+      {/* Top connecteam-style Nav Modules */}
+      <div className="bg-white/80 backdrop-blur-md sticky top-0 z-30 border-b border-teal-50 px-6 py-2 shadow-sm flex gap-4 overflow-x-auto no-scrollbar">
+         {['PAYROLL', 'INVOICING', 'RECORDS'].map(mod => (
+            <button 
+              key={mod}
+              onClick={() => setActiveModule(mod as any)}
+              className={`px-6 py-2.5 rounded-xl text-[10px] font-black tracking-[0.1em] transition-all whitespace-nowrap ${activeModule === mod ? 'bg-[#0D9488] text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+               {mod}
+            </button>
+         ))}
+      </div>
+
+      <div className="max-w-[1400px] mx-auto px-4 md:px-8 pt-8 space-y-10">
+        {/* Profile Card Summary */}
+        <section className="bg-white border border-slate-100 rounded-[2rem] p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-8 shadow-sm">
+           <div className="flex items-center gap-6 w-full md:w-auto">
+              <div className="w-16 h-16 md:w-20 md:h-20 rounded-[1.5rem] bg-teal-50 flex items-center justify-center text-[#0D9488] font-bold text-3xl shadow-inner overflow-hidden border border-teal-100">
+                 {user.photoUrl ? <img src={user.photoUrl} className="w-full h-full object-cover" /> : user.name.charAt(0)}
+              </div>
+              <div className="text-left">
+                 <h2 className="text-xl md:text-2xl font-bold text-slate-900 uppercase tracking-tight">{user.name}</h2>
+                 <p className="text-[10px] font-black text-[#0D9488] uppercase tracking-widest mt-1">{user.role}</p>
+                 <p className="text-[9px] font-bold text-slate-400 uppercase mt-0.5">{user.email}</p>
               </div>
            </div>
-
-           <div className="space-y-6 border-t border-slate-50 pt-8">
-              <div>
-                 <p className={subLabelStyle}>Marital Status</p>
-                 {isEditingProfile ? (
-                   <select className={editInputStyle} value={editMaritalStatus} onChange={e => setEditMaritalStatus(e.target.value)}>
-                     <option value="Single">Single</option>
-                     <option value="Married">Married</option>
-                     <option value="Separated">Separated</option>
-                   </select>
-                 ) : (
-                   <p className={detailValueStyle}>{user.maritalStatus || 'Single'}</p>
-                 )}
+           
+           <div className="flex flex-wrap gap-4 w-full md:w-auto">
+              <div className="bg-slate-50 px-6 py-3 rounded-2xl border border-slate-100 min-w-[120px]">
+                 <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1 text-center">CONTRACT</p>
+                 <p className="text-xs font-bold text-slate-900 text-center">{user.employmentType || 'Full-Time'}</p>
               </div>
-              <div>
-                 <p className={subLabelStyle}>Tax Category</p>
-                 <div className="flex flex-col gap-3">
-                   {isEditingProfile ? (
-                     <div className="space-y-3">
-                        <div className="flex items-center gap-3">
-                           <input type="checkbox" id="pcheck" className="w-5 h-5 accent-teal-600" checked={editIsParent} onChange={e => setEditIsParent(e.target.checked)} />
-                           <label htmlFor="pcheck" className="text-[10px] font-bold text-slate-500 uppercase">Parent Rates</label>
-                        </div>
-                        {editIsParent && (
-                           <select className={editInputStyle} value={editChildrenCount} onChange={e => setEditChildrenCount(parseInt(e.target.value))}>
-                              <option value={0}>0 Children</option>
-                              <option value={1}>1 Child</option>
-                              <option value={2}>2+ Children</option>
-                           </select>
-                        )}
-                     </div>
-                   ) : (
-                     <p className={detailValueStyle}>
-                       {user.isParent ? `PARENT (${user.childrenCount || 0} CHILD${(user.childrenCount || 0) === 1 ? '' : 'REN'})` : user.maritalStatus === 'Married' ? 'MARRIED RATE' : 'STANDARD RATE'}
-                     </p>
-                   )}
-                 </div>
-              </div>
-
-              {isEditingProfile && isCurrentUserAdmin && (
-                <>
-                  <div>
-                    <p className={subLabelStyle}>Wage Type</p>
-                    <select className={editInputStyle} value={editPaymentType} onChange={e => setEditPaymentType(e.target.value as PaymentType)}>
-                       <option value="Per Hour">Per Hour (Standard)</option>
-                       <option value="Fixed Wage">Fixed Wage (Monthly)</option>
-                       <option value="Per Clean">Per Deployment (Piece-rate)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <p className={subLabelStyle}>Rate (€)</p>
-                    <input type="number" step="0.01" className={editInputStyle} value={editPayRate} onChange={e => setEditPayRate(parseFloat(e.target.value) || 0)} />
-                  </div>
-                  <div>
-                    <p className={subLabelStyle}>Employment Type</p>
-                    <select className={editInputStyle} value={editEmploymentType} onChange={e => setEditEmploymentType(e.target.value as EmploymentType)}>
-                       <option value="Full-Time">Full-Time</option>
-                       <option value="Part-Time">Part-Time</option>
-                       <option value="Casual">Casual</option>
-                       <option value="Contractor">Contractor</option>
-                    </select>
-                  </div>
-                </>
-              )}
-
-              <div className="pt-4 flex flex-col gap-2">
-                 {isCurrentUserAdmin && (
-                   <button onClick={() => setIsEditingProfile(!isEditingProfile)} className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl uppercase text-[10px] tracking-widest shadow-lg">
-                      {isEditingProfile ? 'DISCARD CHANGES' : 'EDIT PROFILE METADATA'}
-                   </button>
-                 )}
-                 {isEditingProfile && (
-                   <button onClick={handleSaveProfile} className="w-full bg-teal-600 text-white font-black py-4 rounded-2xl uppercase text-[10px] tracking-widest shadow-lg active:scale-95 transition-all">SAVE & PERSIST</button>
-                 )}
+              <div className="bg-slate-50 px-6 py-3 rounded-2xl border border-slate-100 min-w-[120px]">
+                 <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1 text-center">RATE</p>
+                 <p className="text-xs font-bold text-slate-900 text-center">€{user.payRate?.toFixed(2)} / {user.paymentType === 'Per Hour' ? 'HR' : 'CLEAN'}</p>
               </div>
            </div>
         </section>
 
-        {/* Payslip & Registry Suite */}
-        <div className="lg:col-span-8 space-y-8 flex flex-col">
-           {/* Terminal Strip - ONLY FOR ADMIN */}
-           {canManagePayslip && (
-             <section className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-sm space-y-8 animate-in slide-in-from-top-4">
-                <div className="flex justify-between items-center border-b border-slate-50 pb-6">
-                   <div className="space-y-1">
-                      <h3 className="text-xl font-bold text-slate-900 uppercase">Payslip Terminal</h3>
-                      <p className="text-[9px] font-black text-indigo-600 uppercase tracking-widest">
-                         Maltese 2026 Compliance Generator
-                      </p>
-                   </div>
-                   <button 
-                     type="button"
-                     onClick={() => { setActiveHistoricalPayslip(null); setViewingDoc('payslip'); }} 
-                     className="bg-slate-900 text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl active:scale-95 transition-all"
-                   >
-                     PREVIEW DRAFT
-                   </button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2 md:col-span-2">
-                         <label className={subLabelStyle}>Select Pay Period Month</label>
-                         <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold uppercase" value={selectedDocMonth} onChange={e => setSelectedDocMonth(e.target.value)}>
-                           {monthOptions.map(m => <option key={m} value={m}>{m}</option>)}
-                         </select>
-                      </div>
-                      <div className="space-y-2">
-                         <label className={subLabelStyle}>Period From</label>
-                         <input type="date" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold" value={payPeriodFrom} onChange={e => setPayPeriodFrom(e.target.value)} />
-                      </div>
-                      <div className="space-y-2">
-                         <label className={subLabelStyle}>Period Until</label>
-                         <input type="date" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold" value={payPeriodUntil} onChange={e => setPayPeriodUntil(e.target.value)} />
-                      </div>
-                   </div>
-
-                   <div className="flex flex-col gap-4 justify-center">
-                      <div className="p-6 bg-emerald-50 border border-emerald-100 rounded-[1.5rem] flex items-center justify-between">
-                         <div>
-                            <p className={subLabelStyle}>Est. Net Payout</p>
-                            <p className="text-4xl font-black text-emerald-700 leading-none">€{payrollData.totalNet.toFixed(2)}</p>
-                         </div>
-                         <div className="text-right">
-                            <p className="text-[7px] font-black text-emerald-400 uppercase tracking-widest">Gross Base</p>
-                            <p className="text-sm font-bold text-emerald-600/60 leading-none mt-1">€{payrollData.grossPay.toFixed(2)}</p>
-                         </div>
-                      </div>
-                      <button 
-                        type="button"
-                        onClick={handleCommitPayslip}
-                        className="bg-indigo-600 text-white font-black py-5 rounded-[1.5rem] uppercase text-[10px] tracking-[0.2em] shadow-xl hover:bg-indigo-700 active:scale-95 transition-all flex flex-col items-center justify-center gap-1"
-                      >
-                        <span>COMMIT TO RECORD</span>
-                        <span className="text-[7px] opacity-60 uppercase">Finalize financial record</span>
-                      </button>
-                   </div>
-                </div>
-             </section>
-           )}
-
-           {/* Archive Registry - MATCHING THE SCREENSHOT STYLE */}
-           <section className="bg-white border border-slate-100 rounded-[2.5rem] shadow-sm overflow-hidden flex-1 flex flex-col">
-              <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
-                 <div className="space-y-1">
-                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.3em]">Official Document Archive</h3>
-                 </div>
-                 <span className="bg-teal-50 text-teal-600 px-4 py-1.5 rounded-full text-[8px] font-black uppercase tracking-widest border border-teal-100">
-                    {(user.payslips || []).length} Records Synced
-                 </span>
+        {/* Financial Terminal / Registry Suite */}
+        <div className="space-y-6">
+           <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+              <div className="flex gap-10 border-b border-slate-200 w-full md:w-auto px-4">
+                 {visibleSubTabs.map(tab => (
+                    <button 
+                      key={tab}
+                      onClick={() => setActiveSubTab(tab as any)}
+                      className={`pb-4 text-[10px] md:text-[11px] font-black tracking-widest transition-all relative ${activeSubTab === tab ? 'text-[#0D9488]' : 'text-slate-400'}`}
+                    >
+                       {tab}
+                       {activeSubTab === tab && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0D9488] animate-in slide-in-from-left duration-300"></div>}
+                    </button>
+                 ))}
               </div>
               
-              <div className="flex-1 overflow-x-auto">
-                 <table className="w-full text-left">
-                    <thead className="bg-slate-50/80 text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
-                       <tr>
-                          <th className="px-8 py-5">Month / Cycle</th>
-                          <th className="px-8 py-5">Period Range</th>
-                          <th className="px-8 py-5">Gross Amount</th>
-                          <th className="px-8 py-5">Net Payable</th>
-                          <th className="px-8 py-5 text-right">Actions</th>
-                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-50">
-                       {(user.payslips || []).length === 0 ? (
-                         <tr>
-                           <td colSpan={5} className="px-8 py-32 text-center opacity-20 grayscale">
-                              <span className="text-4xl block mb-4">📑</span>
-                              <p className="text-[10px] font-black uppercase tracking-widest">No generated payslips in registry</p>
-                           </td>
-                         </tr>
-                       ) : [...(user.payslips || [])].reverse().map(ps => (
-                         <tr key={ps.id} className="hover:bg-slate-50 group transition-colors">
-                            <td className="px-8 py-6">
-                               <p className="text-[11px] font-black text-slate-900 uppercase tracking-tight">{ps.month}</p>
-                            </td>
-                            <td className="px-8 py-6">
-                               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
-                                  {ps.periodFrom.split('-').reverse().join('/')} — {ps.periodUntil.split('-').reverse().join('/')}
-                               </p>
-                            </td>
-                            <td className="px-8 py-6">
-                               <p className="text-sm font-bold text-slate-900 tracking-tight">€{ps.grossPay.toFixed(2)}</p>
-                            </td>
-                            <td className="px-8 py-6">
-                               <p className="text-sm font-black text-[#0D9488] tracking-tight">€{ps.netPay.toFixed(2)}</p>
-                            </td>
-                            <td className="px-8 py-6 text-right">
-                               <button 
-                                 onClick={() => viewHistoricalPayslip(ps)}
-                                 className="bg-[#0D9488] text-white px-6 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-md hover:bg-teal-700 active:scale-95 transition-all"
-                               >
-                                 VIEW DOC
-                               </button>
-                            </td>
-                         </tr>
-                       ))}
-                    </tbody>
-                 </table>
-              </div>
-           </section>
+              {activeSubTab === 'PENDING PAYOUTS' && canManagePayslip && (
+                 <button onClick={() => { setActiveHistoricalPayslip(null); setViewingDoc('payslip'); }} className="w-full md:w-auto bg-slate-900 text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl active:scale-95 transition-all">
+                    PREVIEW LIVE CALCULATION
+                 </button>
+              )}
+           </div>
+
+           <div className="animate-in slide-in-from-bottom-4 duration-500">
+              {activeSubTab === 'PENDING PAYOUTS' && canManagePayslip ? (
+                /* LIVE GENERATOR INTERFACE - ADMIN ONLY */
+                <section className="bg-white border border-slate-100 rounded-[2.5rem] p-6 md:p-10 shadow-lg space-y-10">
+                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+                      <div className="space-y-6">
+                         <div className="space-y-2">
+                            <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Configuration Terminal</h3>
+                            <p className="text-[10px] text-slate-400 font-medium">Select period parameters for the calculation.</p>
+                         </div>
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="md:col-span-2">
+                               <label className={subLabelStyle}>Month Focus</label>
+                               <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-[10px] font-black uppercase tracking-widest" value={selectedDocMonth} onChange={e => setSelectedDocMonth(e.target.value)}>
+                                  {monthOptions.map(m => <option key={m} value={m}>{m}</option>)}
+                               </select>
+                            </div>
+                            <div>
+                               <label className={subLabelStyle}>Period Start</label>
+                               <input type="date" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-[10px] font-bold" value={payPeriodFrom} onChange={e => setPayPeriodFrom(e.target.value)} />
+                            </div>
+                            <div>
+                               <label className={subLabelStyle}>Period End</label>
+                               <input type="date" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-[10px] font-bold" value={payPeriodUntil} onChange={e => setPayPeriodUntil(e.target.value)} />
+                            </div>
+                         </div>
+                      </div>
+
+                      <div className="flex flex-col gap-6 justify-center">
+                         <div className="p-8 bg-emerald-50 border border-emerald-100 rounded-[2rem] flex items-center justify-between shadow-inner">
+                            <div className="text-left">
+                               <p className={subLabelStyle}>Projected Net</p>
+                               <p className="text-5xl font-black text-emerald-700 tracking-tighter">€{payrollData.totalNet.toFixed(2)}</p>
+                            </div>
+                            <div className="text-right">
+                               <p className="text-[8px] font-black text-emerald-400 uppercase tracking-widest">Gross Base</p>
+                               <p className="text-base font-bold text-emerald-600/60 mt-1">€{payrollData.grossPay.toFixed(2)}</p>
+                            </div>
+                         </div>
+                         <button 
+                           onClick={handleCommitPayslip}
+                           className="w-full bg-indigo-600 text-white font-black py-6 rounded-[1.5rem] uppercase text-[10px] tracking-[0.3em] shadow-xl hover:bg-indigo-700 active:scale-95 transition-all flex flex-col items-center justify-center gap-1.5"
+                         >
+                            <span>COMMIT TO RECORD</span>
+                            <span className="text-[7px] opacity-60">Authorize official document creation</span>
+                         </button>
+                      </div>
+                   </div>
+                </section>
+              ) : (
+                /* OFFICIAL REGISTRY - CONNECTEAM STYLE */
+                <section className="bg-white border border-slate-100 rounded-[2.5rem] shadow-xl overflow-hidden flex flex-col">
+                   {/* Table View - Desktop */}
+                   <div className="hidden md:block overflow-x-auto">
+                      <table className="w-full text-left">
+                         <thead className="bg-slate-50/80 border-b border-slate-100">
+                            <tr>
+                               <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest">Employee</th>
+                               <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest">Month</th>
+                               <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest">Period</th>
+                               <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Gross (€)</th>
+                               <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Net (€)</th>
+                               <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+                            </tr>
+                         </thead>
+                         <tbody className="divide-y divide-slate-50">
+                            {(user.payslips || []).length === 0 ? (
+                               <tr>
+                                  <td colSpan={6} className="px-10 py-32 text-center opacity-20 grayscale">
+                                     <span className="text-4xl block mb-4">📑</span>
+                                     <p className="text-[10px] font-black uppercase tracking-widest">No generated payslips found in registry</p>
+                                  </td>
+                               </tr>
+                            ) : [...(user.payslips || [])].reverse().map(ps => (
+                               <tr key={ps.id} className="hover:bg-slate-50/60 transition-colors group cursor-pointer" onClick={() => viewHistoricalPayslip(ps)}>
+                                  <td className="px-10 py-8">
+                                     <p className="text-sm font-bold text-slate-900 uppercase tracking-tight">{user.name}</p>
+                                     <p className="text-[9px] font-black text-[#0D9488] uppercase tracking-widest mt-1">{user.role}</p>
+                                  </td>
+                                  <td className="px-10 py-8">
+                                     <p className="text-[11px] font-black text-slate-900 uppercase">{ps.month}</p>
+                                  </td>
+                                  <td className="px-10 py-8">
+                                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{formatDateRange(ps.periodFrom, ps.periodUntil)}</p>
+                                  </td>
+                                  <td className="px-10 py-8 text-right">
+                                     <p className="text-sm font-bold text-slate-900 tracking-tight">€{ps.grossPay.toFixed(2)}</p>
+                                  </td>
+                                  <td className="px-10 py-8 text-right">
+                                     <p className="text-sm font-black text-[#0D9488] tracking-tight">€{ps.netPay.toFixed(2)}</p>
+                                  </td>
+                                  <td className="px-10 py-8 text-right">
+                                     <button 
+                                       className="bg-[#0D9488] text-white px-6 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-md hover:bg-teal-700 active:scale-95 transition-all"
+                                     >
+                                       VIEW DOC
+                                     </button>
+                                  </td>
+                               </tr>
+                            ))}
+                         </tbody>
+                      </table>
+                   </div>
+
+                   {/* List View - Mobile */}
+                   <div className="md:hidden divide-y divide-slate-100">
+                      {(user.payslips || []).length === 0 ? (
+                         <div className="px-6 py-20 text-center opacity-20">
+                            <p className="text-[10px] font-black uppercase tracking-widest">Registry Empty</p>
+                         </div>
+                      ) : [...(user.payslips || [])].reverse().map(ps => (
+                         <div key={ps.id} className="p-6 bg-white space-y-4 active:bg-slate-50 transition-colors" onClick={() => viewHistoricalPayslip(ps)}>
+                            <div className="flex justify-between items-start">
+                               <div>
+                                  <p className="text-[11px] font-black text-slate-900 uppercase">{ps.month}</p>
+                                  <p className="text-[8px] font-bold text-slate-400 uppercase mt-0.5">{formatDateRange(ps.periodFrom, ps.periodUntil)}</p>
+                               </div>
+                               <div className="text-right">
+                                  <p className="text-lg font-black text-[#0D9488] leading-none">€{ps.netPay.toFixed(2)}</p>
+                                  <p className="text-[7px] font-black text-slate-300 uppercase tracking-widest mt-1">NET PAYABLE</p>
+                               </div>
+                            </div>
+                            <div className="flex justify-between items-center pt-2">
+                               <span className="text-[8px] font-bold text-slate-400 uppercase">Gross: €{ps.grossPay.toFixed(2)}</span>
+                               <button className="bg-[#0D9488] text-white px-5 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest shadow-sm">VIEW</button>
+                            </div>
+                         </div>
+                      ))}
+                   </div>
+                </section>
+              )}
+           </div>
         </div>
       </div>
 
-      {/* Official Doc Modal */}
+      {/* Official Doc Modal (Static PDF-style) */}
       {viewingDoc && (
         <div className="fixed inset-0 bg-slate-900/60 z-[500] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
            <div className="bg-white rounded-[3rem] w-full max-w-3xl p-10 md:p-14 space-y-12 shadow-2xl relative text-left my-auto animate-in zoom-in-95">
@@ -522,7 +504,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                        <div className="mt-6">
                           <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">Pay Period</p>
                           <p className="text-[11px] font-black text-slate-900">
-                             {activeHistoricalPayslip ? `${activeHistoricalPayslip.periodFrom.split('-').reverse().join('/')} — ${activeHistoricalPayslip.periodUntil.split('-').reverse().join('/')}` : `${payPeriodFrom.split('-').reverse().join('/')} — ${payPeriodUntil.split('-').reverse().join('/')}`}
+                             {activeHistoricalPayslip ? formatDateRange(activeHistoricalPayslip.periodFrom, activeHistoricalPayslip.periodUntil) : formatDateRange(payPeriodFrom, payPeriodUntil)}
                           </p>
                     </div>
                     </div>
@@ -573,10 +555,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                              <span className="text-slate-500 uppercase">SSC Class 1 NI ({payrollData.niWeeks} Weeks • 10% Basis)</span>
                              <span className="text-slate-900 font-black">-€{payrollData.ni.toFixed(2)}</span>
                           </div>
-                          <div className="flex justify-between items-center">
-                             <span className="text-slate-400 uppercase italic">Maternity Leave Trust Fund (Employer Paid)</span>
-                             <span className="text-slate-400 font-black">€0.00</span>
-                          </div>
                           <div className="flex justify-between items-center pt-8 border-t-4 border-emerald-600 text-emerald-600 text-4xl mt-4">
                              <span className="font-black uppercase tracking-tighter">Net Payout</span>
                              <span className="font-black">€{payrollData.totalNet.toFixed(2)}</span>
@@ -586,11 +564,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                  </div>
 
                  <p className="text-[8px] font-black uppercase text-center text-slate-300 mt-12 tracking-[0.5em]">DIGITALLY VERIFIED BY RESET STUDIO OPS CORE</p>
-                 {activeHistoricalPayslip && (
-                    <div className="text-center mt-2 no-print">
-                       <p className="text-[7px] text-slate-400 italic">Saved on: {new Date(activeHistoricalPayslip.generatedAt).toLocaleString()} by {activeHistoricalPayslip.generatedBy}</p>
-                    </div>
-                 )}
               </div>
 
               <div className="flex justify-end gap-3 no-print pt-6">
