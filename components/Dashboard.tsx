@@ -50,7 +50,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     return 'Request Supplies';
   }, [isRequestBlocked, user.lastSupplyRequestDate]);
 
-  // Statistics Calculation for Cleaner
+  // Statistics Calculation for Cleaner & Supervisor
   const performanceStats = useMemo(() => {
     const myCompleted = (shifts || []).filter(s => s.status === 'completed' && s.userIds.includes(user.id));
     const totalCompleted = myCompleted.length;
@@ -64,6 +64,8 @@ const Dashboard: React.FC<DashboardProps> = ({
         return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
     });
 
+    const monthlyChecks = monthlyCompleted.filter(s => s.serviceType === 'TO CHECK APARTMENT').length;
+
     const monthlyHours = monthlyCompleted.reduce((acc, s) => {
         if (s.actualStartTime && s.actualEndTime) {
             return acc + (s.actualEndTime - s.actualStartTime) / (1000 * 60 * 60);
@@ -76,6 +78,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     return {
         score,
         monthlyJobs: monthlyCompleted.length,
+        monthlyChecks,
         monthlyHours: Math.round(monthlyHours * 10) / 10
     };
   }, [shifts, user.id]);
@@ -136,7 +139,6 @@ const Dashboard: React.FC<DashboardProps> = ({
         );
       case 'cleaner':
       case 'supervisor':
-      case 'laundry':
         const isCleaner = role === 'cleaner';
         const isSupervisor = role === 'supervisor';
         return (
@@ -169,47 +171,55 @@ const Dashboard: React.FC<DashboardProps> = ({
               </div>
             </header>
 
-            {/* PERFORMANCE DASHBOARD HUD (Only for cleaner/supervisor) */}
-            {(isCleaner || isSupervisor) && (
-              <section className="bg-[#1E293B] rounded-3xl md:rounded-[40px] p-5 md:p-10 text-white shadow-2xl relative overflow-hidden group">
-                 <div className="absolute top-0 right-0 p-8 opacity-[0.03] pointer-events-none group-hover:rotate-12 transition-transform duration-1000">
-                    <svg width="180" height="180" viewBox="0 0 24 24" fill="white"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-                 </div>
-                 
-                 <div className="relative z-10 space-y-6 md:space-y-8">
-                    <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-teal-400 animate-pulse shadow-[0_0_10px_rgba(45,212,191,0.8)]"></div>
-                        <p className="text-[9px] font-black uppercase tracking-[0.3em] text-[#2DD4BF]">Monthly Performance Intelligence</p>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 md:gap-8">
+            {/* PERFORMANCE DASHBOARD HUD */}
+            <section className="bg-[#1E293B] rounded-3xl md:rounded-[40px] p-5 md:p-10 text-white shadow-2xl relative overflow-hidden group">
+               <div className="absolute top-0 right-0 p-8 opacity-[0.03] pointer-events-none group-hover:rotate-12 transition-transform duration-1000">
+                  <svg width="180" height="180" viewBox="0 0 24 24" fill="white"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+               </div>
+               
+               <div className="relative z-10 space-y-6 md:space-y-8">
+                  <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-teal-400 animate-pulse shadow-[0_0_10px_rgba(45,212,191,0.8)]"></div>
+                      <p className="text-[9px] font-black uppercase tracking-[0.3em] text-[#2DD4BF]">Monthly Performance Intelligence</p>
+                  </div>
+                  
+                  <div className={`grid gap-6 md:gap-8 ${isSupervisor ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-1 sm:grid-cols-3'}`}>
+                      <div className="space-y-0.5">
+                          <p className="text-[8px] font-black text-[#CBD5E1] uppercase tracking-widest leading-none">Success Score</p>
+                          <div className="flex items-baseline gap-1.5">
+                              <p className="text-3xl md:text-5xl font-bold font-brand tracking-tighter text-[#F59E0B]">{performanceStats.score}</p>
+                              <span className="text-base md:text-lg font-bold text-[#F59E0B]/40">%</span>
+                          </div>
+                      </div>
+                      
+                      <div className="space-y-0.5">
+                          <p className="text-[8px] font-black text-[#CBD5E1] uppercase tracking-widest leading-none">Done This Month</p>
+                          <div className="flex items-baseline gap-1.5">
+                              <p className="text-3xl md:text-5xl font-bold font-brand tracking-tighter text-white">{performanceStats.monthlyJobs}</p>
+                              <span className="text-base md:text-lg font-bold text-white/20">Units</span>
+                          </div>
+                      </div>
+
+                      {isSupervisor && (
                         <div className="space-y-0.5">
-                            <p className="text-[8px] font-black text-[#CBD5E1] uppercase tracking-widest leading-none">Success Score</p>
+                            <p className="text-[8px] font-black text-[#CBD5E1] uppercase tracking-widest leading-none">Units Audited</p>
                             <div className="flex items-baseline gap-1.5">
-                                <p className="text-3xl md:text-5xl font-bold font-brand tracking-tighter text-[#F59E0B]">{performanceStats.score}</p>
-                                <span className="text-base md:text-lg font-bold text-[#F59E0B]/40">%</span>
+                                <p className="text-3xl md:text-5xl font-bold font-brand tracking-tighter text-indigo-400">{performanceStats.monthlyChecks}</p>
+                                <span className="text-base md:text-lg font-bold text-indigo-400/40">Audit</span>
                             </div>
                         </div>
-                        
-                        <div className="space-y-0.5">
-                            <p className="text-[8px] font-black text-[#CBD5E1] uppercase tracking-widest leading-none">Done This Month</p>
-                            <div className="flex items-baseline gap-1.5">
-                                <p className="text-3xl md:text-5xl font-bold font-brand tracking-tighter text-white">{performanceStats.monthlyJobs}</p>
-                                <span className="text-base md:text-lg font-bold text-white/20">Units</span>
-                            </div>
-                        </div>
-                        
-                        <div className="space-y-0.5">
-                            <p className="text-[8px] font-black text-[#CBD5E1] uppercase tracking-widest leading-none">Total Hours</p>
-                            <div className="flex items-baseline gap-1.5">
-                                <p className="text-3xl md:text-5xl font-bold font-brand tracking-tighter text-white">{performanceStats.monthlyHours}</p>
-                                <span className="text-base md:text-lg font-bold text-white/20">Hrs</span>
-                            </div>
-                        </div>
-                    </div>
-                 </div>
-              </section>
-            )}
+                      )}
+                      
+                      <div className="space-y-0.5">
+                          <p className="text-[8px] font-black text-[#CBD5E1] uppercase tracking-widest leading-none">Total Hours</p>
+                          <div className="flex items-baseline gap-1.5">
+                              <p className="text-3xl md:text-5xl font-bold font-brand tracking-tighter text-white">{performanceStats.monthlyHours}</p>
+                              <span className="text-base md:text-lg font-bold text-white/20">Hrs</span>
+                          </div>
+                      </div>
+                  </div>
+               </div>
+            </section>
 
             {/* QUICK ACTIONS */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

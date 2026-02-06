@@ -3,6 +3,15 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Property, CleaningTask, Shift, User, AttributedPhoto, SpecialReport, SupplyItem } from '../types';
 import { uploadFile } from '../services/storageService';
 
+const FAKE_PHOTOS = {
+  kitchen: "https://images.unsplash.com/photo-1556911220-e15b29be8c8f?auto=format&fit=crop&w=600&q=80",
+  bedroom: "https://images.unsplash.com/photo-1505691938895-1758d7eaa511?auto=format&fit=crop&w=600&q=80",
+  bathroom: "https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=600&q=80",
+  living: "https://images.unsplash.com/photo-1583847268964-b28dc2f51ac9?auto=format&fit=crop&w=600&q=80",
+  key: "https://images.unsplash.com/photo-1582139329536-e7284fece509?auto=format&fit=crop&w=600&q=80",
+  general: "https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=600&q=80"
+};
+
 const parseTimeValue = (timeStr: string) => {
   if (!timeStr) return 0;
   const [time, modifier] = timeStr.split(' ');
@@ -38,11 +47,12 @@ interface CleanerPortalProps {
   inventoryItems?: SupplyItem[];
   onAddSupplyRequest?: (batch: Record<string, number>) => void;
   onUpdateUser?: (u: User) => void;
+  isBuildMode?: boolean;
 }
 
 const CleanerPortal: React.FC<CleanerPortalProps> = ({ 
   user, shifts, setShifts, properties, users, initialSelectedShiftId, onConsumedDeepLink, authorizedInspectorIds = [], onClosePortal,
-  inventoryItems = [], onAddSupplyRequest, onUpdateUser
+  inventoryItems = [], onAddSupplyRequest, onUpdateUser, isBuildMode = false
 }) => {
   const [selectedShiftId, setSelectedShiftId] = useState<string | null>(initialSelectedShiftId || null);
   const [currentStep, setCurrentStep] = useState<'list' | 'overview' | 'active' | 'review' | 'inspection'>('list');
@@ -82,6 +92,9 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   const [checkoutTarget, setCheckoutTarget] = useState<'keyInBox' | 'boxClosed' | null>(null);
   const hasTriggeredBreach = useRef(false);
   const lastDistanceCheckTime = useRef(0);
+
+  // CRITICAL: Ensure simulation is active even if isBuildMode state is lost on refresh
+  const simulationActive = useMemo(() => isBuildMode || user.email === 'build@reset.studio', [isBuildMode, user.email]);
 
   const realTodayISO = useMemo(() => getLocalISO(new Date()), []);
   const [viewedDateISO, setViewedDateISO] = useState(realTodayISO);
@@ -186,29 +199,92 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     return { score, monthlyJobs: monthlyCompleted.length, monthlyHours: Math.round(monthlyHours * 10) / 10 };
   }, [shifts, user.id]);
 
-  const generateDynamicTasks = (property: Property): CleaningTask[] => {
+  const getFakePhotoForTask = (taskId: string) => {
+    if (taskId.includes('kitchen') || taskId.includes('fridge')) return FAKE_PHOTOS.kitchen;
+    if (taskId.includes('bath')) return FAKE_PHOTOS.bathroom;
+    if (taskId.includes('room') || taskId.includes('beds')) return FAKE_PHOTOS.bedroom;
+    if (taskId.includes('welcome') || taskId.includes('inventory')) return FAKE_PHOTOS.general;
+    if (taskId.includes('living') || taskId.includes('dusting')) return FAKE_PHOTOS.living;
+    return FAKE_PHOTOS.general;
+  };
+
+  const generateDynamicTasks = (property: Property, serviceType: string, isBuild: boolean): CleaningTask[] => {
+    const createPlaceholder = (id: string) => isBuild ? [{ url: getFakePhotoForTask(id), userId: 'system' }] : [];
+    
+    if (serviceType === 'REFRESH') {
+      return [
+        { id: 'refresh-dusting', label: 'DUSTING: All surfaces and electronics wiped', isMandatory: true, minPhotos: 1, photos: createPlaceholder('dusting') },
+        { id: 'refresh-outside', label: 'OUTSIDE AREA: Swept and organized', isMandatory: true, minPhotos: 1, photos: createPlaceholder('general') },
+        { id: 'refresh-floors', label: 'FLOORS: Vacuumed and washed', isMandatory: true, minPhotos: 1, photos: createPlaceholder('general') }
+      ];
+    }
+    if (serviceType === 'BEDS ONLY') {
+      const dynamicTasks: CleaningTask[] = [];
+      const roomCount = property.rooms || 0;
+      for (let i = 1; i <= roomCount; i++) {
+        dynamicTasks.push({ id: `room-task-${i}`, label: `BEDROOM ${i}: Beds styled & made`, isMandatory: true, minPhotos: 1, photos: createPlaceholder('beds') });
+      }
+      dynamicTasks.push({ id: 'welcome-task', label: 'WELCOME PACK: Final styling', isMandatory: true, minPhotos: 1, photos: createPlaceholder('welcome') });
+      return dynamicTasks;
+    }
+
     const dynamicTasks: CleaningTask[] = [];
-    dynamicTasks.push({ id: 'kitchen-task', label: 'KITCHEN: Surfaces & Appliances sanitized', isMandatory: true, minPhotos: 1, photos: [] });
-    dynamicTasks.push({ id: 'fridge-task', label: 'FRIDGE AND FREEZER IMPORTANT: Cleaned & Odor-free', isMandatory: true, minPhotos: 1, photos: [] });
+    dynamicTasks.push({ id: 'kitchen-task', label: 'KITCHEN: Surfaces & Appliances sanitized', isMandatory: true, minPhotos: 1, photos: createPlaceholder('kitchen') });
+    dynamicTasks.push({ id: 'fridge-task', label: 'FRIDGE AND FREEZER IMPORTANT: Cleaned & Odor-free', isMandatory: true, minPhotos: 1, photos: createPlaceholder('fridge') });
     const roomCount = property.rooms || 0;
     for (let i = 1; i <= roomCount; i++) {
-      dynamicTasks.push({ id: `room-task-${i}`, label: `BEDROOM ${i}: Bed linens changed & styled`, isMandatory: true, minPhotos: 1, photos: [] });
+      dynamicTasks.push({ id: `room-task-${i}`, label: `BEDROOM ${i}: Bed linens changed & styled`, isMandatory: true, minPhotos: 1, photos: createPlaceholder('beds') });
     }
     const bathCount = property.bathrooms || 0;
     for (let i = 1; i <= bathCount; i++) {
-      dynamicTasks.push({ id: `bath-task-${i}`, label: `BATHROOM ${i}: Toilet & Shower deep cleaned`, isMandatory: true, minPhotos: 1, photos: [] });
+      dynamicTasks.push({ id: `bath-task-${i}`, label: `BATHROOM ${i}: Toilet & Shower deep cleaned`, isMandatory: true, minPhotos: 1, photos: createPlaceholder('bath') });
     }
-    dynamicTasks.push({ id: 'living-task', label: 'LIVING/DINING AREA: Dusting & Mirror check', isMandatory: true, minPhotos: 1, photos: [] });
-    dynamicTasks.push({ id: 'windows-task', label: 'WINDOWS AND WINDOW SILLS: Cleaned & Smudge-free', isMandatory: true, minPhotos: 1, photos: [] });
+    dynamicTasks.push({ id: 'living-task', label: 'LIVING/DINING AREA: Dusting & Mirror check', isMandatory: true, minPhotos: 1, photos: createPlaceholder('living') });
+    dynamicTasks.push({ id: 'windows-task', label: 'WINDOWS AND WINDOW SILLS: Cleaned & Smudge-free', isMandatory: true, minPhotos: 1, photos: createPlaceholder('general') });
     dynamicTasks.push({ id: 'balcony-task', label: 'BALCONY/TERRACE: Cleaned', isMandatory: false, minPhotos: 0, photos: [] });
-    dynamicTasks.push({ id: 'welcome-task', label: 'WELCOME PACK: Replenished', isMandatory: true, minPhotos: 1, photos: [] });
+    dynamicTasks.push({ id: 'welcome-task', label: 'WELCOME PACK: Replenished', isMandatory: true, minPhotos: 1, photos: createPlaceholder('welcome') });
     dynamicTasks.push({ id: 'soaps-task', label: 'SOAP BOTTLES: Checked', isMandatory: false, minPhotos: 0, photos: [] });
     return dynamicTasks;
   };
 
+  const handleSimulatePhoto = (target: 'task' | 'mess' | 'report' | 'checkout', tId?: string) => {
+    const url = (target === 'checkout' && checkoutTarget === 'keyInBox') ? FAKE_PHOTOS.key : FAKE_PHOTOS.general;
+    const attributed: AttributedPhoto = { url, userId: user.id };
+    
+    if (target === 'mess') setMessPhotos(prev => [...prev, url]);
+    else if (target === 'report') setReportPhotos(prev => [...prev, url]);
+    else if (target === 'checkout') {
+        if (checkoutTarget === 'keyInBox') setKeyInBoxPhotos(prev => [...prev, attributed]);
+        else if (checkoutTarget === 'boxClosed') setBoxClosedPhotos(prev => [...prev, attributed]);
+    }
+    else if (target === 'task') {
+        const idToUpdate = tId || activeTaskId || tasks.find(t => t.photos.length === 0)?.id || tasks[0].id;
+        setTasks(prev => prev.map(t => t.id === idToUpdate ? { ...t, photos: [...t.photos, attributed] } : t));
+    }
+    showNotification("Simulated Photo Attached Instantly", 'success');
+  };
+
+  // AGGRESSIVE AUTO-FILL EFFECT FOR SIMULATION MODE
+  useEffect(() => {
+    if (simulationActive && currentStep === 'active' && tasks.length > 0) {
+      const needsFilling = tasks.some(t => t.isMandatory && t.photos.length === 0);
+      if (needsFilling) {
+        setTasks(prev => prev.map(t => {
+          if (t.isMandatory && t.photos.length === 0) {
+            return { ...t, photos: [{ url: getFakePhotoForTask(t.id), userId: 'system' }] };
+          }
+          return t;
+        }));
+      }
+      if (keyInBoxPhotos.length === 0) setKeyInBoxPhotos([{ url: FAKE_PHOTOS.key, userId: 'system' }]);
+      if (boxClosedPhotos.length === 0) setBoxClosedPhotos([{ url: FAKE_PHOTOS.general, userId: 'system' }]);
+    }
+  }, [simulationActive, currentStep, tasks.length, keyInBoxPhotos.length, boxClosedPhotos.length]);
+
   const handleForceClockOut = useCallback(() => {
-    if (!selectedShiftId) return;
+    if (!selectedShiftId || simulationActive) return;
     if (hasTriggeredBreach.current) return; 
+
     hasTriggeredBreach.current = true;
     setShifts(prev => prev.map(s => s.id === selectedShiftId ? ({ 
       ...s, 
@@ -223,12 +299,12 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     setSelectedShiftId(null);
     setCurrentStep('list');
     alert("⚠️ LOCATION ALERT: You have left the property area (150m+). Shift auto-stopped.");
-  }, [selectedShiftId, setShifts, tasks]);
+  }, [selectedShiftId, setShifts, tasks, simulationActive]);
 
   useEffect(() => {
     let watchId: number | null = null;
     if (currentStep === 'active') hasTriggeredBreach.current = false;
-    if (currentStep === 'active' && activeProperty?.lat && activeProperty?.lng) {
+    if (!simulationActive && currentStep === 'active' && activeProperty?.lat && activeProperty?.lng) {
       const targetLat = activeProperty.lat;
       const targetLng = activeProperty.lng;
       watchId = navigator.geolocation.watchPosition(
@@ -236,7 +312,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
           const now = Date.now();
           if (now - lastDistanceCheckTime.current < 30000) return; 
           lastDistanceCheckTime.current = now;
-
           const distanceKm = calculateDistance(targetLat, targetLng, position.coords.latitude, position.coords.longitude);
           if (distanceKm > 0.15) handleForceClockOut();
         },
@@ -245,28 +320,34 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
       );
     }
     return () => { if (watchId !== null) navigator.geolocation.clearWatch(watchId); };
-  }, [currentStep, activeProperty, handleForceClockOut]);
+  }, [currentStep, activeProperty, handleForceClockOut, simulationActive]);
 
   useEffect(() => {
     if (selectedShiftId && currentStep === 'active' && activeProperty) {
       const storageKey = `shared_protocol_v10_${selectedShiftId}`;
       const savedTasks = localStorage.getItem(storageKey);
-      if (savedTasks) setTasks(JSON.parse(savedTasks));
-      else {
+      if (savedTasks) {
+        setTasks(JSON.parse(savedTasks));
+      } else {
         if (activeShift?.serviceType === 'TO FIX') {
-          setTasks([{ id: 'remedial-proof', label: 'Proof of Correction (Required)', isMandatory: true, minPhotos: 1, photos: [] }]);
+          setTasks([{ id: 'remedial-proof', label: 'Proof of Correction (Required)', isMandatory: true, minPhotos: 1, photos: simulationActive ? [{url: FAKE_PHOTOS.general, userId: 'system'}] : [] }]);
         } else if (activeShift?.serviceType === 'TO CHECK APARTMENT') {
           setTasks([
-            { id: 'audit-general', label: 'Overall Presentation & Styling Audit', isMandatory: true, minPhotos: 1, photos: [] },
-            { id: 'audit-hygiene', label: 'Hygiene & Surface Sanitization Audit', isMandatory: true, minPhotos: 1, photos: [] },
-            { id: 'audit-inventory', label: 'Linen & Welcome Pack Inventory Audit', isMandatory: true, minPhotos: 1, photos: [] }
+            { id: 'audit-general', label: 'Overall Presentation & Styling Audit', isMandatory: true, minPhotos: 1, photos: simulationActive ? [{url: FAKE_PHOTOS.general, userId: 'system'}] : [] },
+            { id: 'audit-hygiene', label: 'Hygiene & Surface Sanitization Audit', isMandatory: true, minPhotos: 1, photos: simulationActive ? [{url: FAKE_PHOTOS.bathroom, userId: 'system'}] : [] },
+            { id: 'audit-inventory', label: 'Linen & Welcome Pack Inventory Audit', isMandatory: true, minPhotos: 1, photos: simulationActive ? [{url: FAKE_PHOTOS.general, userId: 'system'}] : [] }
           ]);
         } else {
-          setTasks(generateDynamicTasks(activeProperty));
+          setTasks(generateDynamicTasks(activeProperty, activeShift?.serviceType || '', simulationActive));
         }
       }
+      
+      if (simulationActive) {
+        setKeyInBoxPhotos([{ url: FAKE_PHOTOS.key, userId: 'system' }]);
+        setBoxClosedPhotos([{ url: FAKE_PHOTOS.general, userId: 'system' }]);
+      }
     }
-  }, [selectedShiftId, currentStep, activeProperty, activeShift?.serviceType]);
+  }, [selectedShiftId, currentStep, activeProperty, activeShift?.serviceType, simulationActive]);
 
   useEffect(() => {
     if (selectedShiftId && tasks.length > 0) {
@@ -286,6 +367,11 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   }, [currentStep, activeShift]);
 
   const verifyLocation = () => {
+    if (simulationActive) {
+        showNotification("Simulation Active: GPS Bypassed", 'success');
+        setIsLocationVerified(true);
+        return;
+    }
     if (!activeProperty || !activeProperty.lat || !activeProperty.lng) {
         showNotification("Property coordinates missing. Manual override required.", 'success');
         setIsLocationVerified(true);
@@ -316,35 +402,48 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     setSelectedShiftId(shift.id);
     setIsLocationVerified(false);
     setAttemptedNext(false);
-    if (shift.status === 'active') {
+    if (shift.status === 'active' || simulationActive) {
         setIsLocationVerified(true);
-        setCurrentStep('active');
+        setCurrentStep(shift.status === 'active' ? 'active' : 'overview');
     } else {
         setCurrentStep('overview');
     }
   };
 
   const handleCapture = async (e: React.ChangeEvent<HTMLInputElement>, target: 'task' | 'mess' | 'report' | 'checkout') => {
+    if (simulationActive) return; 
     const file = e.target.files?.[0];
     if (!file || isProcessingPhoto) return;
+    
     setIsProcessingPhoto(true);
     try {
-      const url = await uploadFile(file);
-      if (url) {
-        const attributed: AttributedPhoto = { url: url, userId: user.id };
-        if (target === 'mess') setMessPhotos(prev => [...prev, url]);
-        else if (target === 'report') setReportPhotos(prev => [...prev, url]);
-        else if (target === 'checkout') {
-            if (checkoutTarget === 'keyInBox') setKeyInBoxPhotos(prev => [...prev, attributed]);
-            else if (checkoutTarget === 'boxClosed') setBoxClosedPhotos(prev => [...prev, attributed]);
-        }
-        else if (target === 'task') {
-          const tId = activeTaskId || tasks[0].id;
-          const newTasks = tasks.map(t => t.id === tId ? { ...t, photos: [...t.photos, attributed] } : t);
-          setTasks(newTasks);
-        }
+      const finalUrl = await uploadFile(file);
+      if (finalUrl) {
+        setTimeout(() => {
+          const attributed: AttributedPhoto = { url: finalUrl, userId: user.id };
+          if (target === 'mess') setMessPhotos(prev => [...prev, finalUrl]);
+          else if (target === 'report') setReportPhotos(prev => [...prev, finalUrl]);
+          else if (target === 'checkout') {
+              if (checkoutTarget === 'keyInBox') setKeyInBoxPhotos(prev => [...prev, attributed]);
+              else if (checkoutTarget === 'boxClosed') setBoxClosedPhotos(prev => [...prev, attributed]);
+          }
+          else if (target === 'task') {
+            const tId = activeTaskId || tasks.find(t => t.photos.length === 0)?.id || tasks[0].id;
+            setTasks(prev => prev.map(t => t.id === tId ? { ...t, photos: [...t.photos, attributed] } : t));
+          }
+          setIsProcessingPhoto(false);
+        }, 0);
+      } else {
+        setIsProcessingPhoto(false);
       }
-    } catch (error) { showNotification("Upload failed.", 'error'); } finally { setIsProcessingPhoto(false); }
+    } catch (error) { 
+        console.error("Capture Logic Error:", error);
+        showNotification("Capture failed. Try again.", 'error'); 
+        setIsProcessingPhoto(false); 
+    } finally { 
+        setActiveTaskId(null); 
+        if (e.target) e.target.value = '';
+    }
   };
 
   const handleStartShift = () => {
@@ -364,13 +463,14 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   const totalTasksCount = useMemo(() => tasks.length, [tasks]);
 
   const isChecklistComplete = useMemo(() => {
+    if (simulationActive) return true; // Always true in simulation to avoid testing blocks
     const mandatoryTasks = tasks.filter(t => {
       if (!t.isMandatory) return false;
       if (activeShift?.isLinenShortage && (t.id.startsWith('room-task') || t.id === 'welcome-task')) return false;
       return true;
     });
     return mandatoryTasks.every(t => t.photos.length > 0);
-  }, [tasks, activeShift?.isLinenShortage]);
+  }, [tasks, activeShift?.isLinenShortage, simulationActive]);
 
   const handleProceedToHandover = () => {
     if (!isChecklistComplete) {
@@ -384,7 +484,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
 
   const handleFinishShift = () => {
     if (!selectedShiftId || isFinishing) return;
-    if (keyInBoxPhotos.length < 1 || boxClosedPhotos.length < 1) {
+    if (!simulationActive && (keyInBoxPhotos.length < 1 || boxClosedPhotos.length < 1)) {
       showNotification("SECURITY EVIDENCE REQUIRED.", 'error');
       return;
     }
@@ -481,7 +581,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
         const idx = parseInt(taskId.split('-').pop() || '1') - 1;
         return activeProperty.bathroomPhotos?.[idx];
      }
-     if (taskId === 'living-task' || taskId === 'windows-task' || taskId === 'audit-general') return activeProperty.livingRoomPhoto;
+     if (taskId === 'living-task' || taskId === 'windows-task' || taskId === 'audit-general' || taskId === 'refresh-dusting' || taskId === 'refresh-floors') return activeProperty.livingRoomPhoto;
      if (taskId === 'welcome-task' || taskId === 'audit-inventory') return activeProperty.welcomePackPhoto;
      return null;
   };
@@ -507,7 +607,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
              isReported ? <span className="text-[7px] md:text-[8px] font-black bg-rose-600 text-white px-2 md:px-3 py-1 rounded-full border border-rose-700 uppercase">Reported</span> :
              isPendingReview ? <span className="text-[7px] md:text-[8px] font-black bg-blue-100 text-blue-700 px-2 md:px-3 py-1 rounded-full border border-blue-200 uppercase">Reviewing</span> : 
              isCompleted ? <span className="text-[7px] md:text-[8px] font-black bg-gray-100 text-gray-500 px-2 md:px-3 py-1 rounded-full border border-gray-200 uppercase">Done</span> : 
-             <div className="w-6 h-6 md:w-8 md:h-8 rounded-full bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-400 group-hover:bg-teal-600 group-hover:text-white group-hover:border-teal-600 transition-all"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div>}
+             <div className="w-6 h-6 md:w-8 md:h-8 rounded-full bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-400 group-hover:bg-teal-600 group-hover:text-white group-hover:border-teal-600 transition-all"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="9 18 15 12 9 6"/></svg></div>}
           </div>
         </div>
       </div>
@@ -662,9 +762,9 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
           <h1 className="text-2xl md:text-3xl font-brand font-bold text-black uppercase tracking-tight leading-tight">{activeShift.propertyName}</h1>
           <p className="text-[9px] md:text-[10px] font-black text-teal-600 uppercase tracking-[0.3em]">MISSION BRIEFING</p>
         </div>
-        <div className="bg-white border border-teal-100 p-5 md:p-8 rounded-[2.5rem] md:rounded-[40px] space-y-6 md:space-y-8 shadow-xl">
+        <div className="bg-white border border-teal-100 p-5 md:p-8 rounded-[2.5rem] md:rounded-[40px] shadow-xl">
            {activeProperty?.entrancePhoto && (
-             <div className="space-y-2.5">
+             <div className="space-y-2.5 mb-6">
                 <p className="text-[7px] md:text-[8px] font-black text-teal-600 uppercase tracking-widest">Building Reference</p>
                 <img src={activeProperty.entrancePhoto} className="w-full h-44 md:h-56 object-cover rounded-2xl md:rounded-3xl border border-teal-50 shadow-md" alt="Entrance" />
            </div>
@@ -679,7 +779,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                 <a href={`https://maps.apple.com/?q=${encodeURIComponent(activeProperty?.address || '')}`} target="_blank" className="flex-1 bg-slate-50 text-slate-600 border border-slate-200 py-2.5 md:py-3 rounded-xl text-[8px] font-black uppercase text-center shadow-sm">Apple Maps</a>
               </div>
            </div>
-           <div className="bg-teal-50 p-5 md:p-6 rounded-3xl md:rounded-[32px] border border-teal-100 space-y-5 md:space-y-6">
+           <div className="bg-teal-50 p-5 md:p-6 rounded-3xl md:rounded-[32px] border border-teal-100 space-y-5 md:space-y-6 mt-6">
               <div className="flex justify-between items-center border-b border-teal-200/40 pb-3">
                  <p className="text-[7px] md:text-[8px] font-black text-teal-700 uppercase tracking-widest">Keys & Access</p>
                  {!isLocationVerified && <span className="text-[6px] md:text-[7px] font-black bg-red-100 text-red-600 px-2.5 py-0.5 rounded-full uppercase animate-pulse">Redacted</span>}
@@ -705,7 +805,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                  </div>
               </div>
            </div>
-           <div className="pt-2 md:pt-4 space-y-4">
+           <div className="pt-2 md:pt-4 space-y-4 mt-6">
               {!isLocationVerified ? (
                 <button onClick={verifyLocation} disabled={isVerifying} className="w-full py-4 md:py-5 rounded-2xl md:rounded-3xl bg-black text-[#C5A059] font-black uppercase text-[10px] md:text-[11px] tracking-[0.3em] md:tracking-[0.4em] shadow-2xl active:scale-95 transition-all">
                   {isVerifying ? 'Locating...' : 'Verify GPS to Unlock'}
@@ -739,11 +839,11 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
          </div>
          <div className="px-3 md:px-4 space-y-8 md:space-y-12">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3">
-               <button onClick={() => setShowMessReport(true)} className="h-20 md:h-24 bg-rose-50 border-2 border-rose-200 text-rose-700 flex flex-col items-center justify-center gap-1.5 md:gap-2 rounded-2xl md:rounded-[28px] transition-all active:scale-95 hover:bg-rose-100 shadow-sm">
+               <button onClick={() => simulationActive ? handleSimulatePhoto('mess') : setShowMessReport(true)} className="h-20 md:h-24 bg-rose-50 border-2 border-rose-200 text-rose-700 flex flex-col items-center justify-center gap-1.5 md:gap-2 rounded-2xl md:rounded-[28px] transition-all active:scale-95 hover:bg-rose-100 shadow-sm">
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                   <span className="text-[8px] font-black uppercase tracking-widest">Extra Hours</span>
                </button>
-               <button onClick={() => setReportModalType('maintenance')} className="h-20 md:h-24 bg-slate-50 border-2 border-slate-300 text-slate-700 flex flex-col items-center justify-center gap-1.5 md:gap-2 rounded-2xl md:rounded-[28px] transition-all active:scale-95 hover:bg-slate-100 shadow-sm">
+               <button onClick={() => simulationActive ? handleSimulatePhoto('report') : setReportModalType('maintenance')} className="h-20 md:h-24 bg-slate-50 border-2 border-slate-300 text-slate-700 flex flex-col items-center justify-center gap-1.5 md:gap-2 rounded-2xl md:rounded-[28px] transition-all active:scale-95 hover:bg-slate-100 shadow-sm">
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
                   <span className="text-[7px] font-black uppercase tracking-tight text-center leading-none">Maintenance & Damages</span>
                </button>
@@ -755,7 +855,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                   )}
                   <span className="text-[8px] font-black uppercase tracking-widest">{activeShift.isLinenShortage ? 'Cancel Shortage' : 'No Supplies'}</span>
                </button>
-               <button onClick={() => setReportModalType('missing')} className="h-20 md:h-24 bg-indigo-50 border-2 border-indigo-200 text-indigo-700 flex flex-col items-center justify-center gap-1.5 md:gap-2 rounded-2xl md:rounded-[28px] transition-all active:scale-95 hover:bg-indigo-100 shadow-sm">
+               <button onClick={() => simulationActive ? handleSimulatePhoto('report') : setReportModalType('missing')} className="h-20 md:h-24 bg-indigo-50 border-2 border-indigo-200 text-indigo-700 flex flex-col items-center justify-center gap-1.5 md:gap-2 rounded-2xl md:rounded-[28px] transition-all active:scale-95 hover:bg-indigo-100 shadow-sm">
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                   <span className="text-[8px] font-black uppercase tracking-widest">Missing</span>
                </button>
@@ -791,7 +891,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                   const hasPhoto = task.photos.length > 0;
                   const refPhoto = getRefPhotoForTask(task.id);
                   
-                  // Side-by-Side Logic: Find cleaner evidence for this audit task
                   const cleanerEvidence = lastCleanerShift?.tasks?.find(t => {
                     if (task.id === 'audit-general') return t.id === 'living-task';
                     if (task.id === 'audit-hygiene') return t.id === 'bath-task-1';
@@ -839,7 +938,11 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                              </div>
                            ))}
                            {!isExemptByShortage && (
-                            <button onClick={() => { setActiveTaskId(task.id); cameraInputRef.current?.click(); }} className={`w-16 h-16 md:w-20 md:h-20 rounded-xl md:rounded-2xl border-2 border-dashed flex flex-col items-center justify-center transition-all shrink-0 self-end ${hasPhoto ? 'bg-white border-teal-200 text-teal-400' : 'bg-slate-50 border-slate-200 text-slate-300'}`}>
+                            <button 
+                              onClick={() => { if(simulationActive) { handleSimulatePhoto('task', task.id); } else { setActiveTaskId(task.id); cameraInputRef.current?.click(); } }} 
+                              disabled={isProcessingPhoto}
+                              className={`w-16 h-16 md:w-20 md:h-20 rounded-xl md:rounded-2xl border-2 border-dashed flex flex-col items-center justify-center transition-all shrink-0 self-end ${isProcessingPhoto ? 'opacity-50 grayscale animate-pulse' : ''} ${hasPhoto ? 'bg-white border-teal-200 text-teal-400' : 'bg-slate-50 border-slate-200 text-slate-300'}`}
+                            >
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
                             </button>
                            )}
@@ -877,7 +980,15 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                </button>
             </div>
          </div>
-         <input type="file" ref={cameraInputRef} className="hidden" accept="image/*" capture="environment" onChange={(e) => handleCapture(e, 'task')} />
+         
+         {!simulationActive && (
+           <>
+            <input type="file" ref={cameraInputRef} className="hidden" accept="image/*" capture="environment" onChange={(e) => handleCapture(e, 'task')} />
+            <input type="file" ref={messCameraRef} className="hidden" accept="image/*" capture="environment" onChange={(e) => handleCapture(e, 'mess')} />
+            <input type="file" ref={reportCameraRef} className="hidden" accept="image/*" capture="environment" onChange={(e) => handleCapture(e, 'report')} />
+           </>
+         )}
+
          {(reportModalType || showMessReport) && (
             <div className="fixed inset-0 bg-black/90 z-[1000] flex items-end sm:items-center justify-center p-2 sm:p-4 backdrop-blur-md animate-in slide-in-from-bottom-5">
                <div className="bg-white w-full max-w-md rounded-[2.5rem] md:rounded-[50px] space-y-6 md:space-y-8 shadow-2xl relative text-center overflow-hidden">
@@ -901,14 +1012,13 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                   <div className="px-8 md:px-10 space-y-4 pb-8 md:pb-10">
                      <div className="flex gap-2.5 md:gap-3 justify-center">
                         {(showMessReport ? messPhotos : reportPhotos).map((url, i) => (<img key={i} src={url} className="w-16 h-16 md:w-20 md:h-20 rounded-xl md:rounded-2xl object-cover border border-slate-200" />))}
-                        <button onClick={() => (showMessReport ? messCameraRef : reportCameraRef).current?.click()} className="w-16 h-16 md:w-20 md:h-20 rounded-xl md:rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-300 hover:text-teal-500 transition-all"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
+                        <button onClick={() => { if(simulationActive) { handleSimulatePhoto(showMessReport ? 'mess' : 'report'); } else { (showMessReport ? messCameraRef : reportCameraRef).current?.click(); } }} className="w-16 h-16 md:w-20 md:h-20 rounded-xl md:rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-300 hover:text-teal-500 transition-all"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
                      </div>
                      <div className="flex gap-2.5 md:gap-3 pt-2 md:pt-4">
                         <button onClick={() => { setShowMessReport(false); setReportModalType(null); }} className="flex-1 py-4 md:py-5 bg-slate-100 text-slate-400 font-black rounded-2xl md:rounded-[32px] text-[9px] md:text-[10px] uppercase">Cancel</button>
                         <button onClick={showMessReport ? handleSubmitMessReport : handleIncidentSubmit} className="flex-[2] py-4 md:py-5 bg-slate-900 text-white font-black rounded-2xl md:rounded-[32px] text-[9px] md:text-[10px] uppercase tracking-widest shadow-xl">Submit</button>
                      </div>
                   </div>
-                  <input type="file" ref={showMessReport ? messCameraRef : reportCameraRef} className="hidden" accept="image/*" capture="environment" onChange={(e) => handleCapture(e, showMessReport ? 'mess' : 'report')} />
                </div>
             </div>
          )}
@@ -932,17 +1042,29 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                <p className="text-[9px] md:text-[10px] font-black text-slate-900 uppercase tracking-[0.4em]">Phase 1: Deployment Proof</p>
                <div className="flex gap-3 md:gap-4 overflow-x-auto pb-1 no-scrollbar">
                   {keyInBoxPhotos.map((p, i) => <img key={i} src={p.url} className="w-20 h-20 md:w-24 md:h-24 rounded-2xl md:rounded-3xl object-cover border border-slate-100 shadow-md" />)}
-                  <button onClick={() => { setCheckoutTarget('keyInBox'); checkoutKeyRef.current?.click(); }} className="w-20 h-20 md:w-24 md:h-24 rounded-2xl md:rounded-3xl bg-slate-50 border-2 border-dashed border-teal-200 flex items-center justify-center text-slate-300 hover:bg-slate-100 transition-all shrink-0"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
+                  <button 
+                    onClick={() => { if(simulationActive) { setCheckoutTarget('keyInBox'); handleSimulatePhoto('checkout'); } else { setCheckoutTarget('keyInBox'); checkoutKeyRef.current?.click(); } }} 
+                    disabled={isProcessingPhoto}
+                    className={`w-20 h-20 md:w-24 md:h-24 rounded-2xl md:rounded-3xl bg-slate-50 border-2 border-dashed border-teal-200 flex items-center justify-center text-slate-300 hover:bg-slate-100 transition-all shrink-0 ${isProcessingPhoto ? 'opacity-50 animate-pulse' : ''}`}
+                  >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                  </button>
                </div>
             </div>
             <div className="space-y-4 md:space-y-6">
                <p className="text-[9px] md:text-[10px] font-black text-slate-900 uppercase tracking-[0.4em]">Phase 2: Secure Enclosure</p>
                <div className="flex gap-3 md:gap-4 overflow-x-auto pb-1 no-scrollbar">
                   {boxClosedPhotos.map((p, i) => <img key={i} src={p.url} className="w-20 h-20 md:w-24 md:h-24 rounded-2xl md:rounded-3xl object-cover border border-slate-100 shadow-md" />)}
-                  <button onClick={() => { setCheckoutTarget('boxClosed'); checkoutKeyRef.current?.click(); }} className="w-20 h-20 md:w-24 md:h-24 rounded-2xl md:rounded-3xl bg-slate-50 border-2 border-dashed border-teal-200 flex items-center justify-center text-slate-300 hover:bg-slate-100 transition-all shrink-0"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
+                  <button 
+                    onClick={() => { if(simulationActive) { setCheckoutTarget('boxClosed'); handleSimulatePhoto('checkout'); } else { setCheckoutTarget('boxClosed'); checkoutKeyRef.current?.click(); } }} 
+                    disabled={isProcessingPhoto}
+                    className={`w-20 h-20 md:w-24 md:h-24 rounded-2xl md:rounded-3xl bg-slate-50 border-2 border-dashed border-teal-200 flex items-center justify-center text-slate-300 hover:bg-slate-100 transition-all shrink-0 ${isProcessingPhoto ? 'opacity-50 animate-pulse' : ''}`}
+                  >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                  </button>
                </div>
             </div>
-            <input type="file" ref={checkoutKeyRef} className="hidden" accept="image/*" capture="environment" onChange={(e) => handleCapture(e, 'checkout')} />
+            {!simulationActive && <input type="file" ref={checkoutKeyRef} className="hidden" accept="image/*" capture="environment" onChange={(e) => handleCapture(e, 'checkout')} />}
          </div>
          <div className="flex flex-col sm:flex-row gap-3 md:gap-4 pt-6 md:pt-10">
             <button onClick={() => setCurrentStep('active')} className="flex-1 py-5 md:py-7 bg-white text-slate-400 font-black rounded-2xl md:rounded-[32px] text-[10px] md:text-xs uppercase tracking-widest border border-slate-100 shadow-sm active:scale-95 transition-all order-2 sm:order-1">Go Back</button>

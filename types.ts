@@ -24,7 +24,8 @@ export type TabType =
   | 'users'
   | 'settings'
   | 'inventory_admin'
-  | 'tutorials';
+  | 'tutorials'
+  | 'worksheet';
 
 export interface Message {
   id: string;

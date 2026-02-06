@@ -11,17 +11,33 @@ interface LayoutProps {
   notificationCount?: number;
   onOpenNotifications?: () => void;
   isSyncing?: boolean;
+  onBuildModeToggle?: () => void;
 }
 
 const Layout: React.FC<LayoutProps> = ({ 
   children, activeTab, setActiveTab, role, onLogout, 
-  notificationCount = 0, onOpenNotifications, isSyncing = false
+  notificationCount = 0, onOpenNotifications, isSyncing = false,
+  onBuildModeToggle
 }) => {
   const [showMenu, setShowMenu] = useState(false);
+  const [logoClicks, setLogoClicks] = useState(0);
+
+  const handleLogoClick = () => {
+    const newCount = logoClicks + 1;
+    if (newCount >= 5) {
+      onBuildModeToggle?.();
+      setLogoClicks(0);
+    } else {
+      setLogoClicks(newCount);
+      // Reset count if not finished within 2 seconds
+      setTimeout(() => setLogoClicks(0), 2000);
+    }
+  };
 
   const navItems: { id: TabType; label: string; icon: string; roles: UserRole[] }[] = [
-    { id: 'dashboard', label: 'Dashboard', icon: '📊', roles: ['admin', 'driver', 'housekeeping', 'hr', 'finance', 'client', 'supervisor', 'cleaner', 'laundry'] },
+    { id: 'dashboard', label: 'Dashboard', icon: '📊', roles: ['admin', 'driver', 'housekeeping', 'hr', 'finance', 'client', 'supervisor', 'cleaner'] },
     { id: 'shifts', label: 'Schedule', icon: '🗓️', roles: ['admin', 'cleaner', 'housekeeping', 'supervisor'] },
+    { id: 'worksheet', label: 'Worksheet', icon: '📄', roles: ['cleaner', 'supervisor'] },
     { id: 'logistics', label: 'Deliveries', icon: '🚚', roles: ['admin', 'driver', 'housekeeping'] },
     { id: 'laundry', label: 'Laundry', icon: '🧺', roles: ['admin', 'laundry', 'housekeeping'] },
     { id: 'inventory_admin', label: 'Supplies', icon: '📦', roles: ['admin', 'housekeeping'] },
@@ -42,7 +58,7 @@ const Layout: React.FC<LayoutProps> = ({
       <aside className="hidden md:flex flex-col w-64 bg-[#1E293B] text-white shrink-0 shadow-2xl relative z-50">
         <div className="p-8 flex flex-col gap-4">
           <div className="flex justify-between items-start">
-            <div className="flex flex-col">
+            <div className="flex flex-col cursor-pointer select-none" onClick={handleLogoClick}>
               <h1 className="font-brand text-2xl text-white tracking-tighter uppercase leading-none">RESET</h1>
               <p className="text-[9px] font-bold text-teal-400 uppercase tracking-[0.25em] mt-2">HOSPITALITY STUDIO</p>
             </div>
@@ -97,7 +113,7 @@ const Layout: React.FC<LayoutProps> = ({
       <main className="flex-1 flex flex-col min-w-0 relative w-full overflow-hidden">
         {/* MOBILE HEADER - Actions now in top right */}
         <header className="md:hidden bg-white border-b border-teal-100 px-4 py-3 flex justify-between items-center sticky top-0 z-40 shadow-sm">
-           <div className="flex flex-col">
+           <div className="flex flex-col cursor-pointer select-none" onClick={handleLogoClick}>
               <h2 className="font-brand font-bold text-[#1E293B] text-lg leading-none tracking-tighter">RESET</h2>
               <div className="flex items-center gap-1.5 mt-0.5">
                  <div className={`w-1 h-1 rounded-full ${isSyncing ? 'bg-teal-500 animate-pulse' : 'bg-slate-300'}`}></div>

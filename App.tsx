@@ -13,6 +13,8 @@ import InventoryAdmin from './components/management/InventoryAdmin';
 import LaundryDashboard from './components/dashboards/LaundryDashboard';
 import PersonnelProfile from './components/PersonnelProfile';
 import ActivityCenter from './components/ActivityCenter';
+import EmployeeWorksheet from './components/EmployeeWorksheet';
+import BuildModeOverlay from './components/BuildModeOverlay';
 import Login from './components/Login';
 import Signup from './components/Signup';
 import UserActivation from './components/UserActivation';
@@ -49,7 +51,11 @@ const App: React.FC = () => {
   
   const [authView, setAuthView] = useState<'login' | 'signup'>('login');
   const [orgId, setOrgId] = useState<string | null>(() => activationToken ? null : localStorage.getItem('current_org_id'));
-  const [activeTab, setActiveTab] = useState<TabType>(() => activationToken ? 'dashboard' : (localStorage.getItem('studio_active_tab') as TabType) || 'dashboard');
+  const [activeTab, setActiveTab] = useState<TabType>(() => {
+    if (activationToken) return 'dashboard';
+    const saved = localStorage.getItem('studio_active_tab') as TabType;
+    return saved || 'dashboard';
+  });
   
   const [targetLogisticsUserId, setTargetLogisticsUserId] = useState<string | null>(null);
   const [selectedAuditShiftId, setSelectedAuditShiftId] = useState<string | null>(null);
@@ -58,6 +64,8 @@ const App: React.FC = () => {
   
   const [hasHydrated, setHasHydrated] = useState(false);
   const isHydratingInProgress = useRef(false);
+
+  const [isBuildMode, setIsBuildMode] = useState(() => load('studio_build_mode', false));
 
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>(() => load('studio_notifications', []));
@@ -82,6 +90,98 @@ const App: React.FC = () => {
   const localPersistenceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const currentRole = user?.role || 'admin';
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === 'b') {
+        const next = !isBuildMode;
+        setIsBuildMode(next);
+        safeSave('studio_build_mode', next);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isBuildMode]);
+
+  const handleBuildModeRoleSwitch = (role: UserRole) => {
+    const buildUserId = `build-${role}`;
+    
+    const dummyUser: User = {
+      id: buildUserId,
+      name: `BUILD_${role.toUpperCase()}`,
+      email: `build@reset.studio`,
+      role: role,
+      status: 'active',
+      payRate: role === 'supervisor' ? 15 : 10,
+      paymentType: 'Per Hour'
+    };
+    
+    let activeProps = [...properties];
+    if (activeProps.length === 0) {
+      activeProps = [
+        { id: 'p1', name: 'Valletta Heritage Loft', type: 'Apartment', clientId: 'c1', address: '12 Old Bakery St, Valletta', rooms: 2, bathrooms: 1, halfBaths: 0, doubleBeds: 1, singleBeds: 2, sofaBeds: 0, pillows: 6, capacity: 4, hasDishwasher: true, hasCoffeeMachine: true, entrancePhoto: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=800&q=80', keyboxCode: '1234', mainEntranceCode: '9999', accessNotes: 'Keybox on left rail.', status: 'active', specialRequests: [], clientPrice: 120, cleanerPrice: 45 },
+        { id: 'p2', name: 'Sliema Seafront', type: 'Penthouse', clientId: 'c1', address: 'Tower Road, Sliema', rooms: 3, bathrooms: 2, halfBaths: 1, doubleBeds: 2, singleBeds: 2, sofaBeds: 1, pillows: 10, capacity: 7, hasDishwasher: true, hasCoffeeMachine: true, entrancePhoto: 'https://images.unsplash.com/photo-1493809842364-78817add7ffb?auto=format&fit=crop&w=800&q=80', keyboxCode: '5678', status: 'active', specialRequests: [], clientPrice: 180, cleanerPrice: 70 }
+      ];
+      setProperties(activeProps);
+    }
+
+    const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase();
+    const demoShifts: Shift[] = [];
+    
+    if (role === 'supervisor') {
+      demoShifts.push({
+        id: 'demo-sup-audit',
+        propertyId: activeProps[0].id,
+        propertyName: activeProps[0].name,
+        userIds: [buildUserId],
+        date: today,
+        startTime: '09:00 AM',
+        endTime: '10:30 AM',
+        serviceType: 'TO CHECK APARTMENT',
+        status: 'pending',
+        approvalStatus: 'pending',
+        isPublished: true
+      });
+    }
+
+    if (role === 'cleaner') {
+      demoShifts.push({
+        id: 'demo-cl-refresh',
+        propertyId: activeProps[0].id,
+        propertyName: activeProps[0].name,
+        userIds: [buildUserId],
+        date: today,
+        startTime: '08:00 AM',
+        endTime: '09:30 AM',
+        serviceType: 'REFRESH',
+        status: 'pending',
+        approvalStatus: 'pending',
+        isPublished: true
+      });
+    }
+
+    setShifts(prev => {
+        const existingIds = new Set(prev.map(s => s.id));
+        const filteredDemos = demoShifts.filter(ds => !existingIds.has(ds.id));
+        return [...filteredDemos, ...prev];
+    });
+
+    setUser(dummyUser);
+    
+    // REDIRECTION: For Laundry role, land directly on Laundry page.
+    if (role === 'laundry') {
+      setActiveTab('laundry');
+    } else if (role === 'supervisor') {
+      setActiveTab('shifts');
+    } else if (role === 'driver') {
+      setActiveTab('logistics');
+    } else {
+      setActiveTab('dashboard');
+    }
+
+    setHasHydrated(true); 
+    showToast(`Build: Switched to ${role.toUpperCase()}.`, 'info');
+  };
 
   const showToast = (message: string, type: 'success' | 'error' | 'info') => {
     setToast({ message, type });
@@ -112,13 +212,20 @@ const App: React.FC = () => {
 
   const hydrateState = useCallback(async (emailToUse?: string) => {
     const targetEmail = emailToUse || user?.email;
-    if (!targetEmail || isHydratingInProgress.current || hasHydrated) return;
+    
+    if (!targetEmail || targetEmail === 'build@reset.studio' || isHydratingInProgress.current || hasHydrated) {
+       if (targetEmail === 'build@reset.studio' || hasHydrated) setHasHydrated(true);
+       return;
+    }
     
     isHydratingInProgress.current = true;
     setIsLoading(true);
     try {
       const response = await fetch(`/api/state?email=${encodeURIComponent(targetEmail)}`);
-      if (!response.ok) throw new Error("Sync failed");
+      if (!response.ok) {
+         setHasHydrated(true); 
+         return;
+      }
       const data = await response.json();
       if (data.success && data.organization) {
         const org = data.organization;
@@ -135,11 +242,11 @@ const App: React.FC = () => {
         if (org.manualTasks) setManualTasks(org.manualTasks);
         if (org.leaveRequests) setLeaveRequests(org.leaveRequests);
         if (org.settings) setOrganization(org.settings);
-        setHasHydrated(true);
       }
     } catch (err) {
-      console.error("Hydration Error:", err);
+      console.warn("Hydration skipped: using local state.");
     } finally {
+      setHasHydrated(true); 
       setIsLoading(false);
       isHydratingInProgress.current = false;
     }
@@ -166,20 +273,21 @@ const App: React.FC = () => {
     safeSave('studio_manual_tasks', manualTasks);
     safeSave('studio_leave_requests', leaveRequests);
     safeSave('studio_notifications', notifications);
+    safeSave('studio_build_mode', isBuildMode);
     localStorage.setItem('studio_active_tab', activeTab);
     safeSave('studio_org_settings', organization);
     if (user) safeSave('current_user_obj', user);
     safeSave('studio_auth_laundry_ids', authorizedLaundryUserIds);
-  }, [users, shifts, properties, clients, invoices, timeEntries, activeTab, user, organization, inventoryItems, supplyRequests, anomalyReports, authorizedLaundryUserIds, manualTasks, leaveRequests, notifications, hasHydrated]);
+  }, [users, shifts, properties, clients, invoices, timeEntries, activeTab, user, organization, inventoryItems, supplyRequests, anomalyReports, authorizedLaundryUserIds, manualTasks, leaveRequests, notifications, hasHydrated, isBuildMode]);
 
   useEffect(() => {
     if (!user || !hasHydrated) return;
     if (localPersistenceTimeoutRef.current) clearTimeout(localPersistenceTimeoutRef.current);
     localPersistenceTimeoutRef.current = setTimeout(saveAllLocal, 200);
-  }, [users, shifts, properties, clients, invoices, timeEntries, organization, manualTasks, leaveRequests, activeTab, notifications, saveAllLocal, user, hasHydrated]);
+  }, [users, shifts, properties, clients, invoices, timeEntries, organization, manualTasks, leaveRequests, activeTab, notifications, saveAllLocal, user, hasHydrated, isBuildMode]);
 
   useEffect(() => {
-    if (!user || !orgId || !hasHydrated || isHydratingInProgress.current) return;
+    if (!user || !orgId || !hasHydrated || isHydratingInProgress.current || user.email === 'build@reset.studio') return;
 
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     syncTimeoutRef.current = setTimeout(async () => {
@@ -201,7 +309,6 @@ const App: React.FC = () => {
            setTimeout(() => setIsSyncing(false), 500);
         }
       } catch (err) { 
-        console.error("Cloud Sync error:", err); 
         setIsSyncing(false);
       }
     }, 1500);
@@ -237,7 +344,6 @@ const App: React.FC = () => {
     if (organizationData) {
         const org = organizationData;
         setOrgId(org.id);
-        
         if (org.users) setUsers(org.users);
         if (org.shifts) setShifts(org.shifts);
         if (org.properties) setProperties(org.properties);
@@ -255,8 +361,9 @@ const App: React.FC = () => {
     
     setUser(u);
     
-    if (u.role === 'supervisor') setActiveTab('shifts');
-    else if (u.role === 'laundry') setActiveTab('laundry');
+    // REDIRECTION: Logic for role-based landing page
+    if (u.role === 'laundry') setActiveTab('laundry');
+    else if (u.role === 'supervisor') setActiveTab('shifts');
     else if (u.role === 'driver') setActiveTab('logistics');
     else setActiveTab('dashboard');
     
@@ -350,6 +457,7 @@ const App: React.FC = () => {
           onUpdateUser={handleUpdateUser} 
         />
       );
+      case 'worksheet': return <EmployeeWorksheet user={user} shifts={shifts} properties={properties} />;
       case 'properties': return <AdminPortal user={user} view="properties" properties={properties} setProperties={setProperties} clients={clients} setClients={setClients} setActiveTab={setActiveTab} setSelectedClientIdFilter={() => {}} />;
       case 'clients': return <AdminPortal user={user} view="clients" clients={clients} setClients={setClients} properties={properties} setActiveTab={setActiveTab} setSelectedClientIdFilter={() => {}} />;
       case 'shifts': 
@@ -361,7 +469,7 @@ const App: React.FC = () => {
             }));
             setSupplyRequests(prev => [...prev, ...newRequests]);
             handleUpdateUser({ ...user, lastSupplyRequestDate: now });
-        }} onUpdateUser={handleUpdateUser} initialSelectedShiftId={selectedAuditShiftId} onConsumedDeepLink={handleConsumedAuditDeepLink} />;
+        }} onUpdateUser={handleUpdateUser} initialSelectedShiftId={selectedAuditShiftId} onConsumedDeepLink={handleConsumedAuditDeepLink} isBuildMode={isBuildMode} />;
       case 'logistics': return <DriverPortal user={user} shifts={shifts} setShifts={setShifts} properties={properties} users={users} setActiveTab={setActiveTab} timeEntries={timeEntries} setTimeEntries={setTimeEntries} initialOverrideId={targetLogisticsUserId} onResetOverrideId={() => setTargetLogisticsUserId(null)} manualTasks={manualTasks} setManualTasks={setManualTasks} />;
       case 'laundry': return (
         <LaundryDashboard 
@@ -399,7 +507,7 @@ const App: React.FC = () => {
     }
   };
 
-  if (!user) {
+  if (!user && !isBuildMode) {
     return authView === 'login' 
       ? <Login onLogin={handleLogin} />
       : <Signup onSignupComplete={handleLogin} onBackToLogin={() => setAuthView('login')} />;
@@ -410,7 +518,7 @@ const App: React.FC = () => {
       {isLoading && !hasHydrated ? (
         <div className="flex-1 flex flex-col items-center justify-center py-40 animate-pulse">
            <div className="w-12 h-12 border-4 border-teal-50 border-t-teal-600 rounded-full animate-spin"></div>
-           <p className="text-[10px] font-black uppercase tracking-widest mt-6 text-teal-600">Synchronizing Session Core...</p>
+           <p className="text-[10px] font-black text-teal-600 uppercase tracking-widest mt-6">Synchronizing Session Core...</p>
         </div>
       ) : (
         <Layout 
@@ -421,9 +529,31 @@ const App: React.FC = () => {
           notificationCount={notifications.length}
           onOpenNotifications={() => setShowActivityCenter(true)}
           isSyncing={isSyncing}
+          onBuildModeToggle={() => {
+             const next = !isBuildMode;
+             setIsBuildMode(next);
+             safeSave('studio_build_mode', next);
+          }}
         >
           {renderContent()}
         </Layout>
+      )}
+
+      {isBuildMode && (
+        <BuildModeOverlay 
+           currentUser={user}
+           onSwitchUser={handleBuildModeRoleSwitch}
+           onToggleTab={setActiveTab}
+           onClose={() => {
+              setIsBuildMode(false);
+              safeSave('studio_build_mode', false);
+           }}
+           stats={{
+              users: users.length,
+              properties: properties.length,
+              shifts: shifts.length
+           }}
+        />
       )}
 
       {showActivityCenter && (
