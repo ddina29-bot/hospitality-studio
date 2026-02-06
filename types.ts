@@ -260,6 +260,8 @@ export interface SavedPayslip {
   daysWorked: number;
   generatedAt: string;
   generatedBy: string;
+  performanceBonus?: number;
+  auditFees?: number;
 }
 
 export interface User {

@@ -15,8 +15,7 @@ import PersonnelProfile from './components/PersonnelProfile';
 import ActivityCenter from './components/ActivityCenter';
 import Login from './components/Login';
 import Signup from './components/Signup';
-import UserActivation from './components/UserActivation';
-import { TabType, Shift, User, Client, Property, Invoice, TimeEntry, Tutorial, UserRole, OrganizationSettings, SupplyItem, SupplyRequest, AnomalyReport, ManualTask, LeaveRequest, AppNotification } from './types';
+import { TabType, Shift, User, Client, Property, Invoice, TimeEntry, Tutorial, UserRole, OrganizationSettings, SupplyItem, SupplyRequest, AnomalyReport, ManualTask, LeaveRequest, AppNotification, LeaveType } from './types';
 
 const load = <T,>(k: string, f: T): T => {
   if (typeof window === 'undefined') return f;
@@ -57,7 +56,6 @@ const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   
   const [hasHydrated, setHasHydrated] = useState(false);
-  // Fixed undeclared variable isHydratingInProgress by adding const keyword.
   const isHydratingInProgress = useRef(false);
 
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
@@ -76,40 +74,20 @@ const App: React.FC = () => {
   const [anomalyReports, setAnomalyReports] = useState<AnomalyReport[]>(() => load('studio_anomalies', []));
   const [manualTasks, setManualTasks] = useState<ManualTask[]>(() => load('studio_manual_tasks', []));
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(() => load('studio_leave_requests', []));
-  const [organization, setOrganization] = useState<OrganizationSettings>(() => load('studio_org_settings', { id: 'org-1', name: 'RESET STUDIO', address: '', email: '', phone: '' }));
+  const [organization, setOrganization] = useState<OrganizationSettings>(() => load('studio_org_settings', { id: 'org-1', name: 'RESET STUDIO', address: 'HQ Malta', email: 'ops@reset.studio', phone: '+356 2100 0000' }));
   const [authorizedLaundryUserIds, setAuthorizedLaundryUserIds] = useState<string[]>(() => load('studio_auth_laundry_ids', []));
   
   const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const localPersistenceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const currentRole = user?.role || 'admin';
-
-  const showToast = (message: string, type: 'success' | 'error' | 'info') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 4000);
-  };
-
-  const handleAuditDeepLink = (id: string) => {
-    setSelectedAuditShiftId(id);
-    setActiveTab('shifts');
-  };
-
-  const handleConsumedAuditDeepLink = () => {
-    setSelectedAuditShiftId(null);
-  };
-
-  const addNotification = (notif: Partial<AppNotification>) => {
-    const fullNotif: AppNotification = {
-      id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      title: notif.title || 'Notification',
-      message: notif.message || '',
-      type: notif.type || 'info',
-      timestamp: Date.now(),
-      linkTab: notif.linkTab,
-      linkId: notif.linkId
-    };
-    setNotifications(prev => [fullNotif, ...prev]);
-  };
+  const handleLogout = useCallback(() => {
+    setUser(null);
+    setOrgId(null);
+    setHasHydrated(false);
+    setActivationToken(null);
+    localStorage.clear();
+    setAuthView('login');
+  }, []);
 
   const hydrateState = useCallback(async (emailToUse?: string) => {
     const targetEmail = emailToUse || user?.email;
@@ -119,7 +97,14 @@ const App: React.FC = () => {
     setIsLoading(true);
     try {
       const response = await fetch(`/api/state?email=${encodeURIComponent(targetEmail)}`);
-      if (!response.ok) throw new Error("Sync failed");
+      if (!response.ok) {
+        if (response.status === 404) {
+          console.warn("Session expired on server. Logging out.");
+          handleLogout();
+          return;
+        }
+        throw new Error("Sync failed");
+      }
       const data = await response.json();
       if (data.success && data.organization) {
         const org = data.organization;
@@ -144,7 +129,7 @@ const App: React.FC = () => {
       setIsLoading(false);
       isHydratingInProgress.current = false;
     }
-  }, [user?.email, hasHydrated]);
+  }, [user?.email, hasHydrated, handleLogout]);
 
   useEffect(() => {
     if (user && !activationToken && !hasHydrated) {
@@ -221,194 +206,84 @@ const App: React.FC = () => {
     const leave = leaveRequests.find(l => l.id === id);
     setLeaveRequests(prev => prev.map(l => l.id === id ? { ...l, status } : l));
     if (leave) {
-      addNotification({
+      const fullNotif: AppNotification = {
+        id: `notif-${Date.now()}`,
         title: `Leave ${status.toUpperCase()}`,
         message: `Your request for ${leave.type} has been ${status}.`,
         type: status === 'approved' ? 'success' : 'alert',
+        timestamp: Date.now(),
         linkTab: 'settings'
-      });
+      };
+      setNotifications(prev => [fullNotif, ...prev]);
     }
-    showToast(`LEAVE REQUEST ${status.toUpperCase()}`, status === 'approved' ? 'success' : 'error');
+    setToast({ message: `LEAVE REQUEST ${status.toUpperCase()}`, type: status === 'approved' ? 'success' : 'error' });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  const handleRequestLeave = (type: LeaveType, start: string, end: string) => {
+    if (!user) return;
+    const newRequest: LeaveRequest = {
+      id: `leave-${Date.now()}`,
+      userId: user.id,
+      userName: user.name,
+      type,
+      startDate: start,
+      endDate: end,
+      status: 'pending'
+    };
+    setLeaveRequests(prev => [newRequest, ...prev]);
+    setToast({ message: 'LEAVE REQUEST DISPATCHED', type: 'info' });
+    setTimeout(() => setToast(null), 4000);
   };
 
   const handleLogin = (u: User, organizationData?: any) => {
-    console.info("Initializing User Session:", u.name);
     localStorage.clear();
     setActivationToken(null);
     
     if (organizationData) {
         const org = organizationData;
         setOrgId(org.id);
-        
         if (org.users) setUsers(org.users);
         if (org.shifts) setShifts(org.shifts);
         if (org.properties) setProperties(org.properties);
         if (org.clients) setClients(org.clients);
         if (org.settings) setOrganization(org.settings);
-        if (org.manualTasks) setManualTasks(org.manualTasks);
-        if (org.leaveRequests) setLeaveRequests(org.leaveRequests);
-        if (org.inventoryItems) setInventoryItems(org.inventoryItems);
-        if (org.timeEntries) setTimeEntries(org.timeEntries);
-        
         setHasHydrated(true);
         localStorage.setItem('current_org_id', org.id);
-        localStorage.setItem('current_user_obj', JSON.stringify(u));
     }
     
     setUser(u);
+    localStorage.setItem('current_user_obj', JSON.stringify(u));
     
     if (u.role === 'supervisor') setActiveTab('shifts');
     else if (u.role === 'laundry') setActiveTab('laundry');
     else if (u.role === 'driver') setActiveTab('logistics');
     else setActiveTab('dashboard');
-    
-    if (window.location.search) {
-       window.history.replaceState({}, '', window.location.pathname);
-    }
   };
 
-  const handleLogout = () => {
-    setUser(null);
-    setOrgId(null);
-    setHasHydrated(false);
-    setActivationToken(null);
-    localStorage.clear();
-    setAuthView('login');
-  };
-
-  const onToggleLaundryPrepared = (shiftId: string) => {
-    setShifts(prev => prev.map(s => s.id === shiftId ? { ...s, isLaundryPrepared: !s.isLaundryPrepared } : s));
-    showToast('LINEN PREPARATION STATUS UPDATED', 'success');
-  };
-
-  if (activationToken && !user) {
-    return (
-      <UserActivation 
-        token={activationToken} 
-        onActivationComplete={(activatedUser, orgData) => handleLogin(activatedUser, orgData)} 
-        onCancel={() => {
-            setActivationToken(null);
-            window.history.replaceState({}, '', window.location.pathname);
-        }}
-      />
-    );
-  }
-
-  const renderContent = () => {
-    if (!user) return null;
-    if (activeTab === 'settings') {
-      return (
-        <div className="space-y-12 max-w-5xl mx-auto px-1 md:px-4">
-          {user.role === 'admin' && (
-            <section className="space-y-6">
-              <StudioSettings 
-                organization={organization} 
-                setOrganization={setOrganization} 
-                userCount={users.length} 
-                propertyCount={properties.length} 
-                currentOrgId={orgId} 
-              />
-              <div className="h-px bg-slate-200 w-full opacity-50"></div>
-            </section>
-          )}
-          <PersonnelProfile 
-            user={user} 
-            leaveRequests={leaveRequests} 
-            onRequestLeave={(type, start, end) => {
-               const leaveId = `leave-${Date.now()}`;
-               setLeaveRequests(prev => [...prev, { id: leaveId, userId: user.id, userName: user.name, type, startDate: start, endDate: end, status: 'pending' }]);
-               addNotification({ title: 'New Leave Request', message: `${user.name} requested ${type}`, type: 'info', linkTab: 'dashboard', linkId: leaveId });
-               showToast('LEAVE REQUEST SUBMITTED', 'info');
-            }} 
-            shifts={shifts} 
-            properties={properties} 
-            onUpdateUser={handleUpdateUser} 
-            organization={organization}
-          />
-        </div>
-      );
-    }
-
-    switch (activeTab) {
-      case 'dashboard': return (
-        <Dashboard 
-          user={user} 
-          users={users} 
-          setActiveTab={setActiveTab} 
-          shifts={shifts} 
-          setShifts={setShifts} 
-          properties={properties}
-          invoices={invoices} 
-          timeEntries={timeEntries} 
-          supplyRequests={supplyRequests}
-          setSupplyRequests={setSupplyRequests}
-          manualTasks={manualTasks}
-          setManualTasks={setManualTasks}
-          leaveRequests={leaveRequests}
-          onUpdateLeaveStatus={handleUpdateLeaveStatus}
-          onLogisticsAlertClick={(uid) => { setTargetLogisticsUserId(uid); setActiveTab('logistics'); }} 
-          onAuditDeepLink={handleAuditDeepLink}
-          onLogout={handleLogout} 
-          onUpdateUser={handleUpdateUser} 
-        />
-      );
-      case 'properties': return <AdminPortal user={user} view="properties" properties={properties} setProperties={setProperties} clients={clients} setClients={setClients} setActiveTab={setActiveTab} setSelectedClientIdFilter={() => {}} />;
-      case 'clients': return <AdminPortal user={user} view="clients" clients={clients} setClients={setClients} properties={properties} setActiveTab={setActiveTab} setSelectedClientIdFilter={() => {}} />;
-      case 'shifts': 
-        if (['admin', 'housekeeping'].includes(currentRole)) return <AdminPortal user={user} view="scheduling" shifts={shifts} setShifts={setShifts} properties={properties} users={users} setActiveTab={setActiveTab} setSelectedClientIdFilter={() => {}} leaveRequests={leaveRequests} initialSelectedShiftId={selectedAuditShiftId} onConsumedDeepLink={handleConsumedAuditDeepLink} />;
-        return <CleanerPortal user={user} shifts={shifts} setShifts={setShifts} properties={properties} users={users} inventoryItems={inventoryItems} onAddSupplyRequest={(batch) => {
-            const now = Date.now();
-            const newRequests: SupplyRequest[] = Object.entries(batch).map(([itemId, qty]) => ({
-                id: `sr-${now}-${itemId}`, itemId, itemName: inventoryItems.find(i => i.id === itemId)?.name || 'Unknown', quantity: qty as number, userId: user.id, userName: user.name, date: new Date().toISOString().split('T')[0], status: 'pending'
-            }));
-            setSupplyRequests(prev => [...prev, ...newRequests]);
-            handleUpdateUser({ ...user, lastSupplyRequestDate: now });
-        }} onUpdateUser={handleUpdateUser} initialSelectedShiftId={selectedAuditShiftId} onConsumedDeepLink={handleConsumedAuditDeepLink} />;
-      case 'logistics': return <DriverPortal user={user} shifts={shifts} setShifts={setShifts} properties={properties} users={users} setActiveTab={setActiveTab} timeEntries={timeEntries} setTimeEntries={setTimeEntries} initialOverrideId={targetLogisticsUserId} onResetOverrideId={() => setTargetLogisticsUserId(null)} manualTasks={manualTasks} setManualTasks={setManualTasks} />;
-      case 'laundry': return (
-        <LaundryDashboard 
-          user={user} 
-          setActiveTab={setActiveTab} 
-          onLogout={handleLogout} 
-          shifts={shifts} 
-          setShifts={setShifts} 
-          users={users} 
-          properties={properties} 
-          onTogglePrepared={onToggleLaundryPrepared}
-          authorizedLaundryUserIds={authorizedLaundryUserIds}
-          onToggleAuthority={(uid) => setAuthorizedLaundryUserIds(prev => prev.includes(uid) ? prev.filter(id => id !== uid) : [...prev, uid])}
-          timeEntries={timeEntries}
-          setTimeEntries={setTimeEntries}
-        />
-      );
-      case 'inventory_admin': return (
-        <InventoryAdmin 
-          inventoryItems={inventoryItems} 
-          setInventoryItems={setInventoryItems} 
-          supplyRequests={supplyRequests} 
-          setSupplyRequests={setSupplyRequests} 
-          shifts={shifts} 
-          setShifts={setShifts} 
-          showToast={showToast}
-          setAnomalyReports={setAnomalyReports}
-        />
-      );
-      case 'tutorials': return <TutorialsHub tutorials={tutorials} setTutorials={setTutorials} userRole={currentRole} showToast={showToast} />;
-      case 'users': return <AdminPortal user={user} view="users" users={users} setUsers={setUsers} setActiveTab={setActiveTab} setSelectedClientIdFilter={() => {}} orgId={orgId} />;
-      case 'finance': return <FinanceDashboard setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} users={users} properties={properties} invoices={invoices} setInvoices={setInvoices} clients={clients} organization={organization} manualTasks={manualTasks} onUpdateUser={handleUpdateUser} />;
-      case 'reports': return <ReportsPortal auditReports={[]} users={users} shifts={shifts} userRole={currentRole} anomalyReports={anomalyReports} leaveRequests={leaveRequests} />;
-      default: return null;
-    }
+  const handleDemoLogin = (role: UserRole) => {
+    const demoUser: User = { 
+      id: `demo-${role}`, 
+      name: `Demo ${role.toUpperCase()}`, 
+      role, 
+      email: `${role}@reset.studio`, 
+      status: 'active', 
+      payRate: 15, 
+      paymentType: 'Per Hour', 
+      employmentType: 'Full-Time', 
+      payslips: [] 
+    };
+    handleLogin(demoUser, { id: 'demo-org', settings: organization });
   };
 
   if (!user) {
     return authView === 'login' 
-      ? <Login onLogin={handleLogin} onSignupClick={() => setAuthView('signup')} />
+      ? <Login onLogin={handleLogin} onSignupClick={() => setAuthView('signup')} onDemoLogin={handleDemoLogin} />
       : <Signup onSignupComplete={handleLogin} onBackToLogin={() => setAuthView('login')} />;
   }
 
   return (
-    <div className="flex h-screen bg-[#F0FDFA] overflow-hidden">
+    <div className="flex h-[100dvh] bg-[#F0FDFA] overflow-hidden w-full fixed inset-0">
       {isLoading && !hasHydrated ? (
         <div className="flex-1 flex flex-col items-center justify-center py-40 animate-pulse">
            <div className="w-12 h-12 border-4 border-teal-50 border-t-teal-600 rounded-full animate-spin"></div>
@@ -418,23 +293,50 @@ const App: React.FC = () => {
         <Layout 
           activeTab={activeTab} 
           setActiveTab={setActiveTab} 
-          role={currentRole} 
+          role={user.role} 
           onLogout={handleLogout}
           notificationCount={notifications.length}
           onOpenNotifications={() => setShowActivityCenter(true)}
           isSyncing={isSyncing}
         >
-          {renderContent()}
+          {activeTab === 'settings' ? (
+             <div className="space-y-12 max-w-5xl mx-auto px-1 md:px-4">
+                {user.role === 'housekeeping' || user.role === 'admin' ? (
+                    <StudioSettings organization={organization} setOrganization={setOrganization} userCount={users.length} propertyCount={properties.length} currentOrgId={orgId} />
+                ) : null}
+                <PersonnelProfile user={user} leaveRequests={leaveRequests} shifts={shifts} properties={properties} onUpdateUser={handleUpdateUser} organization={organization} onRequestLeave={handleRequestLeave} />
+             </div>
+          ) : activeTab === 'dashboard' ? (
+            <Dashboard user={user} users={users} setActiveTab={setActiveTab} shifts={shifts} setShifts={setShifts} properties={properties} invoices={invoices} timeEntries={timeEntries} supplyRequests={supplyRequests} setSupplyRequests={setSupplyRequests} manualTasks={manualTasks} setManualTasks={setManualTasks} leaveRequests={leaveRequests} onUpdateLeaveStatus={handleUpdateLeaveStatus} onLogout={handleLogout} onUpdateUser={handleUpdateUser} />
+          ) : activeTab === 'properties' ? (
+            <AdminPortal user={user} view="properties" properties={properties} setProperties={setProperties} clients={clients} setClients={setClients} setActiveTab={setActiveTab} setSelectedClientIdFilter={() => {}} />
+          ) : activeTab === 'clients' ? (
+            <AdminPortal user={user} view="clients" clients={clients} setClients={setClients} properties={properties} setActiveTab={setActiveTab} setSelectedClientIdFilter={() => {}} />
+          ) : activeTab === 'shifts' ? (
+            ['admin', 'housekeeping', 'supervisor'].includes(user.role) ? 
+                <AdminPortal user={user} view="scheduling" shifts={shifts} setShifts={setShifts} properties={properties} users={users} setActiveTab={setActiveTab} setSelectedClientIdFilter={() => {}} leaveRequests={leaveRequests} initialSelectedShiftId={selectedAuditShiftId} onConsumedDeepLink={() => setSelectedAuditShiftId(null)} /> :
+                <CleanerPortal user={user} shifts={shifts} setShifts={setShifts} properties={properties} users={users} inventoryItems={inventoryItems} onUpdateUser={handleUpdateUser} initialSelectedShiftId={selectedAuditShiftId} onConsumedDeepLink={() => setSelectedAuditShiftId(null)} />
+          ) : activeTab === 'logistics' ? (
+            <DriverPortal user={user} shifts={shifts} setShifts={setShifts} properties={properties} users={users} setActiveTab={setActiveTab} timeEntries={timeEntries} setTimeEntries={setTimeEntries} initialOverrideId={targetLogisticsUserId} onResetOverrideId={() => setTargetLogisticsUserId(null)} />
+          ) : activeTab === 'finance' ? (
+            <FinanceDashboard setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} users={users} properties={properties} invoices={invoices} setInvoices={setInvoices} clients={clients} organization={organization} manualTasks={manualTasks} onUpdateUser={handleUpdateUser} />
+          ) : activeTab === 'reports' ? (
+            <ReportsPortal users={users} shifts={shifts} userRole={user.role} anomalyReports={anomalyReports} leaveRequests={leaveRequests} />
+          ) : activeTab === 'users' ? (
+            <AdminPortal user={user} view="users" users={users} setUsers={setUsers} setActiveTab={setActiveTab} setSelectedClientIdFilter={() => {}} orgId={orgId} />
+          ) : activeTab === 'inventory_admin' ? (
+            <InventoryAdmin inventoryItems={inventoryItems} setInventoryItems={setInventoryItems} supplyRequests={supplyRequests} setSupplyRequests={setSupplyRequests} shifts={shifts} setShifts={setShifts} showToast={(m, t) => setToast({message: m, type: t as any})} setAnomalyReports={setAnomalyReports} />
+          ) : activeTab === 'tutorials' ? (
+            <TutorialsHub tutorials={tutorials} setTutorials={setTutorials} userRole={user.role} showToast={(m, t) => setToast({message: m, type: t as any})} />
+          ) : activeTab === 'laundry' ? (
+            <LaundryDashboard user={user} setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} setShifts={setShifts} users={users} properties={properties} onTogglePrepared={(id) => setShifts(prev => prev.map(s => s.id === id ? {...s, isLaundryPrepared: !s.isLaundryPrepared} : s))} authorizedLaundryUserIds={authorizedLaundryUserIds} timeEntries={timeEntries} setTimeEntries={setTimeEntries} />
+          ) : null}
         </Layout>
       )}
 
       {showActivityCenter && (
         <div className="fixed inset-0 z-[2000] flex justify-end">
-          <ActivityCenter 
-            notifications={notifications} 
-            onClose={() => setShowActivityCenter(false)} 
-            onNavigate={(tab) => { setActiveTab(tab); setShowActivityCenter(false); }}
-          />
+          <ActivityCenter notifications={notifications} onClose={() => setShowActivityCenter(false)} onNavigate={(tab) => { setActiveTab(tab); setShowActivityCenter(false); }} />
         </div>
       )}
 
