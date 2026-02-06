@@ -485,6 +485,7 @@ const App: React.FC = () => {
           onToggleAuthority={(uid) => setAuthorizedLaundryUserIds(prev => prev.includes(uid) ? prev.filter(id => id !== uid) : [...prev, uid])}
           timeEntries={timeEntries}
           setTimeEntries={setTimeEntries}
+          organization={organization}
         />
       );
       case 'inventory_admin': return (

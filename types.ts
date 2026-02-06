@@ -141,6 +141,8 @@ export interface OrganizationSettings {
   taxId?: string;
   peNumber?: string;
   regNumber?: string;
+  laundryLat?: number;
+  laundryLng?: number;
 }
 
 export type LeaveType = 'Day Off' | 'Sick Leave' | 'Vacation Leave';

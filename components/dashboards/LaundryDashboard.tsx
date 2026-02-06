@@ -1,6 +1,6 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { TabType, User, Shift, Property, SpecialReport, TimeEntry } from '../../types';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { TabType, User, Shift, Property, SpecialReport, TimeEntry, OrganizationSettings } from '../../types';
 import LaundryReports from './LaundryReports';
 
 interface LaundryDashboardProps {
@@ -16,39 +16,78 @@ interface LaundryDashboardProps {
   onToggleAuthority?: (userId: string) => void;
   timeEntries?: TimeEntry[];
   setTimeEntries?: React.Dispatch<React.SetStateAction<TimeEntry[]>>;
+  organization?: OrganizationSettings;
 }
 
+const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  const R = 6371; 
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c; 
+};
+
 const LaundryDashboard: React.FC<LaundryDashboardProps> = ({ 
-  user, setActiveTab, onLogout, shifts = [], setShifts, users = [], properties = [], onTogglePrepared, authorizedLaundryUserIds = [], onToggleAuthority, timeEntries = [], setTimeEntries
+  user, setActiveTab, onLogout, shifts = [], setShifts, users = [], properties = [], onTogglePrepared, authorizedLaundryUserIds = [], onToggleAuthority, timeEntries = [], setTimeEntries, organization
 }) => {
   const [activeView, setActiveView] = useState<'queue' | 'reports'>('queue');
   const [adminOverride, setAdminOverride] = useState(false);
   const [hasCriticalDamage, setHasCriticalDamage] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
+
+  const hasTriggeredBreach = useRef(false);
+  const lastDistanceCheckTime = useRef(0);
   
   const myLastEntry = useMemo(() => {
-    return timeEntries
+    return (timeEntries || [])
       .filter(e => e.userId === user.id)
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
   }, [timeEntries, user.id]);
 
   const isClockedIn = myLastEntry?.type === 'in';
-  
-  const startTimeDisplay = useMemo(() => {
-    if (isClockedIn && myLastEntry) {
-      return new Date(myLastEntry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    }
-    return null;
-  }, [isClockedIn, myLastEntry]);
-
   const isAdmin = user.role === 'admin';
   const isActualLaundry = user.role === 'laundry';
   const isAuthorizedDelegate = (authorizedLaundryUserIds || []).includes(user.id);
   
   const showClockUI = !['admin', 'supervisor', 'driver', 'housekeeping'].includes(user.role);
   const isAuthorizedToView = isAdmin || isActualLaundry || isAuthorizedDelegate;
-  
   const canMarkItems = isActualLaundry || isAuthorizedDelegate || (isAdmin && adminOverride);
-  
+
+  const handleForceClockOut = useCallback(() => {
+    if (hasTriggeredBreach.current || !setTimeEntries || !isClockedIn) return;
+    hasTriggeredBreach.current = true;
+    
+    const newEntry: TimeEntry = { id: `time-auto-${Date.now()}`, userId: user.id, type: 'out', timestamp: new Date().toISOString() };
+    setTimeEntries(prev => [...prev, newEntry]);
+    alert("⚠️ GEOFENCE BREACH: You have left the Laundry HQ area. Session terminated automatically.");
+  }, [setTimeEntries, user.id, isClockedIn]);
+
+  useEffect(() => {
+    let watchId: number | null = null;
+    const hqLat = organization?.laundryLat;
+    const hqLng = organization?.laundryLng;
+
+    if (isClockedIn && isActualLaundry && hqLat && hqLng) {
+      hasTriggeredBreach.current = false;
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          const now = Date.now();
+          if (now - lastDistanceCheckTime.current < 30000) return; 
+          lastDistanceCheckTime.current = now;
+          
+          const dist = calculateDistance(hqLat, hqLng, pos.coords.latitude, pos.coords.longitude);
+          if (dist > 0.15) { // 150m
+            handleForceClockOut();
+          }
+        },
+        () => console.warn("Laundry Geofence watch error"),
+        { enableHighAccuracy: false, maximumAge: 60000, timeout: 30000 }
+      );
+    }
+    return () => { if (watchId !== null) navigator.geolocation.clearWatch(watchId); };
+  }, [isClockedIn, isActualLaundry, organization, handleForceClockOut]);
+
   useEffect(() => {
     const checkDamage = () => {
       try {
@@ -95,18 +134,6 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
     return days;
   }, [realTodayISO]);
 
-  const missingLaundryItems = useMemo(() => {
-    const list: { shiftId: string, propertyName: string, report: SpecialReport }[] = [];
-    shifts.forEach(s => {
-      s.missingReports?.forEach(r => {
-        if (r.status !== 'resolved' && (r.category === 'laundry' || r.description.includes('[FOR LAUNDRY]'))) {
-          list.push({ shiftId: s.id, propertyName: s.propertyName || '', report: r });
-        }
-      });
-    });
-    return list;
-  }, [shifts]);
-
   const preparationQueue = useMemo(() => {
     return shifts
       .filter(s => s.date === viewedDateStrShort && !s.excludeLaundry)
@@ -121,16 +148,49 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
       });
   }, [shifts, properties, viewedDateStrShort]);
 
-  const delegatePool = useMemo(() => {
-    return users.filter(u => ['supervisor', 'admin', 'driver'].includes(u.role));
-  }, [users]);
-
   const handleToggleClock = () => {
     if (!setTimeEntries) return;
-    const newType = isClockedIn ? 'out' : 'in';
-    const newEntry: TimeEntry = { id: `time-${Date.now()}`, userId: user.id, type: newType, timestamp: new Date().toISOString() };
-    setTimeEntries(prev => [...prev, newEntry]);
+    
+    if (!isClockedIn) {
+      const hqLat = organization?.laundryLat;
+      const hqLng = organization?.laundryLng;
+      
+      if (isActualLaundry && hqLat && hqLng) {
+        setIsVerifying(true);
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const dist = calculateDistance(hqLat, hqLng, pos.coords.latitude, pos.coords.longitude);
+            if (dist <= 0.15) {
+              const newEntry: TimeEntry = { id: `time-${Date.now()}`, userId: user.id, type: 'in', timestamp: new Date().toISOString() };
+              setTimeEntries(prev => [...prev, newEntry]);
+              alert("Location Verified. Session Started.");
+            } else {
+              alert(`PROXIMITY ERROR: You are ${Math.round(dist * 1000)}m away. You must be at the Laundry HQ to clock in.`);
+            }
+            setIsVerifying(false);
+          },
+          () => {
+            alert("GPS ACCESS REQUIRED: Enable location services to clock in.");
+            setIsVerifying(false);
+          },
+          { enableHighAccuracy: true, timeout: 10000 }
+        );
+      } else {
+        const newEntry: TimeEntry = { id: `time-${Date.now()}`, userId: user.id, type: 'in', timestamp: new Date().toISOString() };
+        setTimeEntries(prev => [...prev, newEntry]);
+      }
+    } else {
+      const newEntry: TimeEntry = { id: `time-${Date.now()}`, userId: user.id, type: 'out', timestamp: new Date().toISOString() };
+      setTimeEntries(prev => [...prev, newEntry]);
+    }
   };
+
+  const startTimeDisplay = useMemo(() => {
+    if (isClockedIn && myLastEntry) {
+      return new Date(myLastEntry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    return null;
+  }, [isClockedIn, myLastEntry]);
 
   const handleResolveReport = (shiftId: string, reportId: string) => {
     setShifts?.(prev => prev.map(s => {
@@ -141,6 +201,22 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
       return s;
     }));
   };
+
+  const missingLaundryItems = useMemo(() => {
+    const list: { shiftId: string, propertyName: string, report: SpecialReport }[] = [];
+    shifts.forEach(s => {
+      s.missingReports?.forEach(r => {
+        if (r.status !== 'resolved' && (r.category === 'laundry' || r.description.includes('[FOR LAUNDRY]'))) {
+          list.push({ shiftId: s.id, propertyName: s.propertyName || '', report: r });
+        }
+      });
+    });
+    return list;
+  }, [shifts]);
+
+  const delegatePool = useMemo(() => {
+    return (users || []).filter(u => ['supervisor', 'admin', 'driver'].includes(u.role));
+  }, [users]);
 
   return (
     <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500 text-left pb-24">
@@ -194,12 +270,13 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
               )}
               <button
                 onClick={handleToggleClock}
+                disabled={isVerifying}
                 className={`${
                   isClockedIn ? 'bg-rose-50 text-rose-600' : 'bg-indigo-600 text-white'
-                } font-black px-5 md:px-6 py-2.5 md:py-3 rounded-xl md:rounded-2xl text-[9px] uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2 md:gap-3 shadow-lg flex-1 md:flex-none`}
+                } font-black px-5 md:px-6 py-2.5 md:py-3 rounded-xl md:rounded-2xl text-[9px] uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2 md:gap-3 shadow-lg flex-1 md:flex-none disabled:opacity-50`}
               >
                 <div className={`w-1.5 h-1.5 rounded-full ${isClockedIn ? 'bg-rose-500 animate-pulse' : 'bg-white'}`}></div>
-                {isClockedIn ? 'STOP' : 'START CLOCK'}
+                {isVerifying ? 'LOCATING...' : isClockedIn ? 'STOP' : 'START CLOCK'}
               </button>
             </div>
           )}
@@ -322,7 +399,6 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({
                     const bathCount = shift.propertyDetails?.bathrooms || 0;
                     const isDone = shift.isLaundryPrepared;
 
-                    // Formatted strings for full linen names
                     const dLabel = `${dCount} Double${dCount !== 1 ? 's' : ''}`;
                     const sLabel = `${sCount} Single${sCount !== 1 ? 's' : ''}`;
                     const pLabel = `${pCount} Pillow Case${pCount !== 1 ? 's' : ''}`;
