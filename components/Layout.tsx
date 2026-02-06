@@ -35,7 +35,6 @@ const Layout: React.FC<LayoutProps> = ({
   ];
 
   const visibleItems = navItems.filter(item => item.roles.includes(role));
-  const mobilePrimary = visibleItems.filter(i => ['dashboard', 'shifts', 'logistics', 'laundry'].includes(i.id));
 
   return (
     <div className="flex h-screen bg-[#F0FDFA] overflow-hidden w-full">
@@ -96,7 +95,7 @@ const Layout: React.FC<LayoutProps> = ({
 
       {/* MAIN CONTENT */}
       <main className="flex-1 flex flex-col min-w-0 relative w-full overflow-hidden">
-        {/* MOBILE HEADER */}
+        {/* MOBILE HEADER - Actions now in top right */}
         <header className="md:hidden bg-white border-b border-teal-100 px-4 py-3 flex justify-between items-center sticky top-0 z-40 shadow-sm">
            <div className="flex flex-col">
               <h2 className="font-brand font-bold text-[#1E293B] text-lg leading-none tracking-tighter">RESET</h2>
@@ -105,18 +104,30 @@ const Layout: React.FC<LayoutProps> = ({
                  <span className="text-[6px] font-black text-slate-400 uppercase tracking-widest">{isSyncing ? 'SYNCING' : 'VERIFIED'}</span>
               </div>
            </div>
-           <div className="flex items-center gap-3">
-             <button onClick={onOpenNotifications} className="relative p-2">
-               <span className="text-xl">🔔</span>
+           
+           <div className="flex items-center gap-1">
+             <button 
+                onClick={onOpenNotifications} 
+                className="relative w-9 h-9 flex items-center justify-center rounded-xl bg-slate-50 border border-slate-100"
+             >
+               <span className="text-lg">🔔</span>
                {notificationCount > 0 && (
-                 <span className="absolute top-0 right-0 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center text-[8px] font-black shadow-lg">
+                 <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center text-[8px] font-black shadow-lg">
                    {notificationCount}
                  </span>
                )}
              </button>
+
+             <button 
+               onClick={() => setShowMenu(true)}
+               className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0D9488]/5 text-[#0D9488] border border-[#0D9488]/10"
+             >
+               <span className="text-xl">☰</span>
+             </button>
+
              <button 
                onClick={onLogout}
-               className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center shadow-sm active:scale-95 transition-all"
+               className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center shadow-sm active:scale-95 transition-all ml-1"
              >
                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="12" y2="12"/></svg>
              </button>
@@ -124,53 +135,37 @@ const Layout: React.FC<LayoutProps> = ({
         </header>
 
         {/* CONTENT VIEWPORT */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-10 pb-24 md:pb-10 custom-scrollbar w-full">
+        <div className="flex-1 overflow-y-auto p-4 md:p-10 custom-scrollbar w-full">
           <div className="w-full max-w-[1400px] mx-auto">
             {children}
           </div>
         </div>
 
-        {/* MOBILE DOCK */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 glass-dock px-1 py-2 flex justify-around items-center z-50 shadow-[0_-5px_15px_rgba(0,0,0,0.03)]">
-           {mobilePrimary.map(item => (
-             <button 
-              key={item.id} 
-              onClick={() => setActiveTab(item.id)}
-              className={`flex flex-col items-center gap-0.5 flex-1 transition-all ${activeTab === item.id ? 'text-[#0D9488]' : 'text-slate-400'}`}
-             >
-                <span className="text-xl">{item.icon}</span>
-                <span className="text-[8px] font-black uppercase tracking-tighter">{item.label}</span>
-             </button>
-           ))}
-           <button 
-            onClick={() => setShowMenu(true)}
-            className="flex flex-col items-center gap-0.5 flex-1 text-slate-400"
-           >
-              <span className="text-xl">☰</span>
-              <span className="text-[8px] font-black uppercase tracking-tighter">More</span>
-           </button>
-        </nav>
-
         {/* FULL SCREEN MENU MODAL (MOBILE) */}
         {showMenu && (
-          <div className="fixed inset-0 bg-[#F0FDFA] z-[100] p-5 animate-in slide-in-from-bottom-5 duration-300 overflow-y-auto flex flex-col">
+          <div className="fixed inset-0 bg-[#F0FDFA] z-[100] p-5 animate-in slide-in-from-top duration-300 overflow-y-auto flex flex-col">
              <div className="flex justify-between items-center mb-6 shrink-0">
                 <div className="flex flex-col text-left">
                   <h2 className="text-xl font-brand font-bold text-[#1E293B] leading-none tracking-tighter">RESET</h2>
-                  <span className="text-[7px] font-black text-[#0D9488] uppercase tracking-[0.3em]">HOSPITALITY STUDIO</span>
+                  <span className="text-[7px] font-black text-[#0D9488] uppercase tracking-[0.3em]">STUDIO NAVIGATION</span>
                 </div>
-                <button onClick={() => setShowMenu(false)} className="w-9 h-9 flex items-center justify-center bg-white rounded-full text-xl text-slate-400 border border-slate-100">&times;</button>
+                <button 
+                  onClick={() => setShowMenu(false)} 
+                  className="w-10 h-10 flex items-center justify-center bg-white rounded-full text-xl text-slate-400 border border-slate-100 shadow-sm active:scale-90 transition-all"
+                >
+                  &times;
+                </button>
              </div>
              
              <div className="grid grid-cols-2 gap-3 flex-1 mb-6">
-                {navItems.filter(item => item.roles.includes(role)).map(item => (
+                {visibleItems.map(item => (
                   <button 
                     key={item.id} 
                     onClick={() => { setActiveTab(item.id); setShowMenu(false); }}
-                    className={`flex flex-col items-center justify-center p-4 rounded-[2rem] transition-all gap-2 border h-24 ${activeTab === item.id ? 'bg-white border-[#0D9488] text-[#0D9488] shadow-md shadow-teal-900/5' : 'bg-white border-slate-100 text-slate-400'}`}
+                    className={`flex flex-col items-center justify-center p-4 rounded-[2rem] transition-all gap-2 border h-28 ${activeTab === item.id ? 'bg-[#0D9488] border-[#0D9488] text-white shadow-lg shadow-teal-900/10 scale-[1.02]' : 'bg-white border-slate-100 text-slate-400 shadow-sm'}`}
                   >
-                    <span className="text-2xl">{item.icon}</span>
-                    <span className="text-[9px] font-black uppercase tracking-widest">{item.label}</span>
+                    <span className="text-3xl">{item.icon}</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-center px-1">{item.label}</span>
                   </button>
                 ))}
              </div>
@@ -178,10 +173,10 @@ const Layout: React.FC<LayoutProps> = ({
              <div className="pt-4 border-t border-teal-100 shrink-0 pb-2">
                 <button 
                   onClick={() => { setShowMenu(false); onLogout(); }}
-                  className="w-full bg-rose-50 text-rose-600 py-4 rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] shadow-sm flex items-center justify-center gap-2 border border-rose-100 active:scale-95 transition-all"
+                  className="w-full bg-rose-50 text-rose-600 py-5 rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] shadow-sm flex items-center justify-center gap-2 border border-rose-100 active:scale-95 transition-all"
                 >
                   <span className="text-lg">🚪</span>
-                  LOG OUT SESSION
+                  TERMINATE SESSION
                 </button>
              </div>
           </div>
