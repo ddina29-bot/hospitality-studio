@@ -1,7 +1,7 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { TabType, Shift, User, Property, Invoice, Client, InvoiceItem, OrganizationSettings, ManualTask, SavedPayslip } from '../../types';
-import PersonnelProfile, { getCleanerRateForShift } from '../PersonnelProfile';
+import React, { useState, useMemo } from 'react';
+import { TabType, Shift, User, Property, Invoice, Client, OrganizationSettings, ManualTask } from '../../types';
+import PersonnelProfile from '../PersonnelProfile';
 
 interface FinanceDashboardProps {
   setActiveTab: (tab: TabType) => void;
@@ -22,98 +22,134 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
   setActiveTab, onLogout, shifts = [], users = [], properties = [], invoices = [], setInvoices, clients = [], organization, manualTasks = [], onUpdateUser
 }) => {
   const [activeModule, setActiveModule] = useState<'payroll' | 'invoicing' | 'records'>('payroll');
-  const [recordsSubView, setRecordsSubView] = useState<'payouts' | 'invoices' | 'statutory'>('payouts');
   const [selectedPayslipUserId, setSelectedPayslipUserId] = useState<string | null>(null);
   const [activeStatReport, setActiveStatReport] = useState<'FS5' | 'VAT' | 'SSC' | null>(null);
   
   const stats = useMemo(() => {
-    const totalBilled = (invoices || []).reduce((acc, i) => acc + (i.totalAmount || 0), 0);
-    const pendingPay = (invoices || []).filter(i => i.status === 'sent').reduce((acc, i) => acc + (i.totalAmount || 0), 0);
-    const totalVat = (invoices || []).reduce((acc, i) => acc + (i.vat || 0), 0);
-    
     let totalPayrollGross = 0;
     let totalPayrollTax = 0;
     let totalPayrollNI = 0;
+    let totalPayees = 0;
 
-    users.forEach(u => u.payslips?.forEach(ps => {
-      totalPayrollGross += ps.grossPay;
-      totalPayrollTax += ps.tax;
-      totalPayrollNI += ps.ni;
-    }));
+    users.forEach(u => {
+        if ((u.payslips || []).length > 0) totalPayees++;
+        u.payslips?.forEach(ps => {
+            totalPayrollGross += ps.grossPay;
+            totalPayrollTax += ps.tax;
+            totalPayrollNI += ps.ni;
+        });
+    });
 
-    return { totalBilled, pendingPay, totalVat, totalPayrollGross, totalPayrollTax, totalPayrollNI };
-  }, [invoices, users]);
+    return { 
+        totalPayrollGross, 
+        totalPayrollTax, 
+        totalPayrollNI, 
+        totalPayees,
+        totalDue: totalPayrollTax + totalPayrollNI 
+    };
+  }, [users]);
 
-  const handleStatReport = (type: 'FS5' | 'VAT' | 'SSC') => setActiveStatReport(type);
-
-  const renderStatReport = () => {
-    if (!activeStatReport) return null;
-    const year = new Date().getFullYear();
-    const titleMap = { FS5: 'Monthly / Quarterly Aggregate (Tax Deductions)', VAT: 'Quarterly VAT Liability', SSC: 'Social Security Compliance' };
+  const renderFS5Report = () => {
+    if (!activeStatReport || activeStatReport !== 'FS5') return null;
+    const now = new Date();
+    const month = now.toLocaleString('default', { month: 'long' }).toUpperCase();
+    const year = now.getFullYear();
 
     return (
         <div className="fixed inset-0 bg-slate-900/60 z-[600] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
-           <div className="bg-white rounded-[3rem] w-full max-w-3xl p-14 space-y-10 shadow-2xl relative text-left my-auto animate-in zoom-in-95">
-              <button onClick={() => setActiveStatReport(null)} className="absolute top-10 right-10 text-slate-300 hover:text-slate-900 text-2xl no-print">&times;</button>
-              <header className="border-b-2 border-slate-900 pb-8 flex justify-between items-end">
+           <div className="bg-white rounded-[0.5rem] w-full max-w-4xl p-10 space-y-8 shadow-2xl relative text-left my-auto animate-in zoom-in-95 border border-slate-300 font-sans">
+              <button onClick={() => setActiveStatReport(null)} className="absolute top-6 right-6 text-slate-300 hover:text-slate-900 text-2xl no-print">&times;</button>
+              
+              <header className="flex justify-between items-center border-b-4 border-blue-600 pb-6">
                  <div>
-                    <h1 className="text-3xl font-black uppercase tracking-tighter text-slate-900">{organization?.name || 'RESET STUDIO'}</h1>
-                    <p className="text-[10px] font-black text-[#0D9488] uppercase tracking-widest mt-1">STATUTORY REPORT • {activeStatReport}</p>
+                    <h1 className="text-4xl font-black text-blue-600 flex items-center gap-4">
+                       FS5
+                       <div className="text-left">
+                          <p className="text-xs uppercase font-bold leading-none tracking-tighter text-slate-800">Final Settlement System (FSS)</p>
+                          <p className="text-[10px] uppercase font-medium leading-none mt-1 text-slate-500">Payer's Monthly Payment Advice</p>
+                       </div>
+                    </h1>
                  </div>
                  <div className="text-right">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">FISCAL CYCLE</p>
-                    <p className="text-lg font-black text-slate-900 uppercase">ACTIVE {year}</p>
+                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">MT Tax & Customs Administration</p>
                  </div>
               </header>
 
-              <div className="space-y-8">
-                 <h2 className="text-xl font-bold text-slate-900 uppercase border-l-4 border-[#0D9488] pl-4">{titleMap[activeStatReport]}</h2>
-                 
-                 {activeStatReport === 'FS5' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div className="p-8 bg-slate-50 rounded-3xl space-y-2">
-                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Aggregate Gross Remuneration</p>
-                            <p className="text-3xl font-black text-slate-900">€{stats.totalPayrollGross.toFixed(2)}</p>
-                        </div>
-                        <div className="p-8 bg-rose-50 rounded-3xl space-y-2 border border-rose-100">
-                            <p className="text-[8px] font-black text-rose-400 uppercase tracking-widest">Total PAYE Tax Withheld</p>
-                            <p className="text-3xl font-black text-rose-600">€{stats.totalPayrollTax.toFixed(2)}</p>
-                        </div>
-                        <div className="md:col-span-2 p-8 bg-indigo-50 rounded-3xl border border-indigo-100">
-                            <p className="text-[8px] font-black text-indigo-400 uppercase tracking-widest mb-4">Statutory Notes</p>
-                            <p className="text-[10px] text-indigo-900 font-medium leading-relaxed uppercase">Aggregate figures reflect all recorded payslips in the system for the current fiscal period. Individual FS3 forms must be generated from each employee's personnel file for year-end reporting.</p>
-                        </div>
+              <div className="grid grid-cols-12 gap-8">
+                 {/* Section A */}
+                 <div className="col-span-7 bg-blue-50/30 p-6 border border-blue-100 rounded">
+                    <p className="text-[10px] font-black text-blue-800 uppercase mb-4 border-b border-blue-100 pb-1">A. PAYER INFORMATION</p>
+                    <div className="space-y-4">
+                       <div>
+                          <label className="text-[8px] font-bold text-slate-400 block uppercase">Business Name</label>
+                          <p className="text-sm font-black uppercase text-slate-900">{organization?.legalEntity || organization?.name || 'RESET STUDIO'}</p>
+                       </div>
+                       <div>
+                          <label className="text-[8px] font-bold text-slate-400 block uppercase">Business Address</label>
+                          <p className="text-xs font-bold uppercase text-slate-600">{organization?.address || 'N/A'}</p>
+                       </div>
                     </div>
-                 )}
+                 </div>
 
-                 {activeStatReport === 'VAT' && (
-                    <div className="grid grid-cols-2 gap-8">
-                        <div className="p-6 bg-slate-50 rounded-2xl">
-                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2">Total Taxable Sales</p>
-                            <p className="text-2xl font-black text-slate-900">€{stats.totalBilled.toFixed(2)}</p>
-                        </div>
-                        <div className="p-6 bg-slate-50 rounded-2xl">
-                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2">Output VAT Due (18%)</p>
-                            <p className="text-2xl font-black text-emerald-600">€{stats.totalVat.toFixed(2)}</p>
-                        </div>
+                 {/* Section Stats (Right) */}
+                 <div className="col-span-5 space-y-4">
+                    <div className="p-4 border-2 border-slate-800 rounded flex justify-between items-center">
+                       <span className="text-[10px] font-black uppercase">Payer P.E. No.</span>
+                       <span className="text-xl font-black">{organization?.peNumber || 'N/A'}</span>
                     </div>
-                 )}
+                    <div className="p-4 border-2 border-slate-800 rounded flex justify-between items-center bg-slate-900 text-white">
+                       <span className="text-[10px] font-black uppercase">Payment For Month Of</span>
+                       <span className="text-xl font-black uppercase">{month} {year}</span>
+                    </div>
+                 </div>
 
-                 {activeStatReport === 'SSC' && (
-                    <div className="p-8 bg-slate-900 rounded-[2rem] text-white">
-                        <p className="text-[8px] font-black text-teal-400 uppercase tracking-[0.4em] mb-4">NI Social Security Ledger</p>
-                        <div className="flex justify-between items-center border-b border-white/10 pb-6 mb-6">
-                            <span className="text-xs uppercase font-bold text-slate-400 tracking-widest">Total NI Contribution Pool</span>
-                            <span className="text-3xl font-black text-white">€{stats.totalPayrollNI.toFixed(2)}</span>
-                        </div>
-                        <p className="text-[9px] text-slate-500 italic">This figure reflects combined Class 1 NI contributions (Employer + Employee shares where applicable) for the active cycle.</p>
+                 {/* Section B & C */}
+                 <div className="col-span-12 grid grid-cols-2 gap-8">
+                    <div className="bg-slate-50 p-6 border border-slate-200 rounded">
+                       <p className="text-[10px] font-black uppercase mb-4 border-b border-slate-200 pb-1 text-slate-500">B. NUMBER OF PAYEES</p>
+                       <div className="flex justify-between items-center">
+                          <span className="text-xs font-bold text-slate-600">Total FSS Main Method Payees</span>
+                          <span className="text-xl font-black text-slate-900">{stats.totalPayees}</span>
+                       </div>
                     </div>
-                 )}
+                    <div className="bg-slate-50 p-6 border border-slate-200 rounded">
+                       <p className="text-[10px] font-black uppercase mb-4 border-b border-slate-200 pb-1 text-slate-500">C. GROSS EMOLUMENTS</p>
+                       <div className="flex justify-between items-center">
+                          <span className="text-xs font-bold text-slate-600 uppercase">Total Gross Emoluments</span>
+                          <span className="text-xl font-black text-slate-900">€{stats.totalPayrollGross.toFixed(2)}</span>
+                       </div>
+                    </div>
+                 </div>
+
+                 {/* Section D - The Calculation */}
+                 <div className="col-span-12 border-2 border-blue-600 p-8 rounded bg-blue-50/10">
+                    <p className="text-[11px] font-black uppercase mb-6 text-blue-800">D. TAX DEDUCTIONS AND SSC DUE TO THE COMMISSIONER</p>
+                    <div className="space-y-4">
+                       <div className="flex justify-between items-center text-xs font-bold">
+                          <span>Tax Deductions (FSS Main)</span>
+                          <span className="font-black text-lg">€{stats.totalPayrollTax.toFixed(2)}</span>
+                       </div>
+                       <div className="flex justify-between items-center text-xs font-bold">
+                          <span>Social Security Contributions (NI)</span>
+                          <span className="font-black text-lg">€{stats.totalPayrollNI.toFixed(2)}</span>
+                       </div>
+                       <div className="pt-6 border-t-2 border-blue-600 flex justify-between items-center mt-4">
+                          <span className="text-sm font-black uppercase text-blue-900">Total Due to the Commissioner</span>
+                          <div className="text-right">
+                             <p className="text-3xl font-black text-blue-600">€{stats.totalDue.toFixed(2)}</p>
+                             <p className="text-[8px] font-bold text-slate-400 uppercase mt-1">Authorized Digital Submission</p>
+                          </div>
+                       </div>
+                    </div>
+                 </div>
               </div>
 
-              <div className="pt-10 border-t border-slate-100 flex justify-between items-center no-print">
-                 <button onClick={() => window.print()} className="bg-slate-900 text-white px-10 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-xl">EXPORT OFFICIAL PDF</button>
-                 <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.4em]">DIGITALLY_VERIFIED_BY_RESET_SYSTEM</p>
+              <div className="pt-10 flex justify-between items-end no-print">
+                 <div className="flex gap-4">
+                    <button onClick={() => window.print()} className="bg-blue-600 text-white px-10 py-3 rounded font-black uppercase text-[10px] tracking-widest shadow-xl">Print Document</button>
+                    <button onClick={() => setActiveStatReport(null)} className="bg-slate-100 text-slate-400 px-10 py-3 rounded font-black uppercase text-[10px] tracking-widest">Dismiss</button>
+                 </div>
+                 <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.4em]">MT_REVENUE_CORE_V2</p>
               </div>
            </div>
         </div>
@@ -122,7 +158,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
 
   return (
     <div className="space-y-10 animate-in fade-in duration-700 text-left pb-24">
-      {renderStatReport()}
+      {renderFS5Report()}
       <header className="flex flex-col space-y-0.5 px-2">
         <p className="text-[#0D9488] font-black uppercase tracking-[0.4em] text-[8px]">Financial Controller</p>
         <h1 className="text-3xl font-bold text-slate-900 tracking-tight uppercase leading-tight font-brand">Finance Studio</h1>
@@ -137,47 +173,14 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
       {activeModule === 'records' && (
          <div className="space-y-8 animate-in slide-in-from-bottom-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {[
-                  { id: 'FS5', name: 'FS5 AGGREGATE LOGS', icon: '📝', desc: 'Monthly/Annual tax deduction summaries.' },
-                  { id: 'VAT', name: 'VAT QUARTERLY LOGS', icon: '📊', desc: 'Consolidated VAT data exports.' },
-                  { id: 'SSC', name: 'SSC COMPLIANCE', icon: '🛡️', desc: 'Social Security payment verification files.' }
-                ].map((doc) => (
-                  <div key={doc.id} onClick={() => handleStatReport(doc.id as any)} className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-4 hover:border-teal-200 transition-all cursor-pointer group">
-                     <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">{doc.icon}</div>
-                     <div>
-                        <h4 className="text-sm font-bold text-slate-900 uppercase tracking-tight">{doc.name}</h4>
-                        <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">{doc.desc}</p>
-                     </div>
-                     <button className="text-[8px] font-black text-teal-600 uppercase tracking-widest border-b-2 border-teal-600 pb-0.5 group-hover:text-teal-800 group-hover:border-teal-800 transition-all">GENERATE REPORT</button>
-                  </div>
-                ))}
-            </div>
-            
-            <div className="bg-indigo-900/5 p-10 rounded-[3rem] border border-indigo-100 space-y-6">
-               <h3 className="text-xs font-black uppercase tracking-widest text-indigo-400">Archived Financial Objects</h3>
-               <div className="flex gap-4 border-b border-indigo-100">
-                  <button onClick={() => setRecordsSubView('payouts')} className={`pb-4 text-[10px] font-black uppercase tracking-widest transition-all ${recordsSubView === 'payouts' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-400'}`}>Payouts History</button>
-                  <button onClick={() => setRecordsSubView('invoices')} className={`pb-4 text-[10px] font-black uppercase tracking-widest transition-all ${recordsSubView === 'invoices' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-400'}`}>Invoice History</button>
-               </div>
-               
-               {recordsSubView === 'payouts' && (
-                  <div className="overflow-x-auto bg-white rounded-3xl shadow-sm border border-slate-100">
-                     <table className="w-full text-left">
-                        <thead className="bg-slate-50 text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
-                           <tr><th className="px-8 py-4">Operator</th><th className="px-8 py-4">Reference</th><th className="px-8 py-4 text-right">Net (€)</th></tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-50">
-                           {users.flatMap(u => (u.payslips || []).map(ps => (
-                              <tr key={ps.id} className="hover:bg-slate-50">
-                                 <td className="px-8 py-5 text-[11px] font-bold text-slate-900 uppercase">{u.name}</td>
-                                 <td className="px-8 py-5 text-[10px] font-black text-slate-400">{ps.month}</td>
-                                 <td className="px-8 py-5 text-right text-sm font-black text-slate-900">€{ps.netPay.toFixed(2)}</td>
-                              </tr>
-                           )))}
-                        </tbody>
-                     </table>
-                  </div>
-               )}
+                <div onClick={() => setActiveStatReport('FS5')} className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-4 hover:border-teal-200 transition-all cursor-pointer group">
+                   <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">📝</div>
+                   <div>
+                      <h4 className="text-sm font-bold text-slate-900 uppercase tracking-tight">FS5 MONTHLY ADVICE</h4>
+                      <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">Consolidated Monthly Tax & NI payment summary for MTCA.</p>
+                   </div>
+                   <button className="text-[8px] font-black text-blue-600 uppercase tracking-widest border-b-2 border-blue-600 pb-0.5">GENERATE REPORT</button>
+                </div>
             </div>
          </div>
       )}
@@ -185,22 +188,22 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
       {activeModule === 'payroll' && (
         <div className="space-y-6">
            <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-8 animate-in slide-in-from-left-4">
-              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-widest">Awaiting Payout Processing</h3>
+              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-widest">Personnel Payout Pipeline</h3>
               <div className="space-y-4">
-                  {users.filter(u => u.status === 'active' && ['cleaner', 'supervisor', 'driver', 'housekeeping'].includes(u.role)).map(staff => (
+                  {users.filter(u => u.status === 'active' && ['cleaner', 'supervisor', 'driver', 'housekeeping', 'admin', 'laundry'].includes(u.role)).map(staff => (
                     <div key={staff.id} className="bg-slate-50 rounded-3xl border border-slate-100 p-6 flex flex-col md:flex-row items-center justify-between gap-6 hover:border-teal-200 transition-all">
                         <div className="flex items-center gap-6 flex-1 w-full text-left">
-                          <div className="w-14 h-14 rounded-2xl bg-white border border-slate-200 text-teal-600 flex items-center justify-center font-bold text-2xl shadow-sm">
-                              {staff.name.charAt(0)}
+                          <div className="w-14 h-14 rounded-2xl bg-white border border-slate-200 text-teal-600 flex items-center justify-center font-bold text-2xl shadow-sm overflow-hidden">
+                              {staff.photoUrl ? <img src={staff.photoUrl} className="w-full h-full object-cover" /> : staff.name.charAt(0)}
                           </div>
                           <div>
                               <h4 className="text-lg font-bold text-slate-900 uppercase tracking-tight">{staff.name}</h4>
                               <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">
-                                {staff.role} • {staff.paymentType} • Rate: €{staff.payRate}
+                                {staff.role} • {staff.maritalStatus || 'Single'} {staff.isParent ? '(Parent)' : ''}
                               </p>
                           </div>
                         </div>
-                        <button onClick={() => setSelectedPayslipUserId(staff.id)} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">GENERATE PAYSLIP / FS3</button>
+                        <button onClick={() => setSelectedPayslipUserId(staff.id)} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">PROCESS PAYROLL / FS3</button>
                     </div>
                   ))}
               </div>

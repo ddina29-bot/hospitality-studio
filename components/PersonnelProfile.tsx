@@ -1,8 +1,40 @@
 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { User, LeaveRequest, LeaveType, Shift, Property, OrganizationSettings, SavedPayslip, PaymentType, EmploymentType } from '../types';
+import React, { useState, useMemo, useEffect } from 'react';
+import { User, LeaveRequest, LeaveType, Shift, Property, OrganizationSettings, SavedPayslip, PaymentType } from '../types';
 
-// Helper to get the correct price for a specific service type from a property
+// Helper for Maltese Tax Calculation (2024 Rates)
+const calculateMaltesePayroll = (gross: number, status: string, isParent: boolean) => {
+  const annualGross = gross * 12;
+  let tax = 0;
+
+  // Simplified 2024 Tax Bands
+  if (isParent) { // Parent Rates
+    if (annualGross <= 10500) tax = 0;
+    else if (annualGross <= 15800) tax = (annualGross - 10500) * 0.15;
+    else if (annualGross <= 21200) tax = ((15800 - 10500) * 0.15) + (annualGross - 15800) * 0.25;
+    else tax = ((15800 - 10500) * 0.15) + ((21200 - 15800) * 0.25) + (annualGross - 21200) * 0.25;
+  } else if (status === 'Married') { // Married Rates
+    if (annualGross <= 12700) tax = 0;
+    else if (annualGross <= 21200) tax = (annualGross - 12700) * 0.15;
+    else tax = ((21200 - 12700) * 0.15) + (annualGross - 21200) * 0.25;
+  } else { // Single Rates
+    if (annualGross <= 9100) tax = 0;
+    else if (annualGross <= 14500) tax = (annualGross - 9100) * 0.15;
+    else tax = ((14500 - 9100) * 0.15) + (annualGross - 14500) * 0.25;
+  }
+
+  const monthlyTax = tax / 12;
+  // NI Class 1 (approx 10% capped at ~€53/week for 2024)
+  const weeklyNI = Math.min(53.48, (gross / 4.33) * 0.1);
+  const monthlyNI = weeklyNI * 4.33;
+
+  return {
+    tax: Math.max(0, monthlyTax),
+    ni: Math.max(0, monthlyNI),
+    net: Math.max(0, gross - monthlyTax - monthlyNI)
+  };
+};
+
 export const getCleanerRateForShift = (serviceType: string, prop: Property): number => {
   const type = serviceType.toUpperCase();
   if (type === 'REFRESH') return prop.cleanerRefreshPrice || 0;
@@ -43,42 +75,15 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
      const now = new Date();
      return `${now.toLocaleString('default', { month: 'short' }).toUpperCase()} ${now.getFullYear()}`;
   }); 
-  const [payPeriodFrom, setPayPeriodFrom] = useState('');
-  const [payPeriodUntil, setPayPeriodUntil] = useState('');
-  const [manualGrossPay, setManualGrossPay] = useState<number | null>(null);
 
-  useEffect(() => {
-    const d = new Date(Date.parse(`1 ${selectedDocMonth}`));
-    if (!isNaN(d.getTime())) {
-      const y = d.getFullYear();
-      const m = d.getMonth();
-      const first = new Date(y, m, 1);
-      const last = new Date(y, m + 1, 0);
-      setPayPeriodFrom(first.toISOString().split('T')[0]);
-      setPayPeriodUntil(last.toISOString().split('T')[0]);
-    }
-  }, [selectedDocMonth]);
-
-  const monthOptions = useMemo(() => {
-    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-    const years = [2024, 2025];
-    const opts: string[] = [];
-    years.forEach(y => months.forEach(m => opts.push(`${m} ${y}`)));
-    return opts;
-  }, []);
-
-  const filteredShifts = useMemo(() => {
-    if (!payPeriodFrom || !payPeriodUntil) return [];
-    const from = new Date(payPeriodFrom);
-    const until = new Date(payPeriodUntil);
-    until.setHours(23, 59, 59);
-
-    return (shifts || []).filter(s => {
-      if (!s.userIds?.includes(user.id) || s.status !== 'completed') return false;
-      const d = s.date.includes('-') ? new Date(s.date) : new Date(`${s.date} ${new Date().getFullYear()}`);
-      return d >= from && d <= until;
-    });
-  }, [shifts, user.id, payPeriodFrom, payPeriodUntil]);
+  // FIX: Calculate annual aggregates from historical payslips for FS3 generation
+  const annualAggregates = useMemo(() => {
+    return (user.payslips || []).reduce((acc, ps) => ({
+      gross: acc.gross + (ps.grossPay || 0),
+      tax: acc.tax + (ps.tax || 0),
+      ni: acc.ni + (ps.ni || 0)
+    }), { gross: 0, tax: 0, ni: 0 });
+  }, [user.payslips]);
 
   const payrollData = useMemo(() => {
     if (activeHistoricalPayslip) {
@@ -87,66 +92,19 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         totalNet: activeHistoricalPayslip.netPay,
         tax: activeHistoricalPayslip.tax,
         ni: activeHistoricalPayslip.ni,
-        govBonus: activeHistoricalPayslip.govBonus
       };
     }
 
-    let baseSalary = user.paymentType === 'Fixed Wage' ? (Number(user.payRate) || 0) : 0;
-    let deploymentEarnings = 0;
-
-    filteredShifts.forEach(s => {
-        const prop = properties?.find(p => p.id === s.propertyId);
-        if (!prop && s.serviceType !== 'TO FIX') return;
-
-        const durationMs = (s.actualEndTime || 0) - (s.actualStartTime || 0);
-        const hours = Math.max(0, durationMs / (1000 * 60 * 60));
-        const hourlyRate = Number(user.payRate) || 5.00;
-        const durationPay = hours * hourlyRate;
-
-        if (s.approvalStatus === 'approved') {
-            const teamCount = s.userIds?.length || 1;
-            let pieceRate = 0;
-            if (s.serviceType === 'TO FIX') pieceRate = s.fixWorkPayment || 0;
-            else if (prop) pieceRate = getCleanerRateForShift(s.serviceType, prop) / teamCount;
-
-            if (user.paymentType === 'Fixed Wage') {
-                deploymentEarnings += pieceRate; 
-            } else if (user.paymentType === 'Per Clean') {
-                deploymentEarnings += Math.max(pieceRate, durationPay);
-            } else {
-                deploymentEarnings += durationPay;
-            }
-        } else if (user.paymentType !== 'Fixed Wage') {
-            deploymentEarnings += durationPay;
-        }
-    });
-
-    const actualGrossPay = manualGrossPay !== null ? manualGrossPay : (baseSalary + deploymentEarnings);
-    const ni = actualGrossPay * 0.1;
-    const tax = actualGrossPay * 0.15;
+    const baseSalary = user.payRate || 0;
+    const calc = calculateMaltesePayroll(baseSalary, user.maritalStatus || 'Single', !!user.isParent);
 
     return {
-      grossPay: actualGrossPay,
-      ni,
-      tax,
-      govBonus: 0,
-      totalNet: Math.max(0, actualGrossPay - ni - tax)
+      grossPay: baseSalary,
+      ni: calc.ni,
+      tax: calc.tax,
+      totalNet: calc.net
     };
-  }, [filteredShifts, user, properties, activeHistoricalPayslip, manualGrossPay]);
-
-  const annualAggregates = useMemo(() => {
-    const payslips = user.payslips || [];
-    const currentYear = new Date().getFullYear().toString();
-    const yearlySlips = payslips.filter(ps => ps.month.includes(currentYear));
-    
-    return {
-        gross: yearlySlips.reduce((acc, ps) => acc + ps.grossPay, 0),
-        tax: yearlySlips.reduce((acc, ps) => acc + ps.tax, 0),
-        ni: yearlySlips.reduce((acc, ps) => acc + ps.ni, 0),
-        net: yearlySlips.reduce((acc, ps) => acc + ps.netPay, 0),
-        slipsCount: yearlySlips.length
-    };
-  }, [user.payslips]);
+  }, [user, activeHistoricalPayslip]);
 
   const handleCommitPayslip = () => {
     if (!onUpdateUser) return;
@@ -155,14 +113,14 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     const newPayslip: SavedPayslip = {
       id: `ps-${Date.now()}`,
       month: selectedDocMonth,
-      periodFrom: payPeriodFrom,
-      periodUntil: payPeriodUntil,
+      periodFrom: '', 
+      periodUntil: '',
       grossPay: payrollData.grossPay,
       netPay: payrollData.totalNet,
       tax: payrollData.tax,
       ni: payrollData.ni,
       niWeeks: 4,
-      govBonus: payrollData.govBonus,
+      govBonus: 0,
       daysWorked: 20,
       generatedAt: new Date().toISOString(),
       generatedBy: currentUserObj.name || 'Admin User'
@@ -179,30 +137,26 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
   return (
     <div className="bg-transparent min-h-fit text-left font-brand animate-in fade-in duration-500">
       <div className="mx-auto space-y-10">
+        {/* Profile Card */}
         <section className="bg-white border border-slate-100 rounded-[2rem] p-8 flex flex-col md:flex-row items-center justify-between gap-8 shadow-sm">
            <div className="flex items-center gap-6 text-left">
-              <div className="w-20 h-20 rounded-[1.5rem] bg-teal-50 flex items-center justify-center text-[#0D9488] font-bold text-3xl shadow-inner border border-teal-100">
-                 {user.photoUrl ? <img src={user.photoUrl} className="w-full h-full object-cover rounded-[1.5rem]" /> : user.name.charAt(0)}
+              <div className="w-20 h-20 rounded-[1.5rem] bg-teal-50 flex items-center justify-center text-[#0D9488] font-bold text-3xl shadow-inner border border-teal-100 overflow-hidden">
+                 {user.photoUrl ? <img src={user.photoUrl} className="w-full h-full object-cover" /> : user.name.charAt(0)}
               </div>
               <div>
                  <h2 className="text-2xl font-bold text-slate-900 uppercase tracking-tight">{user.name}</h2>
                  <p className="text-[10px] font-black text-[#0D9488] uppercase tracking-widest mt-1">{user.role} • {user.paymentType}</p>
-                 <p className="text-[9px] font-bold text-slate-400 uppercase mt-0.5">{user.email}</p>
-                 {user.activationDate && <p className="text-[7px] font-black text-slate-300 uppercase tracking-widest mt-2">Member Since: {new Date(user.activationDate).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }).toUpperCase()}</p>}
+                 <p className="text-[9px] font-bold text-slate-400 uppercase mt-0.5">{user.maritalStatus || 'Single'} • {user.isParent ? `Parent (${user.childrenCount})` : 'No Children'}</p>
               </div>
            </div>
            
            <div className="flex flex-wrap gap-4">
               <div className="bg-slate-50 px-8 py-3 rounded-2xl border border-slate-100 min-w-[140px]">
-                 <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1 text-center">CONTRACT RATE</p>
+                 <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1 text-center">MONTHLY GROSS</p>
                  <p className="text-sm font-black text-slate-900 text-center">€{user.payRate?.toFixed(2)}</p>
-                 <p className="text-[7px] font-bold text-slate-300 uppercase text-center tracking-widest">{user.paymentType === 'Per Hour' ? 'Per Hour' : 'Base'}</p>
               </div>
               {isCurrentUserAdmin && (
                 <button onClick={() => setViewingDoc('fs3')} className="bg-slate-900 text-white px-8 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all">GENERATE FS3</button>
-              )}
-              {(isViewingSelf || isCurrentUserAdmin) && (
-                <button onClick={() => setShowLeaveForm(true)} className="bg-indigo-600 text-white px-8 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all">REQUEST LEAVE</button>
               )}
            </div>
         </section>
@@ -211,7 +165,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
            <div className="flex gap-10 border-b border-slate-200 px-4">
               {['PENDING PAYOUTS', 'PAYSLIP REGISTRY', 'LEAVE REQUESTS'].map(tab => (
                  (tab === 'PENDING PAYOUTS' && !isCurrentUserAdmin) ? null : (
-                   <button key={tab} onClick={() => setActiveSubTab(tab as any)} className={`pb-4 text-[11px] font-black tracking-widest transition-all relative ${activeSubTab === tab ? 'text-[#0D9488]' : 'text-slate-400'}`}>
+                   <button key={tab} onClick={() => setActiveSubTab(tab as any)} className={`pb-4 text-[11px] font-black tracking-widest relative transition-all ${activeSubTab === tab ? 'text-[#0D9488]' : 'text-slate-400'}`}>
                       {tab}
                       {activeSubTab === tab && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0D9488] animate-in slide-in-from-left"></div>}
                    </button>
@@ -222,24 +176,21 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
            {activeSubTab === 'PENDING PAYOUTS' && (
               <section className="bg-white border border-slate-100 rounded-[2.5rem] p-10 shadow-lg space-y-10 animate-in slide-in-from-bottom-4">
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-                     <div className="space-y-6">
-                        <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Pay Period Calculation</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                           <div className="md:col-span-2">
-                              <label className={labelStyle}>Month Focus</label>
-                              <select className={inputStyle} value={selectedDocMonth} onChange={e => setSelectedDocMonth(e.target.value)}>
-                                 {monthOptions.map(m => <option key={m} value={m}>{m}</option>)}
-                              </select>
-                           </div>
-                           <div><label className={labelStyle}>From</label><input type="date" className={inputStyle} value={payPeriodFrom} onChange={e => setPayPeriodFrom(e.target.value)} /></div>
-                           <div><label className={labelStyle}>Until</label><input type="date" className={inputStyle} value={payPeriodUntil} onChange={e => setPayPeriodUntil(e.target.value)} /></div>
+                     <div className="space-y-6 text-left">
+                        <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">FSS Calculation Review</h3>
+                        <div className="space-y-4">
+                            <div className="flex justify-between text-[10px] font-bold text-slate-500 uppercase"><span>Monthly Gross</span><span className="text-slate-900">€{payrollData.grossPay.toFixed(2)}</span></div>
+                            <div className="flex justify-between text-[10px] font-bold text-slate-500 uppercase"><span>Est. Tax (PAYE)</span><span className="text-rose-600">-€{payrollData.tax.toFixed(2)}</span></div>
+                            <div className="flex justify-between text-[10px] font-bold text-slate-500 uppercase"><span>Est. NI Contribution</span><span className="text-rose-600">-€{payrollData.ni.toFixed(2)}</span></div>
+                            <div className="pt-4 border-t border-slate-100">
+                                <p className="text-[8px] text-slate-400 leading-relaxed italic">Calculated using 2024 Maltese Statutory Rates for {user.maritalStatus} {user.isParent ? 'Parent' : 'Individual'}.</p>
+                            </div>
                         </div>
                      </div>
                      <div className="p-10 bg-emerald-50 border border-emerald-100 rounded-[2rem] flex flex-col justify-center">
                         <p className="text-[8px] font-black text-emerald-600 uppercase tracking-[0.4em] mb-4">Calculated Net Payout</p>
                         <p className="text-6xl font-black text-emerald-700 tracking-tighter leading-none">€{payrollData.totalNet.toFixed(2)}</p>
-                        <p className="text-[9px] font-bold text-emerald-600/40 uppercase mt-4">Inclusive of efficiency bonuses and piece-rates</p>
-                        <button onClick={handleCommitPayslip} className="mt-8 bg-slate-900 text-white font-black py-4 rounded-xl uppercase text-[10px] tracking-widest shadow-xl active:scale-95">COMMIT & NOTIFY STAFF</button>
+                        <button onClick={handleCommitPayslip} className="mt-8 bg-slate-900 text-white font-black py-4 rounded-xl uppercase text-[10px] tracking-widest shadow-xl active:scale-95">COMMIT PAYROLL RECORD</button>
                      </div>
                   </div>
               </section>
@@ -275,168 +226,127 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                   </div>
               </div>
            )}
-
-           {activeSubTab === 'LEAVE REQUESTS' && (
-              <div className="bg-white border border-slate-100 rounded-[2.5rem] shadow-xl overflow-hidden text-left animate-in slide-in-from-right-4">
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                       <thead className="bg-slate-50 border-b border-slate-100">
-                          <tr>
-                             <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest">Type</th>
-                             <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest">Period</th>
-                             <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
-                          </tr>
-                       </thead>
-                       <tbody className="divide-y divide-slate-50">
-                          {(leaveRequests || []).filter(l => l.userId === user.id).length === 0 ? (
-                             <tr><td colSpan={3} className="px-10 py-20 text-center opacity-20 text-[10px] uppercase font-black">No leave history</td></tr>
-                          ) : (leaveRequests || []).filter(l => l.userId === user.id).map(l => (
-                             <tr key={l.id}>
-                                <td className="px-10 py-6 text-[11px] font-black text-slate-900 uppercase">{l.type}</td>
-                                <td className="px-10 py-6 text-[10px] font-bold text-slate-400 tracking-tight">{l.startDate} TO {l.endDate}</td>
-                                <td className="px-10 py-6 text-center">
-                                   <span className={`px-4 py-1.5 rounded-full text-[8px] font-black uppercase tracking-widest ${l.status === 'approved' ? 'bg-emerald-600 text-white' : l.status === 'rejected' ? 'bg-rose-600 text-white' : 'bg-amber-100 text-amber-700'}`}>{l.status}</span>
-                                </td>
-                             </tr>
-                          ))}
-                       </tbody>
-                    </table>
-                  </div>
-              </div>
-           )}
         </div>
       </div>
 
-      {/* PAYSLIP MODAL */}
-      {viewingDoc === 'payslip' && (
-        <div className="fixed inset-0 bg-slate-900/60 z-[500] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
-           <div className="bg-white rounded-[3rem] w-full max-w-3xl p-14 space-y-12 shadow-2xl relative text-left my-auto animate-in zoom-in-95">
-              <button onClick={() => { setViewingDoc(null); setActiveHistoricalPayslip(null); }} className="absolute top-10 right-10 text-slate-300 hover:text-slate-900 text-2xl no-print">&times;</button>
-              <header className="flex justify-between items-start border-b-2 border-slate-900 pb-10">
-                 <div className="space-y-2">
-                    <h1 className="text-3xl font-black uppercase text-slate-900 leading-none tracking-tighter">{organization?.legalEntity || organization?.name || 'RESET STUDIO'}</h1>
-                    <p className="text-[10px] font-black text-teal-600 uppercase tracking-widest">DIGITAL PAYROLL RECORD</p>
-                 </div>
-                 <div className="text-right">
-                    <div className="bg-slate-900 text-white px-6 py-2 rounded uppercase text-sm font-black tracking-widest mb-4">PAYSLIP</div>
-                    <p className="text-sm font-black text-slate-900 uppercase leading-none">{user.name}</p>
-                    <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase">{activeHistoricalPayslip?.month || selectedDocMonth}</p>
-                 </div>
-              </header>
-              <div className="space-y-10">
-                 <div className="flex justify-between border-b-4 border-slate-900 pb-8 text-4xl font-black text-emerald-600">
-                    <span className="uppercase tracking-tighter">Net Payable</span>
-                    <span>€{(activeHistoricalPayslip?.netPay || payrollData.totalNet).toFixed(2)}</span>
-                 </div>
-                 <div className="space-y-4">
-                    <div className="flex justify-between text-sm font-bold text-slate-500 uppercase"><span>Gross Earnings</span><span className="text-slate-900 font-black">€{(activeHistoricalPayslip?.grossPay || payrollData.grossPay).toFixed(2)}</span></div>
-                    <div className="flex justify-between text-sm font-bold text-slate-500 uppercase"><span>NI Contribution (10%)</span><span className="text-rose-600 font-black">-€{(activeHistoricalPayslip?.ni || payrollData.ni).toFixed(2)}</span></div>
-                    <div className="flex justify-between text-sm font-bold text-slate-500 uppercase"><span>FSS PAYE Tax (15%)</span><span className="text-rose-600 font-black">-€{(activeHistoricalPayslip?.tax || payrollData.tax).toFixed(2)}</span></div>
-                 </div>
-              </div>
-              <div className="pt-10 flex justify-between items-end border-t border-slate-100">
-                 <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.5em]">OPERATIONS_CORE_VERIFIED</p>
-                 <button onClick={() => window.print()} className="bg-slate-50 text-slate-400 px-6 py-2 rounded-xl text-[8px] font-black uppercase no-print">Export PDF</button>
-              </div>
-           </div>
-        </div>
-      )}
-
-      {/* FS3 ANNUAL MODAL (NEW) */}
+      {/* FS3 ANNUAL MODAL (Official Layout) */}
       {viewingDoc === 'fs3' && (
         <div className="fixed inset-0 bg-slate-900/60 z-[500] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
-           <div className="bg-white rounded-[3rem] w-full max-w-4xl p-14 space-y-12 shadow-2xl relative text-left my-auto animate-in zoom-in-95 border-t-[12px] border-slate-900">
-              <button onClick={() => setViewingDoc(null)} className="absolute top-10 right-10 text-slate-300 hover:text-slate-900 text-2xl no-print">&times;</button>
-              <header className="flex justify-between items-start border-b-2 border-slate-900 pb-8">
-                 <div className="space-y-2">
-                    <h1 className="text-2xl font-black uppercase text-slate-900 leading-none">FS3 ANNUAL SUMMARY</h1>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Year End Tax Statement</p>
-                 </div>
-                 <div className="text-right">
-                    <p className="text-xs font-black text-slate-900 uppercase">YEAR: {new Date().getFullYear()}</p>
-                    <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase">Official Record</p>
-                 </div>
-              </header>
-
-              <div className="grid grid-cols-2 gap-12">
-                 <div className="space-y-6">
-                    <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.4em] border-b border-slate-50 pb-2">Employer Details</p>
-                    <div className="space-y-1">
-                        <p className="text-sm font-black text-slate-900 uppercase">{organization?.legalEntity || organization?.name || 'RESET STUDIO'}</p>
-                        <p className="text-xs font-bold text-slate-400">{organization?.address}</p>
-                        <p className="text-[10px] font-black text-teal-600 uppercase mt-2">PE NO: {organization?.peNumber || 'N/A'}</p>
-                    </div>
-                 </div>
-                 <div className="space-y-6">
-                    <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.4em] border-b border-slate-50 pb-2">Employee Details</p>
-                    <div className="space-y-1">
-                        <p className="text-sm font-black text-slate-900 uppercase">{user.name}</p>
-                        <p className="text-xs font-bold text-slate-400">{user.idPassportNumber || 'N/A'}</p>
-                        <p className="text-[10px] font-black text-teal-600 uppercase mt-2">NI NO: {user.niNumber || 'N/A'}</p>
-                    </div>
-                 </div>
-              </div>
-
-              <div className="bg-slate-50 p-10 rounded-[2.5rem] border border-slate-100">
-                  <div className="space-y-6">
-                     <div className="flex justify-between items-center border-b border-slate-200 pb-4">
-                        <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Aggregate Gross Wage</span>
-                        <span className="text-xl font-black text-slate-900">€{annualAggregates.gross.toFixed(2)}</span>
-                     </div>
-                     <div className="flex justify-between items-center border-b border-slate-200 pb-4">
-                        <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Total NI Deductions</span>
-                        <span className="text-xl font-black text-rose-600">-€{annualAggregates.ni.toFixed(2)}</span>
-                     </div>
-                     <div className="flex justify-between items-center border-b border-slate-200 pb-4">
-                        <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Total PAYE Tax Paid</span>
-                        <span className="text-xl font-black text-rose-600">-€{annualAggregates.tax.toFixed(2)}</span>
-                     </div>
-                     <div className="flex justify-between items-center pt-2">
-                        <span className="text-sm font-black text-slate-900 uppercase tracking-widest">Yearly Net Payout</span>
-                        <span className="text-3xl font-black text-emerald-600">€{annualAggregates.net.toFixed(2)}</span>
-                     </div>
-                  </div>
-              </div>
-
-              <div className="pt-10 flex justify-between items-end no-print">
-                 <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.5em]">CERTIFIED_ANNUAL_REPORT</p>
-                 <div className="flex gap-3">
-                    <button onClick={() => window.print()} className="bg-slate-900 text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase shadow-lg">Download PDF</button>
-                    <button onClick={() => setViewingDoc(null)} className="bg-slate-100 text-slate-400 px-8 py-3 rounded-xl text-[10px] font-black uppercase">Dismiss</button>
-                 </div>
-              </div>
-           </div>
-        </div>
-      )}
-
-      {showLeaveForm && (
-        <div className="fixed inset-0 bg-slate-900/60 z-[500] flex items-center justify-center p-4 backdrop-blur-md">
-           <div className="bg-white rounded-[2.5rem] w-full max-w-md p-10 space-y-8 shadow-2xl relative text-left animate-in zoom-in-95">
-              <button onClick={() => setShowLeaveForm(false)} className="absolute top-8 right-8 text-slate-300 hover:text-slate-900 font-black text-xl">&times;</button>
-              <div className="space-y-1">
-                 <h2 className="text-2xl font-bold uppercase text-slate-900 tracking-tight">Request Absence</h2>
-                 <p className="text-[9px] font-black text-indigo-600 uppercase tracking-[0.4em]">Official Leave Application</p>
-              </div>
-              <form onSubmit={(e) => {
-                  e.preventDefault();
-                  if (!leaveStart || !leaveEnd) return;
-                  onRequestLeave?.(leaveType, leaveStart, leaveEnd);
-                  setShowLeaveForm(false);
-              }} className="space-y-6">
+           <div className="bg-white rounded-[1rem] w-full max-w-4xl p-10 space-y-8 shadow-2xl relative text-left my-auto animate-in zoom-in-95 border border-slate-200 font-sans">
+              <button onClick={() => setViewingDoc(null)} className="absolute top-6 right-6 text-slate-300 hover:text-slate-900 text-2xl no-print">&times;</button>
+              
+              <div className="flex justify-between items-start border-b-2 border-slate-900 pb-4">
                  <div>
-                    <label className={labelStyle}>Leave Category</label>
-                    <select className={inputStyle} value={leaveType} onChange={e => setLeaveType(e.target.value as LeaveType)}>
-                       <option value="Vacation Leave">Vacation Leave</option>
-                       <option value="Sick Leave">Sick Leave</option>
-                       <option value="Day Off">Standard Day Off</option>
-                    </select>
+                    <h1 className="text-3xl font-black text-slate-800 flex items-center gap-4">
+                       <span className="text-blue-600">FS3</span>
+                       <div className="text-left">
+                          <p className="text-xs uppercase font-bold leading-none tracking-tighter">Final Settlement System (FSS)</p>
+                          <p className="text-[10px] uppercase font-medium leading-none mt-1">Payee Statement of Earnings</p>
+                       </div>
+                    </h1>
                  </div>
-                 <div className="grid grid-cols-2 gap-4">
-                    <div><label className={labelStyle}>Starting On</label><input required type="date" className={inputStyle} value={leaveStart} onChange={e => setLeaveStart(e.target.value)} /></div>
-                    <div><label className={labelStyle}>Ending On</label><input required type="date" className={inputStyle} value={leaveEnd} onChange={e => setLeaveEnd(e.target.value)} /></div>
+                 <div className="text-right border-2 border-slate-900 px-4 py-2 rounded">
+                    <p className="text-[8px] font-bold uppercase">Year Ended 31 December</p>
+                    <p className="text-xl font-black">{new Date().getFullYear()}</p>
                  </div>
-                 <button type="submit" className="w-full bg-indigo-600 text-white font-black py-4 rounded-xl uppercase tracking-widest text-[10px] shadow-xl active:scale-95 transition-all">SUBMIT APPLICATION</button>
-              </form>
+              </div>
+
+              <div className="grid grid-cols-12 gap-8">
+                 {/* Section A */}
+                 <div className="col-span-12 bg-blue-50/50 p-4 border border-blue-100 rounded">
+                    <p className="text-[10px] font-black text-blue-800 uppercase mb-3 px-1 border-b border-blue-200 pb-1">A. PAYEE INFORMATION</p>
+                    <div className="grid grid-cols-2 gap-x-12 gap-y-4 px-1">
+                       <div>
+                          <label className="text-[8px] font-bold text-slate-400 block">Surname / First Name</label>
+                          <p className="text-sm font-black uppercase text-slate-900">{user.name}</p>
+                       </div>
+                       <div>
+                          <label className="text-[8px] font-bold text-slate-400 block">ID / Passport Number</label>
+                          <p className="text-sm font-black uppercase text-slate-900">{user.idPassportNumber || 'N/A'}</p>
+                       </div>
+                       <div className="col-span-2">
+                          <label className="text-[8px] font-bold text-slate-400 block">Address</label>
+                          <p className="text-sm font-bold uppercase text-slate-900">{user.homeAddress || 'N/A'}</p>
+                       </div>
+                    </div>
+                 </div>
+
+                 {/* Section C & D */}
+                 <div className="col-span-7 space-y-6">
+                    <div className="bg-slate-50 p-4 border border-slate-200 rounded">
+                       <p className="text-[10px] font-black text-slate-800 uppercase mb-3 border-b border-slate-200 pb-1">C. GROSS EMOLUMENTS</p>
+                       <div className="space-y-2">
+                          <div className="flex justify-between text-xs font-bold px-1">
+                             <span>Gross Emoluments (FSS Main)</span>
+                             <span className="font-black">€{annualAggregates.gross.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between text-xs font-bold px-1 pt-2 border-t border-slate-200">
+                             <span className="uppercase">Total Gross Emoluments</span>
+                             <span className="font-black">€{annualAggregates.gross.toFixed(2)}</span>
+                          </div>
+                       </div>
+                    </div>
+
+                    <div className="bg-slate-50 p-4 border border-slate-200 rounded">
+                       <p className="text-[10px] font-black text-slate-800 uppercase mb-3 border-b border-slate-200 pb-1">D. TOTAL DEDUCTIONS</p>
+                       <div className="space-y-2">
+                          <div className="flex justify-between text-xs font-bold px-1">
+                             <span>Tax Deductions (FSS Main)</span>
+                             <span className="font-black">€{annualAggregates.tax.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between text-xs font-bold px-1 pt-2 border-t border-slate-200">
+                             <span className="uppercase">Total Tax Deductions</span>
+                             <span className="font-black">€{annualAggregates.tax.toFixed(2)}</span>
+                          </div>
+                       </div>
+                    </div>
+                 </div>
+
+                 {/* Section E */}
+                 <div className="col-span-5 bg-teal-50/50 p-4 border border-teal-100 rounded">
+                    <p className="text-[10px] font-black text-teal-800 uppercase mb-3 border-b border-teal-200 pb-1">E. SOCIAL SECURITY</p>
+                    <div className="space-y-6">
+                       <div>
+                          <label className="text-[8px] font-bold text-slate-400 block">NI Number</label>
+                          <p className="text-sm font-black uppercase text-slate-900">{user.niNumber || 'N/A'}</p>
+                       </div>
+                       <div className="space-y-2">
+                          <div className="flex justify-between text-xs font-bold px-1">
+                             <span>Total NI Contribution</span>
+                             <span className="font-black">€{annualAggregates.ni.toFixed(2)}</span>
+                          </div>
+                       </div>
+                    </div>
+                 </div>
+
+                 {/* Section F */}
+                 <div className="col-span-12 border-t-2 border-slate-200 pt-6">
+                    <div className="grid grid-cols-2 gap-12 items-end">
+                       <div className="space-y-4">
+                          <p className="text-[10px] font-black text-slate-400 uppercase">F. PAYER INFORMATION</p>
+                          <div className="space-y-1">
+                             <p className="text-xs font-black uppercase">{organization?.legalEntity || organization?.name || 'RESET STUDIO'}</p>
+                             <p className="text-[9px] font-bold text-slate-400 uppercase leading-none">{organization?.address}</p>
+                             <p className="text-[9px] font-black text-blue-600 uppercase mt-2">PE NO: {organization?.peNumber || 'N/A'}</p>
+                          </div>
+                       </div>
+                       <div className="text-right flex flex-col items-end gap-3">
+                          <div className="w-40 h-16 border-b-2 border-slate-300 border-dashed relative">
+                             <p className="absolute bottom-2 right-0 text-[8px] font-bold text-slate-200 uppercase">Principal Signature</p>
+                          </div>
+                          <p className="text-[9px] font-black uppercase text-slate-400">Date of issue: {new Date().toLocaleDateString('en-GB')}</p>
+                       </div>
+                    </div>
+                 </div>
+              </div>
+
+              <div className="pt-6 flex justify-between items-center no-print">
+                 <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.5em]">SYSTEM_VERIFIED_DOCUMENT</p>
+                 <div className="flex gap-2">
+                    <button onClick={() => window.print()} className="bg-slate-900 text-white px-8 py-3 rounded text-[10px] font-black uppercase tracking-widest">Download PDF</button>
+                    <button onClick={() => setViewingDoc(null)} className="bg-slate-100 text-slate-400 px-8 py-3 rounded text-[10px] font-black uppercase tracking-widest">Close</button>
+                 </div>
+              </div>
            </div>
         </div>
       )}
