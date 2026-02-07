@@ -1,109 +1,6 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { User, LeaveRequest, LeaveType, Shift, Property, OrganizationSettings, SavedPayslip, PaymentType, TimeEntry } from '../types';
-
-// Updated Maltese Tax Calculation (2026 Budget Alignment)
-const calculateMaltesePayroll = (gross: number, status: string, isParent: boolean) => {
-  const annualGross = gross * 12;
-  let annualTax = 0;
-
-  if (isParent) { 
-    if (annualGross <= 16500) {
-      annualTax = 0;
-    } else if (annualGross <= 25000) {
-      annualTax = (annualGross * 0.15) - 2475; 
-    } else {
-      annualTax = (annualGross * 0.25) - 4975;
-    }
-  } else if (status === 'Married') { 
-    if (annualGross <= 17500) {
-      annualTax = 0;
-    } else {
-      annualTax = (annualGross * 0.15) - 2625;
-    }
-  } else { 
-    if (annualGross <= 12000) {
-      annualTax = 0;
-    } else {
-      annualTax = (annualGross * 0.15) - 1800;
-    }
-  }
-
-  const monthlyTax = Math.max(0, annualTax / 12);
-  const monthlyNI = gross * 0.1;
-
-  return {
-    tax: monthlyTax,
-    ni: monthlyNI,
-    net: Math.max(0, gross - monthlyTax - monthlyNI)
-  };
-};
-
-export const getCleanerRateForShift = (serviceType: string, prop: Property): number => {
-  const type = serviceType.toUpperCase();
-  if (type === 'REFRESH') return prop.cleanerRefreshPrice || 0;
-  if (type === 'MID STAY CLEANING') return prop.cleanerMidStayPrice || 0;
-  if (type === 'TO CHECK APARTMENT') return prop.cleanerAuditPrice || 0;
-  if (type === 'COMMON AREA') return prop.cleanerCommonAreaPrice || 0;
-  if (type === 'BEDS ONLY') return prop.cleanerBedsOnlyPrice || 0;
-  return prop.cleanerPrice || 0;
-};
-
-// Global helper for role-based gross calculation
-export const calculateUserGrossForPeriod = (user: User, shifts: Shift[], timeEntries: TimeEntry[], properties: Property[], monthLabel: string) => {
-  if (user.paymentType === 'Fixed Wage') return user.payRate || 0;
-
-  const hourlyRate = user.payRate || 5.00;
-  let totalGross = 0;
-
-  // Logic for Laundry (Clock-in/out based)
-  if (user.role === 'laundry') {
-    const periodEntries = (timeEntries || []).filter(e => {
-        const d = new Date(e.timestamp);
-        const m = `${d.toLocaleString('en-GB', { month: 'short' }).toUpperCase()} ${d.getFullYear()}`;
-        return e.userId === user.id && m === monthLabel;
-    }).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
-    let clockedMinutes = 0;
-    for (let i = 0; i < periodEntries.length; i++) {
-        if (periodEntries[i].type === 'in' && periodEntries[i+1]?.type === 'out') {
-            const start = new Date(periodEntries[i].timestamp).getTime();
-            const end = new Date(periodEntries[i+1].timestamp).getTime();
-            clockedMinutes += (end - start) / 60000;
-            i++; // skip the 'out' entry
-        }
-    }
-    return (clockedMinutes / 60) * hourlyRate;
-  }
-
-  // Logic for Cleaners / Supervisors (Shift based)
-  const completedShifts = shifts.filter(s => {
-    const d = s.date.includes('-') ? new Date(s.date) : new Date(`${s.date} ${new Date().getFullYear()}`);
-    const m = `${d.toLocaleString('en-GB', { month: 'short' }).toUpperCase()} ${d.getFullYear()}`;
-    return s.userIds.includes(user.id) && s.status === 'completed' && m === monthLabel;
-  });
-
-  completedShifts.forEach(s => {
-    const durationHrs = Math.max(0, ((s.actualEndTime || 0) - (s.actualStartTime || 0)) / (1000 * 60 * 60));
-    const hourlyEarned = durationHrs * hourlyRate;
-
-    if (user.paymentType === 'Per Clean' && s.approvalStatus === 'approved') {
-        const prop = properties.find(p => p.id === s.propertyId);
-        const teamCount = s.userIds.length || 1;
-        let pieceRate = 0;
-        if (s.serviceType === 'TO FIX') pieceRate = s.fixWorkPayment || 0;
-        else if (prop) pieceRate = getCleanerRateForShift(s.serviceType, prop) / teamCount;
-        
-        // Hybrid: Higher of Hourly or Piece-rate
-        totalGross += Math.max(hourlyEarned, pieceRate);
-    } else {
-        // Strict Hourly (or rejected shift pay)
-        totalGross += hourlyEarned;
-    }
-  });
-
-  return totalGross;
-};
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { User, LeaveRequest, LeaveType, Shift, Property, OrganizationSettings, SavedPayslip, PaymentType, EmploymentType } from '../types';
 
 interface PersonnelProfileProps {
   user: User;
@@ -113,69 +10,80 @@ interface PersonnelProfileProps {
   properties?: Property[];
   onUpdateUser?: (user: User) => void;
   organization?: OrganizationSettings;
-  initialDocView?: 'fs3' | 'payslip' | 'worksheet' | 'preview' | null;
+  initialDocView?: 'fs3' | 'payslip' | 'worksheet' | null;
   initialHistoricalPayslip?: SavedPayslip | null;
-  timeEntries?: TimeEntry[];
 }
 
-const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ 
-  user, leaveRequests = [], onRequestLeave, shifts = [], properties = [], 
-  onUpdateUser, organization, initialDocView, initialHistoricalPayslip, timeEntries = [] 
-}) => {
+const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests = [], onRequestLeave, shifts = [], properties = [], onUpdateUser, organization, initialDocView, initialHistoricalPayslip }) => {
   const currentUserObj = JSON.parse(localStorage.getItem('current_user_obj') || '{}');
   const isCurrentUserAdmin = currentUserObj.role === 'admin';
+  const isViewingSelf = currentUserObj.id === user.id;
   
-  const [viewingDoc, setViewingDoc] = useState<'payslip' | 'worksheet' | 'fs3' | 'preview' | null>(initialDocView || null);
+  // Restricted access for financial management
+  const canManageFinancials = isCurrentUserAdmin;
+  
+  const [viewingDoc, setViewingDoc] = useState<'payslip' | 'worksheet' | 'fs3' | null>(initialDocView || null);
   const [activeHistoricalPayslip, setActiveHistoricalPayslip] = useState<SavedPayslip | null>(initialHistoricalPayslip || null);
+  const [activeModule, setActiveModule] = useState<'PAYROLL' | 'INVOICING' | 'RECORDS'>(isCurrentUserAdmin ? 'PAYROLL' : 'PAYROLL'); 
   const [activeSubTab, setActiveSubTab] = useState<'PENDING PAYOUTS' | 'PAYSLIP REGISTRY' | 'LEAVE REQUESTS'>(isCurrentUserAdmin ? 'PENDING PAYOUTS' : 'PAYSLIP REGISTRY');
   
-  const [selectedDocMonth, setSelectedDocMonth] = useState<string>(() => {
-     const now = new Date();
-     return `${now.toLocaleString('default', { month: 'short' }).toUpperCase()} ${now.getFullYear()}`;
-  }); 
+  // Leave Request Form States
+  const [showLeaveForm, setShowLeaveForm] = useState(false);
+  const [leaveType, setLeaveType] = useState<LeaveType>('Vacation Leave');
+  const [leaveStart, setLeaveStart] = useState('');
+  const [leaveEnd, setLeaveEnd] = useState('');
 
-  // Dynamic Date Range Helper
-  const currentPeriodDates = useMemo(() => {
-    try {
-      const parts = selectedDocMonth.split(' ');
-      const monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-      const monthIdx = monthNames.indexOf(parts[0]);
-      const year = parseInt(parts[1]);
-      
-      const start = new Date(year, monthIdx, 1);
-      const end = new Date(year, monthIdx + 1, 0);
+  // 2026 COMPLIANCE STATES
+  const [selectedDocMonth, setSelectedDocMonth] = useState<string>('JAN 2026'); 
+  const [payPeriodFrom, setPayPeriodFrom] = useState('2026-01-01');
+  const [payPeriodUntil, setPayPeriodUntil] = useState('2026-01-31');
+  
+  // DYNAMIC WAGE STATE
+  const [contractualGross, setContractualGross] = useState<number | null>(user.payRate || 1333.33); 
+  const [manualGrossPay, setManualGrossPay] = useState<number | null>(null);
 
-      const format = (d: Date) => d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-      
-      return {
-        from: format(start),
-        until: format(end),
-        monthIndex: monthIdx + 1
-      };
-    } catch (e) {
-      return { from: '01/01/2026', until: '31/01/2026', monthIndex: 1 };
+  useEffect(() => {
+    if (user.payRate) setContractualGross(user.payRate);
+  }, [user.id, user.payRate]);
+  
+  useEffect(() => {
+    if (initialHistoricalPayslip) {
+      setActiveHistoricalPayslip(initialHistoricalPayslip);
+      setViewingDoc('payslip');
+    }
+  }, [initialHistoricalPayslip]);
+
+  const printContentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const d = new Date(Date.parse(`1 ${selectedDocMonth}`));
+    if (!isNaN(d.getTime())) {
+      const y = d.getFullYear();
+      const m = d.getMonth();
+      const first = new Date(y, m, 1);
+      const last = new Date(y, m + 1, 0);
+      setPayPeriodFrom(first.toISOString().split('T')[0]);
+      setPayPeriodUntil(last.toISOString().split('T')[0]);
     }
   }, [selectedDocMonth]);
 
-  const annualAggregates = useMemo(() => {
-    const slips = user.payslips || [];
-    const totals = slips.reduce((acc, ps) => ({
-      gross: acc.gross + ps.grossPay,
-      tax: acc.tax + ps.tax,
-      niPayee: acc.niPayee + ps.ni,
-      net: acc.net + ps.netPay
-    }), { gross: 0, tax: 0, niPayee: 0, net: 0 });
+  const monthOptions = useMemo(() => {
+    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    return months.map(m => `${m} 2026`);
+  }, []);
 
-    const niPayer = totals.gross * 0.10; 
-    const maternityPayer = totals.gross * 0.003; 
+  const filteredShifts = useMemo(() => {
+    if (!payPeriodFrom || !payPeriodUntil) return [];
+    const from = new Date(payPeriodFrom);
+    const until = new Date(payPeriodUntil);
+    until.setHours(23, 59, 59);
 
-    return { 
-        ...totals, 
-        niPayer, 
-        maternityPayer,
-        niTotal: totals.niPayee + niPayer 
-    };
-  }, [user.payslips]);
+    return (shifts || []).filter(s => {
+      if (!s.userIds?.includes(user.id) || s.status !== 'completed') return false;
+      const d = s.date.includes('-') ? new Date(s.date) : new Date(`${s.date} ${new Date().getFullYear()}`);
+      return d >= from && d <= until;
+    });
+  }, [shifts, user.id, payPeriodFrom, payPeriodUntil]);
 
   const payrollData = useMemo(() => {
     if (activeHistoricalPayslip) {
@@ -184,401 +92,335 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({
         totalNet: activeHistoricalPayslip.netPay,
         tax: activeHistoricalPayslip.tax,
         ni: activeHistoricalPayslip.ni,
+        govBonus: activeHistoricalPayslip.govBonus,
+        performanceBonus: (activeHistoricalPayslip as any).performanceBonus || 0,
+        auditFees: (activeHistoricalPayslip as any).auditFees || 0
       };
     }
-    const calculatedGross = calculateUserGrossForPeriod(user, shifts, timeEntries, properties, selectedDocMonth);
-    const calc = calculateMaltesePayroll(calculatedGross, user.maritalStatus || 'Single', !!user.isParent);
-    return { grossPay: calculatedGross, ni: calc.ni, tax: calc.tax, totalNet: calc.net };
-  }, [user, activeHistoricalPayslip, shifts, timeEntries, properties, selectedDocMonth]);
+
+    let totalBase = 0;
+    let totalPerformanceBonus = 0;
+    let totalAuditFees = 0;
+
+    filteredShifts.forEach(s => {
+        const prop = properties?.find(p => p.id === s.propertyId);
+        const durationMs = (s.actualEndTime || 0) - (s.actualStartTime || 0);
+        const hours = durationMs / (1000 * 60 * 60);
+        const shiftBase = hours * (user.payRate || 5.00);
+
+        if (user.paymentType === 'Per Hour') totalBase += shiftBase;
+
+        if (s.approvalStatus === 'approved' && prop) {
+            const isCleaningShift = !['TO CHECK APARTMENT', 'SUPPLY DELIVERY', 'TO FIX'].includes(s.serviceType);
+            if (isCleaningShift) {
+                const teamCount = s.userIds?.length || 1;
+                const targetPieceRate = (prop.serviceRates?.[s.serviceType] || prop.cleanerPrice) / teamCount;
+                if (targetPieceRate > shiftBase) totalPerformanceBonus += (targetPieceRate - shiftBase);
+            }
+            if (s.serviceType === 'TO CHECK APARTMENT' && user.role === 'supervisor') totalAuditFees += (prop.cleanerAuditPrice || 0);
+            if (s.serviceType === 'TO FIX' && s.fixWorkPayment) totalPerformanceBonus += s.fixWorkPayment;
+        }
+    });
+
+    const actualGrossPay = manualGrossPay !== null ? manualGrossPay : (totalBase + totalPerformanceBonus + totalAuditFees);
+    const ni = actualGrossPay * 0.1;
+    const tax = actualGrossPay * 0.15;
+
+    return {
+      performanceBonus: totalPerformanceBonus,
+      auditFees: totalAuditFees,
+      grossPay: actualGrossPay,
+      ni,
+      tax,
+      govBonus: 0,
+      totalNet: Math.max(0, actualGrossPay - ni - tax)
+    };
+  }, [filteredShifts, user, payPeriodFrom, payPeriodUntil, properties, activeHistoricalPayslip]);
+
+  const userLeaveRequests = useMemo(() => {
+    return leaveRequests.filter(l => l.userId === user.id).sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+  }, [leaveRequests, user.id]);
+
+  const approvedLeaveCount = useMemo(() => {
+    return userLeaveRequests.filter(l => l.status === 'approved' && l.type === 'Vacation Leave').length;
+  }, [userLeaveRequests]);
 
   const handleCommitPayslip = () => {
     if (!onUpdateUser) return;
+    if (!window.confirm(`CONFIRM FINANCIAL COMMITMENT:\n\nGenerate permanent record for ${user.name}?`)) return;
+
     const newPayslip: SavedPayslip = {
       id: `ps-${Date.now()}`,
       month: selectedDocMonth,
-      periodFrom: currentPeriodDates.from,
-      periodUntil: currentPeriodDates.until,
+      periodFrom: payPeriodFrom,
+      periodUntil: payPeriodUntil,
       grossPay: payrollData.grossPay,
       netPay: payrollData.totalNet,
       tax: payrollData.tax,
       ni: payrollData.ni,
-      niWeeks: 4, 
-      govBonus: 0, 
+      niWeeks: 4,
+      govBonus: payrollData.govBonus,
       daysWorked: 20,
       generatedAt: new Date().toISOString(),
-      generatedBy: currentUserObj.name || 'Admin'
+      generatedBy: currentUserObj.name || 'Admin User'
     };
+
     onUpdateUser({ ...user, payslips: [...(user.payslips || []), newPayslip] });
-    setViewingDoc(null);
-    setActiveSubTab('PAYSLIP REGISTRY');
+    alert("Record committed to registry.");
   };
 
-  const DigitBox = ({ value, length }: { value: string | number, length: number }) => {
-    const s = String(value).replace(/[.,]/g, '').padStart(length, ' ');
-    return (
-      <div className="flex gap-0.5">
-        {s.split('').map((char, i) => (
-          <div key={i} className="w-5 h-7 border border-slate-400 bg-white flex items-center justify-center text-[11px] font-bold text-slate-800">
-            {char === ' ' ? '' : char}
-          </div>
-        ))}
-      </div>
-    );
+  const handleSubmitLeave = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!leaveStart || !leaveEnd) return;
+    onRequestLeave?.(leaveType, leaveStart, leaveEnd);
+    setShowLeaveForm(false);
+    setLeaveStart('');
+    setLeaveEnd('');
   };
+
+  const subLabelStyle = "text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5";
+  const inputStyle = "w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-[10px] font-black uppercase tracking-widest outline-none focus:border-teal-500 transition-all shadow-inner";
+
+  const visibleSubTabs = useMemo(() => {
+    const tabs: ('PENDING PAYOUTS' | 'PAYSLIP REGISTRY' | 'LEAVE REQUESTS')[] = ['PAYSLIP REGISTRY', 'LEAVE REQUESTS'];
+    if (canManageFinancials) tabs.unshift('PENDING PAYOUTS');
+    return tabs;
+  }, [canManageFinancials]);
 
   return (
-    <div className="bg-transparent min-h-fit text-left font-brand animate-in fade-in duration-500">
-      <div className="mx-auto space-y-6">
-        {/* Profile Card */}
-        <section className="bg-white border border-slate-100 rounded-2xl p-5 flex flex-col md:flex-row items-center justify-between gap-6 shadow-sm">
-           <div className="flex items-center gap-5 text-left">
-              <div className="w-14 h-14 rounded-xl bg-teal-50 flex items-center justify-center text-[#0D9488] font-bold text-xl shadow-inner border border-teal-100 overflow-hidden shrink-0">
+    <div className="bg-[#F0FDFA] min-h-screen text-left pb-24 font-brand animate-in fade-in duration-500">
+      {/* ACCESS CONTROLLED TOP NAV */}
+      {canManageFinancials && (
+        <div className="bg-white/80 backdrop-blur-md sticky top-0 z-30 border-b border-teal-50 px-6 py-2 shadow-sm flex gap-4 overflow-x-auto no-scrollbar">
+           {['PAYROLL', 'INVOICING', 'RECORDS'].map(mod => (
+              <button 
+                key={mod}
+                onClick={() => setActiveModule(mod as any)}
+                className={`px-6 py-2.5 rounded-xl text-[10px] font-black tracking-[0.1em] transition-all whitespace-nowrap ${activeModule === mod ? 'bg-[#0D9488] text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
+              >
+                 {mod}
+              </button>
+           ))}
+        </div>
+      )}
+
+      <div className="max-w-[1400px] mx-auto px-4 md:px-8 pt-8 space-y-10">
+        <section className="bg-white border border-slate-100 rounded-[2rem] p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-8 shadow-sm">
+           <div className="flex items-center gap-6 w-full md:w-auto">
+              <div className="w-16 h-16 md:w-20 md:h-20 rounded-[1.5rem] bg-teal-50 flex items-center justify-center text-[#0D9488] font-bold text-3xl shadow-inner overflow-hidden border border-teal-100">
                  {user.photoUrl ? <img src={user.photoUrl} className="w-full h-full object-cover" /> : user.name.charAt(0)}
               </div>
-              <div>
-                 <h2 className="text-lg font-bold text-slate-900 uppercase tracking-tight truncate max-w-[200px]">{user.name}</h2>
-                 <p className="text-[8px] font-black text-[#0D9488] uppercase tracking-widest mt-0.5">{user.role} • {user.paymentType}</p>
-                 <p className="text-[8px] font-bold text-slate-400 uppercase">
-                    {user.maritalStatus} • {user.isParent ? `Parent Status` : 'Single Status'}
-                 </p>
+              <div className="text-left">
+                 <h2 className="text-xl md:text-2xl font-bold text-slate-900 uppercase tracking-tight">{user.name}</h2>
+                 <p className="text-[10px] font-black text-[#0D9488] uppercase tracking-widest mt-1">{user.role}</p>
+                 <p className="text-[9px] font-bold text-slate-400 uppercase mt-0.5">{user.email}</p>
               </div>
            </div>
-           <div className="flex gap-2 items-center">
-              <select value={selectedDocMonth} onChange={(e) => setSelectedDocMonth(e.target.value)} className="bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 text-[9px] font-black uppercase outline-none focus:border-teal-500">
-                {['JAN 2026', 'FEB 2026', 'MAR 2026', 'APR 2026', 'MAY 2026', 'JUN 2026', 'JUL 2026', 'AUG 2026', 'SEP 2026', 'OCT 2025', 'NOV 2025', 'DEC 2025'].map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
-              <div className="bg-slate-50 px-5 py-2 rounded-xl border border-slate-100 text-center">
-                 <p className="text-[6px] font-black text-slate-400 uppercase tracking-widest mb-0.5">CURRENT GROSS</p>
-                 <p className="text-xs font-black text-slate-900">€{payrollData.grossPay.toFixed(2)}</p>
-              </div>
-              {isCurrentUserAdmin && (
-                <button onClick={() => setViewingDoc('fs3')} className="bg-slate-900 text-white px-6 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest shadow-sm active:scale-95 transition-all">FS3</button>
+           
+           <div className="flex flex-wrap gap-4 w-full md:w-auto">
+              {(isViewingSelf || isCurrentUserAdmin) && (
+                <button 
+                    onClick={() => setShowLeaveForm(true)}
+                    className="bg-indigo-600 text-white px-6 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all"
+                >
+                    REQUEST ABSENCE
+                </button>
               )}
+              <div className="bg-slate-50 px-6 py-3 rounded-2xl border border-slate-100 min-w-[120px]">
+                 <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1 text-center">BASE RATE</p>
+                 <p className="text-xs font-bold text-slate-900 text-center">€{user.payRate?.toFixed(2)} / {user.paymentType === 'Per Hour' ? 'HR' : 'MONTH'}</p>
+              </div>
            </div>
         </section>
 
-        <div className="space-y-4">
-           <div className="flex gap-6 border-b border-slate-200 px-2">
-              {['PENDING PAYOUTS', 'PAYSLIP REGISTRY'].map(tab => (
-                 (tab === 'PENDING PAYOUTS' && !isCurrentUserAdmin) ? null : (
-                   <button key={tab} onClick={() => setActiveSubTab(tab as any)} className={`pb-3 text-[9px] font-black tracking-widest relative transition-all ${activeSubTab === tab ? 'text-[#0D9488]' : 'text-slate-400'}`}>
-                      {tab}
-                      {activeSubTab === tab && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0D9488]"></div>}
-                   </button>
-                 )
+        <div className="space-y-6">
+           <div className="flex gap-10 border-b border-slate-200 w-full md:w-auto px-4 overflow-x-auto no-scrollbar">
+              {visibleSubTabs.map(tab => (
+                 <button 
+                   key={tab}
+                   onClick={() => setActiveSubTab(tab)}
+                   className={`pb-4 text-[10px] md:text-[11px] font-black tracking-widest transition-all relative whitespace-nowrap ${activeSubTab === tab ? 'text-[#0D9488]' : 'text-slate-400'}`}
+                 >
+                    {tab}
+                    {activeSubTab === tab && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0D9488] animate-in slide-in-from-left duration-300"></div>}
+                 </button>
               ))}
            </div>
 
-           {activeSubTab === 'PENDING PAYOUTS' && (
-              <section className="bg-white border border-slate-100 rounded-2xl p-6 shadow-md space-y-6 animate-in slide-in-from-bottom-2">
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                     <div className="space-y-4 text-left">
-                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">FSS Summary ({selectedDocMonth})</h3>
-                        <div className="space-y-2">
-                            <div className="flex justify-between text-[9px] font-bold text-slate-500 uppercase"><span>Monthly Gross</span><span className="text-slate-900">€{payrollData.grossPay.toFixed(2)}</span></div>
-                            <div className="flex justify-between text-[9px] font-bold text-slate-500 uppercase"><span>PAYE Tax</span><span className={`${payrollData.tax > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{payrollData.tax > 0 ? `-€${payrollData.tax.toFixed(2)}` : '€0.00 (Exempt)'}</span></div>
-                            <div className="flex justify-between text-[9px] font-bold text-slate-500 uppercase"><span>NI (10%)</span><span className="text-rose-600">-€{payrollData.ni.toFixed(2)}</span></div>
-                        </div>
-                        <p className="text-[7px] text-slate-400 italic uppercase">
-                          * {user.role === 'laundry' ? 'Calculated from HQ Time Clock entries.' : 'Calculated from completed shift deployments.'}
-                        </p>
-                     </div>
-                     <div className="p-6 bg-emerald-50 border border-emerald-100 rounded-2xl flex flex-col justify-center shadow-inner group">
-                        <p className="text-[7px] font-black text-emerald-600 uppercase tracking-widest mb-2">Net Wage Payout</p>
-                        <p className="text-4xl font-black text-emerald-700 tracking-tighter leading-none">€{payrollData.totalNet.toFixed(2)}</p>
-                        <button onClick={() => setViewingDoc('preview')} className="mt-6 bg-slate-900 text-white font-black py-3 rounded-lg uppercase text-[8px] tracking-widest shadow-lg group-hover:bg-emerald-600">PREVIEW & COMMIT</button>
-                     </div>
-                  </div>
-              </section>
-           )}
+           <div className="animate-in slide-in-from-bottom-4 duration-500">
+              {activeSubTab === 'PENDING PAYOUTS' && canManageFinancials && (
+                <section className="bg-white border border-slate-100 rounded-[2.5rem] p-6 md:p-10 shadow-lg space-y-10 text-left">
+                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+                      <div className="space-y-6">
+                         <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Hybrid Payment Calculator</h3>
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="md:col-span-2">
+                               <label className={subLabelStyle}>Month Focus</label>
+                               <select className={inputStyle} value={selectedDocMonth} onChange={e => setSelectedDocMonth(e.target.value)}>
+                                  {monthOptions.map(m => <option key={m} value={m}>{m}</option>)}
+                               </select>
+                            </div>
+                            <div><label className={subLabelStyle}>From</label><input type="date" className={inputStyle} value={payPeriodFrom} onChange={e => setPayPeriodFrom(e.target.value)} /></div>
+                            <div><label className={subLabelStyle}>Until</label><input type="date" className={inputStyle} value={payPeriodUntil} onChange={e => setPayPeriodUntil(e.target.value)} /></div>
+                         </div>
+                      </div>
+                      <div className="p-8 bg-emerald-50 border border-emerald-100 rounded-[2rem] flex flex-col justify-center">
+                         <p className={subLabelStyle}>Total Net Payout Preview</p>
+                         <p className="text-5xl font-black text-emerald-700 tracking-tighter leading-none">€{payrollData.totalNet.toFixed(2)}</p>
+                         <button onClick={handleCommitPayslip} className="mt-8 bg-indigo-600 text-white font-black py-4 rounded-xl uppercase text-[10px] tracking-widest shadow-xl">COMMIT TO REGISTRY</button>
+                      </div>
+                   </div>
+                </section>
+              )}
 
-           {activeSubTab === 'PAYSLIP REGISTRY' && (
-              <div className="bg-white border border-slate-100 rounded-2xl shadow-md overflow-hidden text-left">
-                  <table className="w-full">
-                     <thead className="bg-slate-50 border-b border-slate-100">
-                        <tr>
-                           <th className="px-6 py-3 text-[8px] font-black text-slate-400 uppercase tracking-widest">Month</th>
-                           <th className="px-6 py-3 text-[8px] font-black text-slate-400 uppercase tracking-widest text-right">Net (€)</th>
-                           <th className="px-6 py-3 text-[8px] font-black text-slate-400 uppercase tracking-widest text-right">Action</th>
-                        </tr>
-                     </thead>
-                     <tbody className="divide-y divide-slate-50">
-                        {(user.payslips || []).length === 0 ? (
-                           <tr><td colSpan={3} className="px-6 py-10 text-center opacity-20 text-[8px] uppercase font-black">No history</td></tr>
-                        ) : [...(user.payslips || [])].reverse().map(ps => (
-                           <tr key={ps.id}>
-                              <td className="px-6 py-4 text-[9px] font-black text-slate-900 uppercase">{ps.month}</td>
-                              <td className="px-6 py-4 text-right text-xs font-black text-emerald-600">€{ps.netPay.toFixed(2)}</td>
-                              <td className="px-6 py-4 text-right">
-                                 <button onClick={() => { setActiveHistoricalPayslip(ps); setViewingDoc('payslip'); }} className="text-[#0D9488] text-[8px] font-black uppercase underline">View</button>
-                              </td>
-                           </tr>
-                        ))}
-                     </tbody>
-                  </table>
-              </div>
-           )}
+              {activeSubTab === 'PAYSLIP REGISTRY' && (
+                <section className="bg-white border border-slate-100 rounded-[2.5rem] shadow-xl overflow-hidden text-left">
+                   <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                         <thead className="bg-slate-50/80 border-b border-slate-100">
+                            <tr>
+                               <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest">Month</th>
+                               <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest">Period</th>
+                               <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Net (€)</th>
+                               <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Action</th>
+                            </tr>
+                         </thead>
+                         <tbody className="divide-y divide-slate-50">
+                            {(user.payslips || []).length === 0 ? (
+                               <tr><td colSpan={4} className="px-10 py-20 text-center opacity-20 text-[10px] font-black uppercase">No payslips issued</td></tr>
+                            ) : [...(user.payslips || [])].reverse().map(ps => (
+                               <tr key={ps.id}>
+                                  <td className="px-10 py-6 text-[11px] font-black text-slate-900 uppercase">{ps.month}</td>
+                                  <td className="px-10 py-6 text-[10px] font-bold text-slate-400">{ps.periodFrom} — {ps.periodUntil}</td>
+                                  <td className="px-10 py-6 text-right text-sm font-black text-[#0D9488]">€{ps.netPay.toFixed(2)}</td>
+                                  <td className="px-10 py-6 text-right">
+                                     <button onClick={() => { setActiveHistoricalPayslip(ps); setViewingDoc('payslip'); }} className="bg-teal-50 text-teal-700 px-4 py-2 rounded-lg text-[8px] font-black uppercase">View Doc</button>
+                                  </td>
+                               </tr>
+                            ))}
+                         </tbody>
+                      </table>
+                   </div>
+                </section>
+              )}
+
+              {activeSubTab === 'LEAVE REQUESTS' && (
+                <section className="space-y-6 animate-in slide-in-from-right-4">
+                   <div className="bg-indigo-50 border border-indigo-100 p-6 rounded-[2rem] flex items-center justify-between shadow-sm">
+                      <div className="flex items-center gap-4">
+                         <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-xl shadow-sm">🏖️</div>
+                         <div>
+                            <p className="text-[10px] font-black text-indigo-900 uppercase tracking-widest">Absence Summary</p>
+                            <p className="text-xs font-bold text-indigo-700 uppercase">{approvedLeaveCount} Approved Vacation Instances</p>
+                         </div>
+                      </div>
+                      <button onClick={() => setShowLeaveForm(true)} className="bg-white border border-indigo-200 text-indigo-600 px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest hover:shadow-md transition-all">New Application</button>
+                   </div>
+
+                   <div className="bg-white border border-slate-100 rounded-[2.5rem] shadow-xl overflow-hidden text-left">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                           <thead className="bg-slate-50/80 border-b border-slate-100">
+                              <tr>
+                                 <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest">Type</th>
+                                 <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest">Period</th>
+                                 <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
+                              </tr>
+                           </thead>
+                           <tbody className="divide-y divide-slate-50">
+                              {userLeaveRequests.length === 0 ? (
+                                 <tr><td colSpan={3} className="px-10 py-20 text-center opacity-20 text-[10px] font-black uppercase italic">No leave history found</td></tr>
+                              ) : userLeaveRequests.map(l => (
+                                 <tr key={l.id}>
+                                    <td className="px-10 py-6">
+                                       <span className="text-[10px] font-black text-slate-900 uppercase">{l.type}</span>
+                                    </td>
+                                    <td className="px-10 py-6">
+                                       <span className="text-[9px] font-bold text-slate-400 uppercase">{l.startDate} TO {l.endDate}</span>
+                                    </td>
+                                    <td className="px-10 py-6 text-center">
+                                       <span className={`px-4 py-1.5 rounded-full text-[8px] font-black uppercase tracking-widest shadow-sm ${
+                                          l.status === 'approved' ? 'bg-emerald-600 text-white' :
+                                          l.status === 'rejected' ? 'bg-rose-600 text-white' :
+                                          'bg-amber-100 text-amber-700'
+                                       }`}>
+                                          {l.status}
+                                       </span>
+                                    </td>
+                                 </tr>
+                              ))}
+                           </tbody>
+                        </table>
+                      </div>
+                   </div>
+                </section>
+              )}
+           </div>
         </div>
       </div>
 
-      {/* FS3 ANNUAL MODAL */}
-      {viewingDoc === 'fs3' && (
-        <div className="fixed inset-0 bg-slate-900/80 z-[500] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
-           <div className="bg-[#FFFFFF] rounded-sm w-full max-w-5xl p-8 space-y-4 shadow-2xl relative text-left my-auto animate-in zoom-in-95 border-2 border-slate-300 font-sans text-slate-900 leading-tight">
-              <button onClick={() => setViewingDoc(null)} className="absolute top-4 right-4 text-slate-300 hover:text-slate-900 text-2xl no-print">&times;</button>
-              
-              <div className="flex justify-between items-start border-b border-slate-200 pb-2">
-                 <div className="flex items-center gap-4">
-                    <img src="https://logodix.com/logo/2012053.png" className="h-10 grayscale brightness-0" alt="Malta Tax" />
+      {/* LEAVE REQUEST MODAL */}
+      {showLeaveForm && (
+        <div className="fixed inset-0 bg-slate-900/60 z-[500] flex items-center justify-center p-4 backdrop-blur-md">
+           <div className="bg-white rounded-[2.5rem] w-full max-w-md p-10 space-y-8 shadow-2xl relative text-left animate-in zoom-in-95">
+              <button onClick={() => setShowLeaveForm(false)} className="absolute top-8 right-8 text-slate-300 hover:text-slate-900 font-black text-xl">&times;</button>
+              <div className="space-y-1">
+                 <h2 className="text-2xl font-bold uppercase text-slate-900 tracking-tight">Request Absence</h2>
+                 <p className="text-[9px] font-black text-indigo-600 uppercase tracking-[0.4em]">Official Leave Application</p>
+              </div>
+              <form onSubmit={handleSubmitLeave} className="space-y-6">
+                 <div>
+                    <label className={subLabelStyle}>Leave Category</label>
+                    <select className={inputStyle} value={leaveType} onChange={e => setLeaveType(e.target.value as LeaveType)}>
+                       <option value="Vacation Leave">Vacation Leave</option>
+                       <option value="Sick Leave">Sick Leave</option>
+                       <option value="Day Off">Standard Day Off</option>
+                    </select>
+                 </div>
+                 <div className="grid grid-cols-2 gap-4">
                     <div>
-                       <h1 className="text-[10px] font-black uppercase leading-tight">Tax & Customs Administration</h1>
-                       <p className="text-[8px] font-bold uppercase text-slate-500">Malta</p>
+                       <label className={subLabelStyle}>Starting On</label>
+                       <input required type="date" className={inputStyle} value={leaveStart} onChange={e => setLeaveStart(e.target.value)} />
+                    </div>
+                    <div>
+                       <label className={subLabelStyle}>Ending On</label>
+                       <input required type="date" className={inputStyle} value={leaveEnd} onChange={e => setLeaveEnd(e.target.value)} />
                     </div>
                  </div>
-                 <div className="text-center">
-                    <h2 className="text-5xl font-black text-[#3B82F6] italic tracking-tighter">FS3</h2>
-                 </div>
-                 <div className="text-right">
-                    <h2 className="text-[12px] font-black uppercase tracking-tight">Final Settlement System (FSS)</h2>
-                    <p className="text-[10px] uppercase font-medium">Payee Statement of Earnings</p>
-                 </div>
-              </div>
-
-              <div className="grid grid-cols-12 gap-x-6 gap-y-4">
-                 <div className="col-span-7 space-y-2">
-                    <div className="bg-[#3B82F6] text-white px-2 py-0.5 text-[10px] font-black uppercase">A PAYEE INFORMATION</div>
-                    <div className="grid grid-cols-2 gap-4 border border-slate-200 p-3">
-                       <div className="space-y-3">
-                          <div>
-                            <label className="text-[8px] font-bold text-slate-500 block">Surname</label>
-                            <p className="text-xs font-black uppercase border-b border-slate-100 pb-1">{user.name.split(' ').pop()}</p>
-                          </div>
-                          <div>
-                            <label className="text-[8px] font-bold text-slate-500 block">First Name</label>
-                            <p className="text-xs font-black uppercase border-b border-slate-100 pb-1">{user.name.split(' ')[0]}</p>
-                          </div>
-                          <div>
-                            <label className="text-[8px] font-bold text-slate-500 block">Address</label>
-                            <p className="text-[10px] font-bold uppercase leading-tight whitespace-pre-line">{user.homeAddress || 'N/A'}</p>
-                          </div>
-                       </div>
-                       <div className="space-y-4">
-                          <div className="flex justify-between items-center">
-                             <label className="text-[8px] font-black uppercase text-slate-600">For Year Ended 31 December</label>
-                             <div className="flex gap-2 items-center">
-                                <span className="text-[8px] font-bold">A1</span>
-                                <DigitBox value="2025" length={4} />
-                             </div>
-                          </div>
-                          <div className="flex justify-between items-center">
-                             <label className="text-[8px] font-black uppercase text-slate-600">Payee's ID Card / IT Reg. No.</label>
-                             <div className="flex gap-2 items-center">
-                                <span className="text-[8px] font-bold">A2</span>
-                                <DigitBox value={user.idPassportNumber || ''} length={9} />
-                             </div>
-                          </div>
-                          <div className="flex justify-between items-center">
-                             <label className="text-[8px] font-black uppercase text-slate-600">Payee's Social Security No.</label>
-                             <div className="flex gap-2 items-center">
-                                <span className="text-[8px] font-bold">A3</span>
-                                <DigitBox value={user.niNumber || ''} length={9} />
-                             </div>
-                          </div>
-                       </div>
-                    </div>
-                 </div>
-
-                 <div className="col-span-5 space-y-2">
-                    <div className="bg-[#3B82F6] text-white px-2 py-0.5 text-[10px] font-black uppercase">C GROSS EMOLUMENTS</div>
-                    <div className="border border-slate-200 p-3 space-y-3">
-                       <div className="flex justify-between items-center">
-                          <label className="text-[9px] font-bold text-slate-700 w-48">Gross Emoluments (FSS Main applies)</label>
-                          <div className="flex gap-2 items-center">
-                             <span className="text-[8px] font-bold text-slate-400">C1</span>
-                             <DigitBox value={annualAggregates.gross.toFixed(2)} length={7} />
-                          </div>
-                       </div>
-                       <div className="flex justify-between items-center">
-                          <label className="text-[9px] font-bold text-slate-700 w-48 italic">Total Gross Emoluments & Benefits</label>
-                          <div className="flex gap-2 items-center">
-                             <span className="text-[8px] font-bold text-slate-400">C4</span>
-                             <DigitBox value={annualAggregates.gross.toFixed(2)} length={7} />
-                          </div>
-                       </div>
-                    </div>
-                 </div>
-
-                 <div className="col-span-12 space-y-2">
-                    <div className="bg-[#3B82F6] text-white px-2 py-0.5 text-[10px] font-black uppercase">D TOTAL DEDUCTIONS</div>
-                    <div className="border border-slate-200 p-3 grid grid-cols-2 gap-8">
-                       <div className="flex justify-between items-center">
-                          <label className="text-[9px] font-bold text-slate-700">Tax Deductions (FSS Main applies)</label>
-                          <div className="flex gap-2 items-center">
-                             <span className="text-[8px] font-bold text-slate-400">D1</span>
-                             <DigitBox value={annualAggregates.tax.toFixed(2)} length={7} />
-                          </div>
-                       </div>
-                       <div className="flex justify-between items-center bg-slate-50 p-2">
-                          <label className="text-[9px] font-black text-slate-900 uppercase">Total Tax Deductions</label>
-                          <div className="flex gap-2 items-center">
-                             <span className="text-[8px] font-bold text-slate-400">D4</span>
-                             <DigitBox value={annualAggregates.tax.toFixed(2)} length={7} />
-                          </div>
-                       </div>
-                    </div>
-                 </div>
-
-                 <div className="col-span-12 space-y-2">
-                    <div className="bg-[#3B82F6] text-white px-2 py-0.5 text-[10px] font-black uppercase">E SOCIAL SECURITY AND MATERNITY FUND INFORMATION</div>
-                    <div className="border border-slate-200 overflow-hidden">
-                       <table className="w-full text-center border-collapse">
-                          <thead className="bg-slate-50 border-b border-slate-200 text-[8px] font-black uppercase text-slate-600">
-                             <tr>
-                                <th className="border-r border-slate-200 p-1" colSpan={3}>Basic Weekly Wage</th>
-                                <th className="border-r border-slate-200 p-1" rowSpan={2}>Cat</th>
-                                <th className="border-r border-slate-200 p-1" colSpan={3}>Social Security Contributions</th>
-                                <th className="p-1" colSpan={1}>Maternity Fund</th>
-                             </tr>
-                             <tr>
-                                <th className="border-r border-slate-200 p-1">€</th>
-                                <th className="border-r border-slate-200 p-1">C</th>
-                                <th className="border-r border-slate-200 p-1">Number</th>
-                                <th className="border-r border-slate-200 p-1">Payee (€)</th>
-                                <th className="border-r border-slate-200 p-1">Payer (€)</th>
-                                <th className="border-r border-slate-200 p-1">Total SSC (€)</th>
-                                <th className="p-1">Payer (€)</th>
-                             </tr>
-                          </thead>
-                          <tbody className="text-[10px] font-bold">
-                             <tr>
-                                <td className="border-r border-slate-200 p-2">{(annualAggregates.gross / 52).toFixed(0)}</td>
-                                <td className="border-r border-slate-200 p-2">00</td>
-                                <td className="border-r border-slate-200 p-2">{(user.payslips || []).length * 4}</td>
-                                <td className="border-r border-slate-200 p-2">C</td>
-                                <td className="border-r border-slate-200 p-2 text-blue-700">{annualAggregates.niPayee.toFixed(2)}</td>
-                                <td className="border-r border-slate-200 p-2">{annualAggregates.niPayer.toFixed(2)}</td>
-                                <td className="border-r border-slate-200 p-2 text-indigo-900 font-black">{annualAggregates.niTotal.toFixed(2)}</td>
-                                <td className="p-2 text-indigo-700">{annualAggregates.maternityPayer.toFixed(2)}</td>
-                             </tr>
-                          </tbody>
-                       </table>
-                    </div>
-                 </div>
-
-                 <div className="col-span-12 space-y-2">
-                    <div className="bg-[#3B82F6] text-white px-2 py-0.5 text-[10px] font-black uppercase">F PAYER INFORMATION</div>
-                    <div className="border border-slate-200 p-4 grid grid-cols-2 gap-12">
-                       <div className="space-y-4">
-                          <div>
-                             <label className="text-[8px] font-bold text-slate-500 uppercase">Business Name</label>
-                             <p className="text-xs font-black uppercase border-b border-slate-200 pb-1">{organization?.legalEntity || organization?.name || 'RESET STUDIO'}</p>
-                          </div>
-                          <div>
-                             <label className="text-[8px] font-bold text-slate-500 uppercase">Principal's Full Name</label>
-                             <p className="text-xs font-black uppercase border-b border-slate-200 pb-1">{currentUserObj.name || 'Dina Didai'}</p>
-                          </div>
-                       </div>
-                       <div className="space-y-4">
-                          <div className="flex justify-between items-center">
-                             <label className="text-[8px] font-black uppercase text-slate-600">F1 Payer PE Number</label>
-                             <DigitBox value={organization?.peNumber || '12522'} length={5} />
-                          </div>
-                          <div className="flex justify-between items-center">
-                             <label className="text-[8px] font-black uppercase text-slate-600">F2 Date</label>
-                             <DigitBox value={new Date().toLocaleDateString('en-GB').replace(/\//g, '')} length={8} />
-                          </div>
-                       </div>
-                    </div>
-                 </div>
-              </div>
-
-              <div className="pt-4 flex justify-between items-center no-print">
-                 <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.5em]">CERTIFIED_MTA_REPLICA_V1</p>
-                 <div className="flex gap-2">
-                    <button onClick={() => window.print()} className="bg-slate-900 text-white px-8 py-2 rounded-sm text-[9px] font-black uppercase tracking-widest shadow-xl">Export PDF</button>
-                    <button onClick={() => setViewingDoc(null)} className="bg-slate-100 text-slate-400 px-8 py-2 rounded-sm text-[9px] font-black uppercase tracking-widest border border-slate-200">Close</button>
-                 </div>
-              </div>
+                 <button type="submit" className="w-full bg-indigo-600 text-white font-black py-4 rounded-xl uppercase tracking-widest text-[10px] shadow-xl active:scale-95 transition-all">SUBMIT APPLICATION</button>
+              </form>
            </div>
         </div>
       )}
 
-      {/* PAYSLIP / PREVIEW MODAL */}
-      {(viewingDoc === 'payslip' || viewingDoc === 'preview') && (
-        <div className="fixed inset-0 bg-slate-900/80 z-[500] flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
-           <div className="bg-white rounded-sm w-full max-w-4xl p-6 md:p-8 space-y-4 shadow-2xl relative text-left my-auto animate-in zoom-in-95 border-2 border-slate-300 font-sans text-slate-900 leading-tight">
-              <button onClick={() => { setViewingDoc(null); setActiveHistoricalPayslip(null); }} className="absolute top-4 right-4 text-slate-300 hover:text-slate-900 text-xl no-print">&times;</button>
-              
-              <div className="bg-[#D9EAF7] text-center py-1.5 border border-slate-300">
-                <h1 className="text-[12px] font-black uppercase tracking-[0.2em]">PAYSLIP</h1>
-              </div>
-
-              <div className="grid grid-cols-2 gap-x-12 px-2 pt-4">
-                 <div className="space-y-4">
-                    <div className="space-y-0.5">
-                       <p className="text-[11px] font-black uppercase">{organization?.name || 'Dina Didai'}</p>
-                       <p className="text-[10px] font-medium uppercase leading-tight whitespace-pre-line max-w-[220px]">
-                          {organization?.address || '11, Anfield Flats, Flat 4,\nTriq il Mejjilla, Qormi, Malta'}
-                       </p>
-                       <p className="text-[11px] font-black uppercase pt-1">PE Number: {organization?.peNumber || '125224'}</p>
+      {/* DOCUMENT PREVIEW MODAL */}
+      {viewingDoc && (
+        <div className="fixed inset-0 bg-slate-900/60 z-[500] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
+           <div className="bg-white rounded-[3rem] w-full max-w-3xl p-10 md:p-14 space-y-12 shadow-2xl relative text-left my-auto animate-in zoom-in-95">
+              <button onClick={() => { setViewingDoc(null); setActiveHistoricalPayslip(null); }} className="absolute top-10 right-10 text-slate-300 hover:text-slate-900 no-print font-black text-xl">&times;</button>
+              <div ref={printContentRef} className="space-y-12">
+                 <header className="flex justify-between items-start border-b-2 border-slate-900 pb-10">
+                    <div className="space-y-2">
+                       <h1 className="text-3xl font-black uppercase tracking-tighter text-slate-900 leading-none">{organization?.legalEntity || organization?.name || 'RESET STUDIO'}</h1>
+                       <p className="text-[11px] font-black text-teal-600 uppercase tracking-widest">OFFICIAL PAYROLL RECORD</p>
                     </div>
-
-                    <div className="grid grid-cols-[80px_1fr] gap-y-1 text-[11px] font-bold">
-                       <span className="text-slate-500 uppercase">Period</span>
-                       <span className="text-right w-24">{activeHistoricalPayslip ? (activeHistoricalPayslip.month.split(' ')[0] === 'JAN' ? '1' : '...') : currentPeriodDates.monthIndex}</span>
-                       
-                       <span className="text-slate-500 uppercase">From:</span>
-                       <span className="text-right w-24">{activeHistoricalPayslip?.periodFrom || currentPeriodDates.from}</span>
-                       
-                       <span className="text-slate-500 uppercase">To:</span>
-                       <span className="text-right w-24">{activeHistoricalPayslip?.periodUntil || currentPeriodDates.until}</span>
-
-                       <span className="text-slate-500 uppercase">NI Category:</span>
-                       <span className="text-right w-24">C</span>
-                       <span className="text-slate-500 uppercase">Tax:</span>
-                       <span className="text-right w-24">{user.maritalStatus || 'Married'}</span>
+                    <div className="text-right">
+                       <h2 className="text-lg font-black uppercase tracking-[0.2em] bg-slate-900 text-white px-6 py-1.5">PAYSLIP</h2>
+                       <p className="text-sm font-black text-slate-900 uppercase mt-4">{user.name}</p>
+                    </div>
+                 </header>
+                 <div className="space-y-10">
+                    <div className="flex justify-between border-b-4 border-slate-900 pb-8 text-4xl font-black text-emerald-600">
+                       <span className="uppercase tracking-tighter">Net Payout</span>
+                       <span>€{payrollData.totalNet.toFixed(2)}</span>
+                    </div>
+                    <div className="space-y-4">
+                       <div className="flex justify-between text-xs font-bold text-slate-500 uppercase"><span>Gross Earnings</span><span className="text-slate-900">€{payrollData.grossPay.toFixed(2)}</span></div>
+                       <div className="flex justify-between text-xs font-bold text-slate-500 uppercase"><span>Social Security (NI)</span><span className="text-rose-600">-€{payrollData.ni.toFixed(2)}</span></div>
+                       <div className="flex justify-between text-xs font-bold text-slate-500 uppercase"><span>FSS PAYE Tax</span><span className="text-rose-600">-€{payrollData.tax.toFixed(2)}</span></div>
                     </div>
                  </div>
-
-                 <div className="space-y-4">
-                    <div className="grid grid-cols-[80px_1fr] gap-y-1 text-[11px] font-bold">
-                       <span className="text-slate-500 uppercase">Employee:</span>
-                       <span className="uppercase text-slate-900">{user.name.split(' ').reverse().join(' ')}</span>
-                       <span className="text-slate-500 uppercase pt-2">ID:</span>
-                       <span className="uppercase text-slate-900 pt-2">{user.idPassportNumber || '417090M'}</span>
-                       <span className="text-slate-500 uppercase">Designation:</span>
-                       <span className="uppercase text-slate-900">{user.role || 'Driver'}</span>
-                    </div>
-
-                    <div className="pt-6 grid grid-cols-[120px_1fr] gap-y-1 text-[11px] font-bold text-blue-600">
-                       <span className="uppercase opacity-80">Gross to date:</span>
-                       <span className="text-right w-24">{annualAggregates.gross.toFixed(2)}</span>
-                       <span className="uppercase opacity-80">Net wages to date:</span>
-                       <span className="text-right w-24">{annualAggregates.net.toFixed(2)}</span>
-                    </div>
-                 </div>
-              </div>
-
-              <div className="px-2 pt-8 pb-10 max-w-sm">
-                 <div className="grid grid-cols-[140px_1fr] gap-y-1 text-[11px] font-bold">
-                    <span className="uppercase">Basic Pay</span>
-                    <span className="text-right pr-4">{(activeHistoricalPayslip?.grossPay || payrollData.grossPay).toFixed(2)}</span>
-                    <span className="uppercase">FSS Main</span>
-                    <span className="text-right pr-4">{(activeHistoricalPayslip?.tax || payrollData.tax).toFixed(2)}</span>
-                    <span className="uppercase">NI</span>
-                    <span className="text-right pr-4 border-b border-slate-900">{(activeHistoricalPayslip?.ni || payrollData.ni).toFixed(2)}</span>
-                    <span className="uppercase pt-1">Net wage</span>
-                    <span className="text-right pr-4 pt-1 font-black underline decoration-double underline-offset-2">
-                       {(activeHistoricalPayslip?.netPay || payrollData.totalNet).toFixed(2)}
-                    </span>
-                 </div>
-              </div>
-
-              <div className="pt-6 flex justify-between items-center border-t border-slate-100 no-print px-2">
-                 <button onClick={() => window.print()} className="bg-slate-100 text-slate-500 px-10 py-2.5 rounded-sm text-[9px] font-black uppercase tracking-widest border border-slate-200">Print / Export</button>
-                 {viewingDoc === 'preview' && (
-                    <button onClick={handleCommitPayslip} className="bg-slate-900 text-white px-12 py-2.5 rounded-sm text-[9px] font-black uppercase tracking-widest shadow-xl">AUTHORIZE & COMMIT</button>
-                 )}
+                 <p className="text-[8px] font-black uppercase text-center text-slate-300 mt-12 tracking-[0.5em]">DIGITALLY VERIFIED BY RESET STUDIO OPS CORE</p>
               </div>
            </div>
         </div>

@@ -11,7 +11,6 @@ interface DriverPortalProps {
   shifts?: Shift[];
   setShifts?: React.Dispatch<React.SetStateAction<Shift[]>>;
   properties?: Property[];
-  setProperties?: React.Dispatch<React.SetStateAction<Property[]>>;
   users?: User[];
   setActiveTab?: (tab: TabType) => void;
   timeEntries?: TimeEntry[];
@@ -25,7 +24,6 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
   shifts = [], 
   setShifts,
   properties = [],
-  setProperties,
   users = [],
   timeEntries = [],
   setTimeEntries,
@@ -35,7 +33,6 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
   const [elapsedTime, setElapsedTime] = useState(0);
   const [overrideDriverId, setOverrideDriverId] = useState<string | null>(initialOverrideId);
   const [refreshToggle, setRefreshToggle] = useState(0);
-  const [isCapturingPin, setIsCapturingPin] = useState<string | null>(null);
   
   const isDriverRole = user.role === 'driver';
   const isManagerRole = user.role === 'admin' || user.role === 'housekeeping';
@@ -65,33 +62,48 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
 
   const activeUserId = isOperationalMode ? (overrideDriverId || user.id) : null;
   const isViewingToday = viewedDate === realTodayISO;
-  const isFinishedForViewedDate = useMemo(() => {
-      if (!activeUserId) return false;
-      const start = (timeEntries || []).find(e => e.userId === activeUserId && e.timestamp.startsWith(realTodayISO) && e.type === 'in');
-      const end = (timeEntries || []).slice().reverse().find(e => e.userId === activeUserId && e.timestamp.startsWith(realTodayISO) && e.type === 'out');
-      return !!start && !!end && new Date(end.timestamp) > new Date(start.timestamp);
-  }, [timeEntries, activeUserId, realTodayISO]);
 
-  const routeActive = useMemo(() => {
-      if (!activeUserId) return false;
-      const start = (timeEntries || []).find(e => e.userId === activeUserId && e.timestamp.startsWith(realTodayISO) && e.type === 'in');
-      return !!start && !isFinishedForViewedDate;
-  }, [timeEntries, activeUserId, realTodayISO, isFinishedForViewedDate]);
+  const getLogisticsTasksForUser = (userId: string, dateStr: string, activeRole: string) => {
+    return (shifts || []).filter(s => {
+      if (!s.isPublished || s.excludeLaundry || s.date !== dateStr) return false;
+      if (s.userIds.includes(userId)) return true;
+      const isLogisticsType = ['Check out/check in', 'REFRESH', 'MID STAY CLEANING', 'BEDS ONLY', 'Common Area', 'SUPPLY DELIVERY'].includes(s.serviceType);
+      return isLogisticsType && activeRole === 'driver';
+    });
+  };
+
+  const todaysEntries = useMemo(() => {
+    if (!activeUserId) return [];
+    return (timeEntries || [])
+        .filter(e => e.userId === activeUserId && e.timestamp.startsWith(realTodayISO))
+        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  }, [timeEntries, activeUserId, realTodayISO, refreshToggle]);
 
   const routeStartTime = useMemo(() => {
-    if (!activeUserId) return null;
-    const startEntry = (timeEntries || []).find(e => e.userId === activeUserId && e.timestamp.startsWith(realTodayISO) && e.type === 'in');
+    const startEntry = todaysEntries.find(e => e.type === 'in');
     return startEntry ? new Date(startEntry.timestamp) : null;
-  }, [timeEntries, activeUserId, realTodayISO]);
+  }, [todaysEntries]);
 
+  const routeEndTime = useMemo(() => {
+    if (!routeStartTime) return null;
+    const endEntry = todaysEntries.slice().reverse().find(e => e.type === 'out' && new Date(e.timestamp) > routeStartTime);
+    return endEntry ? new Date(endEntry.timestamp) : null;
+  }, [todaysEntries, routeStartTime]);
+
+  const routeActive = !!routeStartTime && !routeEndTime;
+  const isFinishedForViewedDate = !!routeEndTime;
+
+  // STRICT RULE: Drivers can only interact if it's today, route is active, and they haven't finished yet.
   const isButtonsEnabled = (isViewingToday && routeActive && !isFinishedForViewedDate) || isManagerRole;
 
   useEffect(() => {
     let interval: any;
-    if (routeActive && isViewingToday && routeStartTime) {
+    if (routeActive && isViewingToday) {
       const updateTimer = () => {
-        const diffInSeconds = Math.floor((Date.now() - routeStartTime.getTime()) / 1000);
-        setElapsedTime(Math.max(0, diffInSeconds));
+        if (routeStartTime) {
+          const diffInSeconds = Math.floor((Date.now() - routeStartTime.getTime()) / 1000);
+          setElapsedTime(diffInSeconds > 0 ? diffInSeconds : 0);
+        }
       };
       updateTimer();
       interval = setInterval(updateTimer, 1000); 
@@ -111,12 +123,7 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
         ? (users?.find(u => u.id === overrideDriverId)?.role || 'driver')
         : user.role;
 
-    return (shifts || []).filter(s => {
-      if (!s.isPublished || s.excludeLaundry || s.date !== viewedDateStr) return false;
-      if (s.userIds.includes(activeUserId)) return true;
-      const isLogisticsType = ['Check out/check in', 'REFRESH', 'MID STAY CLEANING', 'BEDS ONLY', 'Common Area', 'SUPPLY DELIVERY'].includes(s.serviceType);
-      return isLogisticsType && effectiveRoleOfSubject === 'driver';
-    }).map(s => {
+    return getLogisticsTasksForUser(activeUserId, viewedDateStr, effectiveRoleOfSubject).map(s => {
       const prop = properties.find(p => p.id === s.propertyId);
       const cleanerId = s.userIds.find(uid => {
         const u = users?.find(uSub => uSub.id === uid);
@@ -142,33 +149,14 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
     setRefreshToggle(p => p + 1);
   };
 
-  const toggleField = (shiftId: string, field: keyof Shift) => {
+  const toggleTaskField = (shiftId: string, field: keyof Shift) => {
     if (!isButtonsEnabled) return;
-    setShifts?.(prev => prev.map(s => s.id === shiftId ? { ...s, [field]: !s[field] } : s));
-  };
-
-  const capturePropertyPin = (propertyId: string) => {
-    if (!setProperties || isCapturingPin) return;
-    
-    setIsCapturingPin(propertyId);
-    
-    // Explicitly using high accuracy for site pinning
-    navigator.geolocation.getCurrentPosition(
-        (pos) => {
-            const lat = parseFloat(pos.coords.latitude.toFixed(6));
-            const lng = parseFloat(pos.coords.longitude.toFixed(6));
-            
-            setProperties(prev => prev.map(p => p.id === propertyId ? { ...p, lat, lng } : p));
-            alert(`GPS SYNCED\n\nCoordinates for this property have been updated to your current location.\n\nLat: ${lat}\nLng: ${lng}\n\nCleaners can now use this pin for geofence verification.`);
-            setIsCapturingPin(null);
-        },
-        (err) => {
-            console.error("GPS PIN ERROR:", err);
-            alert("GPS CAPTURE FAILED\n\n1. Ensure Location Services are ON.\n2. Grant this browser 'Precise Location' permission.\n3. Try moving to a window or outdoors.");
-            setIsCapturingPin(null);
-        },
-        { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
-    );
+    setShifts?.(prev => prev.map(s => {
+      if (s.id === shiftId) {
+        return { ...s, [field]: !s[field] };
+      }
+      return s;
+    }));
   };
 
   const weekDays = useMemo(() => {
@@ -190,6 +178,7 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
   return (
     <div className="space-y-6 md:space-y-10 animate-in fade-in duration-700 text-left pb-32 max-w-2xl mx-auto px-1">
       
+      {/* 1. ADMIN MONITOR VIEW (Summary) */}
       {isMonitorMode && (
         <div className="space-y-6">
            <header className="px-1">
@@ -198,7 +187,7 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
            </header>
            <div className="bg-white border border-slate-100 rounded-[2.5rem] shadow-xl overflow-hidden divide-y divide-slate-50">
               {users?.filter(u => u.role === 'driver' && u.status === 'active').map((d, i) => {
-                const dTasks = (shifts || []).filter(s => s.isPublished && !s.excludeLaundry && s.date === todayDateStr && (s.userIds.includes(d.id) || d.role === 'driver'));
+                const dTasks = getLogisticsTasksForUser(d.id, todayDateStr, 'driver');
                 const doneCount = dTasks.filter(s => s.isDelivered && s.isCollected && s.isCleanLinenTakenFromOffice).length;
                 return (
                   <div key={i} className="p-6 flex justify-between items-center hover:bg-slate-50 transition-colors">
@@ -217,6 +206,7 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
         </div>
       )}
 
+      {/* 2. OPERATIONAL VIEW */}
       {isOperationalMode && (
         <>
           <section className="flex items-center justify-between gap-4 px-1">
@@ -270,20 +260,33 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
             </div>
           </header>
 
-          <div className="space-y-8">
+          {!isButtonsEnabled && !isFinishedForViewedDate && isViewingToday && (
+             <div className="bg-amber-50 border-2 border-amber-200 p-6 rounded-[2rem] animate-in slide-in-from-top-4 flex items-center gap-4">
+                <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center text-white text-xl font-bold shrink-0 shadow-lg">!</div>
+                <div>
+                   <p className="text-[10px] font-black text-amber-900 uppercase tracking-widest">Action Required</p>
+                   <p className="text-[11px] text-amber-700 font-bold uppercase leading-tight">Initialize the route timer above to enable task interactions.</p>
+                </div>
+             </div>
+          )}
+
+          <div className={`space-y-8 transition-all duration-500 ${!isButtonsEnabled ? 'opacity-40 pointer-events-none grayscale' : ''}`}>
             {logisticsTasks.map(task => {
               const isExtraTask = task.serviceType === 'SUPPLY DELIVERY';
-              const isCapturing = isCapturingPin === task.propertyId;
-
               return (
                 <div key={task.id} className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-2xl space-y-8 transition-all hover:shadow-indigo-900/5 group relative overflow-hidden">
+                  {!isButtonsEnabled && (
+                     <div className="absolute top-4 right-4 z-20 opacity-40">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-300"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                     </div>
+                  )}
                   <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
                     <div className="space-y-1 text-left flex-1 min-w-0">
                         <div className="flex items-center gap-3">
                            <h4 className="text-slate-900 font-black uppercase text-xl leading-tight tracking-tighter truncate">{task.propertyName}</h4>
                            {!isExtraTask && (
                              <button 
-                               onClick={() => isButtonsEnabled && toggleField(task.id, 'keysHandled')}
+                               onClick={() => isButtonsEnabled && toggleTaskField(task.id, 'keysHandled')}
                                disabled={!isButtonsEnabled}
                                className={`flex items-center gap-2 px-3 py-1 rounded-full border transition-all ${task.keysHandled ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-slate-50 border-slate-200 text-slate-400'}`}
                              >
@@ -298,52 +301,29 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
                     </div>
                   </div>
 
-                  {/* PROPERTY DATA SYNC SECTION: ALWAYS ACCESSIBLE */}
-                  <div className="bg-indigo-50/50 p-6 rounded-[2rem] border border-indigo-100 space-y-4">
-                      <div className="flex justify-between items-center border-b border-indigo-100 pb-3">
-                          <p className="text-[8px] font-black text-indigo-400 uppercase tracking-[0.3em]">Property Geofence Utility</p>
+                  {/* DEPLOYMENT DETAIL SUITE */}
+                  <div className="bg-slate-50/50 p-6 rounded-[2rem] border border-slate-100 space-y-4">
+                      <div className="flex justify-between items-end border-b border-slate-100 pb-3">
+                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.3em]">Deployment Detail</p>
                           <div className="text-right">
-                             <p className="text-[8px] font-black text-slate-900 uppercase leading-none">
-                                {task.propDetails?.lat ? `${task.propDetails.lat}, ${task.propDetails.lng}` : 'NO COORDINATES SET'}
-                             </p>
+                             <p className="text-[9px] font-black text-slate-900 uppercase leading-none">{task.cleanerDetails?.name || 'Unassigned'}</p>
+                             <p className="text-[7px] font-bold text-indigo-500 uppercase tracking-widest mt-1">CLEANER ASSIGNED</p>
                           </div>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                         <button 
-                            onClick={() => capturePropertyPin(task.propertyId)}
-                            disabled={isCapturing}
-                            className="bg-indigo-600 text-white py-3 rounded-xl text-[8px] font-black uppercase shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                         >
-                            {isCapturing ? (
-                                <>
-                                   <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                   ACQUIRING SIGNAL...
-                                </>
-                            ) : (
-                                <>
-                                   <span className="text-xs">📍</span>
-                                   SYNC PIN TO THIS LOCATION
-                                </>
-                            )}
-                         </button>
-                         <div className="grid grid-cols-2 gap-2">
-                             <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(task.propDetails?.address || '')}`} target="_blank" className="bg-white border border-slate-200 text-indigo-600 py-3 rounded-xl text-[8px] font-black uppercase text-center shadow-sm hover:border-indigo-200 transition-all">G-MAPS</a>
-                             <a href={`https://maps.apple.com/?q=${encodeURIComponent(task.propDetails?.address || '')}`} target="_blank" className="bg-white border border-slate-200 text-slate-900 py-3 rounded-xl text-[8px] font-black uppercase text-center shadow-sm hover:border-indigo-200 transition-all">APPLE</a>
-                         </div>
+                      <div className="grid grid-cols-2 gap-2.5">
+                         <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(task.propDetails?.address || '')}`} target="_blank" className="bg-white border border-slate-200 text-indigo-600 py-3 rounded-xl text-[8px] font-black uppercase text-center shadow-sm hover:border-indigo-200 transition-all">G-MAPS</a>
+                         <a href={`https://maps.apple.com/?q=${encodeURIComponent(task.propDetails?.address || '')}`} target="_blank" className="bg-white border border-slate-200 text-slate-900 py-3 rounded-xl text-[8px] font-black uppercase text-center shadow-sm hover:border-indigo-200 transition-all">APPLE</a>
+                         <a href={task.cleanerDetails?.phone ? `tel:${task.cleanerDetails.phone}` : '#'} className={`bg-white border border-slate-200 text-slate-400 py-3 rounded-xl text-[8px] font-black uppercase text-center shadow-sm hover:text-slate-600 transition-all ${!task.cleanerDetails?.phone && 'opacity-20 pointer-events-none'}`}>CALL STAFF</a>
+                         <a href={task.cleanerDetails?.phone ? `https://wa.me/${task.cleanerDetails.phone.replace(/\D/g,'')}` : '#'} target="_blank" className={`bg-emerald-50 border border-emerald-100 text-emerald-600 py-3 rounded-xl text-[8px] font-black uppercase text-center shadow-sm hover:bg-emerald-100 transition-all ${!task.cleanerDetails?.phone && 'opacity-20 pointer-events-none'}`}>WHATSAPP</a>
                       </div>
                   </div>
 
-                  <div className={`space-y-6 transition-all duration-500 ${!isButtonsEnabled ? 'opacity-40 pointer-events-none grayscale' : ''}`}>
-                     {!isButtonsEnabled && (
-                        <div className="absolute top-4 right-4 z-20 opacity-40">
-                           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-300"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                        </div>
-                     )}
-                     
+                  {/* PHASES ACTION AREA */}
+                  <div className="space-y-6">
                      <div className="space-y-3">
                         <p className={sectionLabel}>Phase 1: Supply Chain Pickup (Office)</p>
                         <button 
-                           onClick={() => toggleField(task.id, 'isCleanLinenTakenFromOffice')} 
+                           onClick={() => toggleTaskField(task.id, 'isCleanLinenTakenFromOffice')} 
                            disabled={!isButtonsEnabled}
                            className={`w-full py-4 md:py-5 rounded-2xl font-black uppercase text-[9px] md:text-[10px] tracking-[0.2em] transition-all shadow-lg active:scale-95 disabled:opacity-40 disabled:bg-slate-50 disabled:text-slate-300 disabled:shadow-none ${task.isCleanLinenTakenFromOffice ? 'bg-indigo-600 text-white shadow-indigo-900/20' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}
                         >
@@ -355,9 +335,9 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
                         <div className="space-y-3">
                            <p className={sectionLabel}>Phase 2: Unit Delivery (Clean)</p>
                            <button 
-                              onClick={() => toggleField(task.id, 'isDelivered')} 
+                              onClick={() => toggleTaskField(task.id, 'isDelivered')} 
                               disabled={!isButtonsEnabled || !task.isCleanLinenTakenFromOffice}
-                              className={`w-full py-4 md:py-5 rounded-2xl font-black uppercase text-[9px] md:text-[10px] tracking-[0.2em] transition-all shadow-lg active:scale-95 disabled:opacity-40 disabled:shadow-none flex items-center justify-center gap-2 ${task.isDelivered ? 'bg-emerald-600 text-white shadow-emerald-900/20' : 'bg-white border-2 border-emerald-500 text-emerald-600'}`}
+                              className={`w-full py-4 md:py-5 rounded-2xl font-black uppercase text-[9px] md:text-[10px] tracking-[0.2em] transition-all shadow-lg active:scale-95 disabled:opacity-40 disabled:shadow-none ${task.isDelivered ? 'bg-emerald-600 text-white shadow-emerald-900/20' : 'bg-white border-2 border-emerald-500 text-emerald-600'}`}
                            >
                               {task.isDelivered ? '✓ DELIVERED' : 'MARK DELIVERED'}
                            </button>
@@ -365,9 +345,9 @@ const DriverPortal: React.FC<DriverPortalProps> = ({
                         <div className="space-y-3">
                            <p className={sectionLabel}>Phase 3: Unit Collection (Dirty)</p>
                            <button 
-                              onClick={() => toggleField(task.id, 'isCollected')} 
+                              onClick={() => toggleTaskField(task.id, 'isCollected')} 
                               disabled={!isButtonsEnabled}
-                              className={`w-full py-4 md:py-5 rounded-2xl font-black uppercase text-[9px] md:text-[10px] tracking-[0.2em] transition-all shadow-lg active:scale-95 disabled:opacity-40 disabled:shadow-none flex items-center justify-center gap-2 ${task.isCollected ? 'bg-orange-600 text-white shadow-orange-900/20' : 'bg-white border-2 border-orange-500 text-orange-600'}`}
+                              className={`w-full py-4 md:py-5 rounded-2xl font-black uppercase text-[9px] md:text-[10px] tracking-[0.2em] transition-all shadow-lg active:scale-95 disabled:opacity-40 disabled:shadow-none ${task.isCollected ? 'bg-orange-600 text-white shadow-orange-900/20' : 'bg-white border-2 border-orange-500 text-orange-600'}`}
                            >
                               {task.isCollected ? '✓ COLLECTED' : 'MARK COLLECTED'}
                            </button>
