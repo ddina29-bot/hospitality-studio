@@ -40,12 +40,15 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
         });
     });
 
+    const maternityFund = totalPayrollGross * 0.003; // Official 0.3% Maternity Fund
+
     return { 
         totalPayrollGross, 
         totalPayrollTax, 
         totalPayrollNI, 
         totalPayees,
-        totalDue: totalPayrollTax + totalPayrollNI 
+        maternityFund,
+        totalDue: totalPayrollTax + totalPayrollNI + maternityFund 
     };
   }, [users]);
 
@@ -62,22 +65,22 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
               
               <header className="flex justify-between items-center border-b-4 border-blue-600 pb-6">
                  <div>
-                    <h1 className="text-4xl font-black text-blue-600 flex items-center gap-4">
+                    <h1 className="text-4xl font-black text-blue-600 flex items-center gap-6">
                        FS5
                        <div className="text-left">
-                          <p className="text-xs uppercase font-bold leading-none tracking-tighter text-slate-800">Final Settlement System (FSS)</p>
+                          <p className="text-xs uppercase font-bold leading-none tracking-tighter text-slate-900">Final Settlement System (FSS)</p>
                           <p className="text-[10px] uppercase font-medium leading-none mt-1 text-slate-500">Payer's Monthly Payment Advice</p>
                        </div>
                     </h1>
                  </div>
                  <div className="text-right">
-                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">MT Tax & Customs Administration</p>
+                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Malta Tax & Customs Administration</p>
                  </div>
               </header>
 
               <div className="grid grid-cols-12 gap-8">
                  {/* Section A */}
-                 <div className="col-span-7 bg-blue-50/30 p-6 border border-blue-100 rounded">
+                 <div className="col-span-7 bg-blue-50/20 p-6 border border-blue-100 rounded">
                     <p className="text-[10px] font-black text-blue-800 uppercase mb-4 border-b border-blue-100 pb-1">A. PAYER INFORMATION</p>
                     <div className="space-y-4">
                        <div>
@@ -91,11 +94,15 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                     </div>
                  </div>
 
-                 {/* Section Stats (Right) */}
+                 {/* Section Header Boxes (Right) */}
                  <div className="col-span-5 space-y-4">
-                    <div className="p-4 border-2 border-slate-800 rounded flex justify-between items-center">
-                       <span className="text-[10px] font-black uppercase">Payer P.E. No.</span>
-                       <span className="text-xl font-black">{organization?.peNumber || 'N/A'}</span>
+                    <div className="p-4 border-2 border-slate-800 rounded flex justify-between items-center bg-slate-50">
+                       <span className="text-[10px] font-black uppercase text-slate-400">Payer P.E. No.</span>
+                       <div className="flex gap-1">
+                          {(organization?.peNumber || '00000').split('').map((char, i) => (
+                             <span key={i} className="w-6 h-8 border border-slate-300 flex items-center justify-center bg-white font-black text-sm">{char}</span>
+                          ))}
+                       </div>
                     </div>
                     <div className="p-4 border-2 border-slate-800 rounded flex justify-between items-center bg-slate-900 text-white">
                        <span className="text-[10px] font-black uppercase">Payment For Month Of</span>
@@ -106,38 +113,42 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                  {/* Section B & C */}
                  <div className="col-span-12 grid grid-cols-2 gap-8">
                     <div className="bg-slate-50 p-6 border border-slate-200 rounded">
-                       <p className="text-[10px] font-black uppercase mb-4 border-b border-slate-200 pb-1 text-slate-500">B. NUMBER OF PAYEES</p>
+                       <p className="text-[10px] font-black uppercase mb-4 border-b border-slate-200 pb-1 text-slate-400">B. NUMBER OF PAYEES</p>
                        <div className="flex justify-between items-center">
-                          <span className="text-xs font-bold text-slate-600">Total FSS Main Method Payees</span>
-                          <span className="text-xl font-black text-slate-900">{stats.totalPayees}</span>
+                          <span className="text-xs font-bold text-slate-600 uppercase">FSS Main Method Payees</span>
+                          <span className="text-2xl font-black text-slate-900">{stats.totalPayees}</span>
                        </div>
                     </div>
                     <div className="bg-slate-50 p-6 border border-slate-200 rounded">
-                       <p className="text-[10px] font-black uppercase mb-4 border-b border-slate-200 pb-1 text-slate-500">C. GROSS EMOLUMENTS</p>
+                       <p className="text-[10px] font-black uppercase mb-4 border-b border-slate-200 pb-1 text-slate-400">C. GROSS EMOLUMENTS</p>
                        <div className="flex justify-between items-center">
                           <span className="text-xs font-bold text-slate-600 uppercase">Total Gross Emoluments</span>
-                          <span className="text-xl font-black text-slate-900">€{stats.totalPayrollGross.toFixed(2)}</span>
+                          <span className="text-2xl font-black text-slate-900">€{stats.totalPayrollGross.toFixed(2)}</span>
                        </div>
                     </div>
                  </div>
 
-                 {/* Section D - The Calculation */}
-                 <div className="col-span-12 border-2 border-blue-600 p-8 rounded bg-blue-50/10">
-                    <p className="text-[11px] font-black uppercase mb-6 text-blue-800">D. TAX DEDUCTIONS AND SSC DUE TO THE COMMISSIONER</p>
-                    <div className="space-y-4">
+                 {/* Section D - The Aggregate Calculation */}
+                 <div className="col-span-12 border-2 border-blue-700 p-8 rounded bg-blue-50/10">
+                    <p className="text-[11px] font-black uppercase mb-6 text-blue-900 border-b-2 border-blue-700 pb-2">D. TAX DEDUCTIONS AND SSC DUE TO THE COMMISSIONER</p>
+                    <div className="space-y-5">
                        <div className="flex justify-between items-center text-xs font-bold">
-                          <span>Tax Deductions (FSS Main)</span>
-                          <span className="font-black text-lg">€{stats.totalPayrollTax.toFixed(2)}</span>
+                          <span className="text-slate-500 uppercase tracking-tighter">Tax Deductions (FSS Main)</span>
+                          <span className="font-black text-xl text-slate-900">€{stats.totalPayrollTax.toFixed(2)}</span>
                        </div>
                        <div className="flex justify-between items-center text-xs font-bold">
-                          <span>Social Security Contributions (NI)</span>
-                          <span className="font-black text-lg">€{stats.totalPayrollNI.toFixed(2)}</span>
+                          <span className="text-slate-500 uppercase tracking-tighter">Social Security Contributions (NI)</span>
+                          <span className="font-black text-xl text-slate-900">€{stats.totalPayrollNI.toFixed(2)}</span>
                        </div>
-                       <div className="pt-6 border-t-2 border-blue-600 flex justify-between items-center mt-4">
-                          <span className="text-sm font-black uppercase text-blue-900">Total Due to the Commissioner</span>
+                       <div className="flex justify-between items-center text-xs font-bold">
+                          <span className="text-slate-500 uppercase tracking-tighter">Maternity Fund Contributions (0.3%)</span>
+                          <span className="font-black text-xl text-slate-900">€{stats.maternityFund.toFixed(2)}</span>
+                       </div>
+                       <div className="pt-8 border-t-4 border-blue-700 flex justify-between items-center mt-6">
+                          <span className="text-lg font-black uppercase text-blue-900 leading-none">Total Due to the Commissioner</span>
                           <div className="text-right">
-                             <p className="text-3xl font-black text-blue-600">€{stats.totalDue.toFixed(2)}</p>
-                             <p className="text-[8px] font-bold text-slate-400 uppercase mt-1">Authorized Digital Submission</p>
+                             <p className="text-4xl font-black text-blue-700 tracking-tighter">€{stats.totalDue.toFixed(2)}</p>
+                             <p className="text-[8px] font-black text-slate-300 uppercase mt-2 tracking-[0.2em]">Authorized Digital Submission</p>
                           </div>
                        </div>
                     </div>
@@ -146,10 +157,10 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
 
               <div className="pt-10 flex justify-between items-end no-print">
                  <div className="flex gap-4">
-                    <button onClick={() => window.print()} className="bg-blue-600 text-white px-10 py-3 rounded font-black uppercase text-[10px] tracking-widest shadow-xl">Print Document</button>
-                    <button onClick={() => setActiveStatReport(null)} className="bg-slate-100 text-slate-400 px-10 py-3 rounded font-black uppercase text-[10px] tracking-widest">Dismiss</button>
+                    <button onClick={() => window.print()} className="bg-blue-700 text-white px-10 py-4 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-2xl active:scale-95 transition-all">Print FS5 Advice</button>
+                    <button onClick={() => setActiveStatReport(null)} className="bg-slate-100 text-slate-400 px-10 py-4 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-slate-200">Dismiss</button>
                  </div>
-                 <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.4em]">MT_REVENUE_CORE_V2</p>
+                 <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.5em]">MT_OFFICIAL_FSS_CORE_V1</p>
               </div>
            </div>
         </div>
@@ -164,22 +175,22 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
         <h1 className="text-3xl font-bold text-slate-900 tracking-tight uppercase leading-tight font-brand">Finance Studio</h1>
       </header>
 
-      <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl w-fit">
-          <button onClick={() => setActiveModule('payroll')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeModule === 'payroll' ? 'bg-[#0D9488] text-white shadow-lg' : 'text-slate-400 hover:bg-white'}`}>Payroll</button>
-          <button onClick={() => setActiveModule('invoicing')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeModule === 'invoicing' ? 'bg-[#0D9488] text-white shadow-lg' : 'text-slate-400 hover:bg-white'}`}>Invoicing</button>
-          <button onClick={() => setActiveModule('records')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeModule === 'records' ? 'bg-[#0D9488] text-white shadow-lg' : 'text-slate-400 hover:bg-white'}`}>Statutory</button>
+      <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl w-fit shadow-inner">
+          <button onClick={() => setActiveModule('payroll')} className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeModule === 'payroll' ? 'bg-[#0D9488] text-white shadow-lg' : 'text-slate-400 hover:bg-white'}`}>Payroll</button>
+          <button onClick={() => setActiveModule('invoicing')} className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeModule === 'invoicing' ? 'bg-[#0D9488] text-white shadow-lg' : 'text-slate-400 hover:bg-white'}`}>Invoicing</button>
+          <button onClick={() => setActiveModule('records')} className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeModule === 'records' ? 'bg-[#0D9488] text-white shadow-lg' : 'text-slate-400 hover:bg-white'}`}>Statutory</button>
       </div>
 
       {activeModule === 'records' && (
          <div className="space-y-8 animate-in slide-in-from-bottom-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div onClick={() => setActiveStatReport('FS5')} className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-4 hover:border-teal-200 transition-all cursor-pointer group">
-                   <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">📝</div>
+                <div onClick={() => setActiveStatReport('FS5')} className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-4 hover:border-blue-200 transition-all cursor-pointer group">
+                   <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center text-3xl group-hover:scale-110 transition-transform">📄</div>
                    <div>
-                      <h4 className="text-sm font-bold text-slate-900 uppercase tracking-tight">FS5 MONTHLY ADVICE</h4>
-                      <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">Consolidated Monthly Tax & NI payment summary for MTCA.</p>
+                      <h4 className="text-sm font-bold text-slate-900 uppercase tracking-tight">FS5 MONTHLY PAYMENT</h4>
+                      <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">Payer's Monthly Payment Advice for Tax, NI, and Maternity contributions.</p>
                    </div>
-                   <button className="text-[8px] font-black text-blue-600 uppercase tracking-widest border-b-2 border-blue-600 pb-0.5">GENERATE REPORT</button>
+                   <button className="text-[8px] font-black text-blue-600 uppercase tracking-widest border-b-2 border-blue-600 pb-0.5">GENERATE DOCUMENT</button>
                 </div>
             </div>
          </div>
@@ -188,10 +199,10 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
       {activeModule === 'payroll' && (
         <div className="space-y-6">
            <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-8 animate-in slide-in-from-left-4">
-              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-widest">Personnel Payout Pipeline</h3>
+              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-widest">Active Payroll Pipeline</h3>
               <div className="space-y-4">
-                  {users.filter(u => u.status === 'active' && ['cleaner', 'supervisor', 'driver', 'housekeeping', 'admin', 'laundry'].includes(u.role)).map(staff => (
-                    <div key={staff.id} className="bg-slate-50 rounded-3xl border border-slate-100 p-6 flex flex-col md:flex-row items-center justify-between gap-6 hover:border-teal-200 transition-all">
+                  {users.filter(u => u.status === 'active' && ['housekeeping', 'driver', 'cleaner', 'supervisor', 'admin', 'laundry'].includes(u.role)).map(staff => (
+                    <div key={staff.id} className="bg-slate-50 rounded-3xl border border-slate-100 p-6 flex flex-col md:flex-row items-center justify-between gap-6 hover:border-teal-200 transition-all shadow-sm">
                         <div className="flex items-center gap-6 flex-1 w-full text-left">
                           <div className="w-14 h-14 rounded-2xl bg-white border border-slate-200 text-teal-600 flex items-center justify-center font-bold text-2xl shadow-sm overflow-hidden">
                               {staff.photoUrl ? <img src={staff.photoUrl} className="w-full h-full object-cover" /> : staff.name.charAt(0)}
@@ -199,11 +210,11 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                           <div>
                               <h4 className="text-lg font-bold text-slate-900 uppercase tracking-tight">{staff.name}</h4>
                               <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">
-                                {staff.role} • {staff.maritalStatus || 'Single'} {staff.isParent ? '(Parent)' : ''}
+                                {staff.role} • {staff.maritalStatus || 'Single'} {staff.isParent ? `(Parent / ${staff.childrenCount} kids)` : ''}
                               </p>
                           </div>
                         </div>
-                        <button onClick={() => setSelectedPayslipUserId(staff.id)} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">PROCESS PAYROLL / FS3</button>
+                        <button onClick={() => setSelectedPayslipUserId(staff.id)} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">PROCESS FS3 / PAYSLIP</button>
                     </div>
                   ))}
               </div>
