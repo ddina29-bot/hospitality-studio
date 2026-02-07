@@ -23,6 +23,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
 }) => {
   const [activeModule, setActiveModule] = useState<'payroll' | 'invoicing' | 'records'>('payroll');
   const [payrollSubView, setPayrollSubView] = useState<'pending' | 'registry'>('pending');
+  const [recordsSubView, setRecordsSubView] = useState<'payouts' | 'invoices' | 'statutory'>('payouts');
   const [selectedPayslipUserId, setSelectedPayslipUserId] = useState<string | null>(null);
   const [invoiceSearch, setInvoiceSearch] = useState('');
   
@@ -37,7 +38,6 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
   
   const [generatedPreview, setGeneratedPreview] = useState<Invoice | null>(null);
 
-  // Helper for consistent date parsing across the finance module
   const parseFinanceDate = (dateStr: string) => {
     if (!dateStr) return new Date();
     if (dateStr.includes('-')) return new Date(dateStr);
@@ -57,7 +57,6 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
 
   const cleanerPayroll = useMemo(() => {
     const data: Record<string, { user: User, shifts: Shift[] }> = {};
-    // Find shifts that are completed but not yet flagged as "paid" in the master shift record
     shifts.filter(s => s.status === 'completed' && !s.paid).forEach(s => {
       s.userIds?.forEach(sid => {
         if (!data[sid]) {
@@ -94,7 +93,6 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
       const durationMs = (s.actualEndTime || 0) - (s.actualStartTime || 0);
       const hours = Math.max(0, durationMs / (1000 * 60 * 60));
       totalHours += hours;
-      
       const hourlyRate = staff.payRate || 5.00;
       const basePayForShift = hours * hourlyRate;
 
@@ -124,7 +122,6 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
       alert("Please define the client and period parameters.");
       return;
     }
-
     const client = clients?.find(c => c.id === clientId);
     if (!client) return;
 
@@ -151,29 +148,18 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
     }) || [];
 
     const invoiceItems: InvoiceItem[] = [];
-
     targetShifts.forEach(s => {
       const prop = properties.find(p => p.id === s.propertyId);
       if (!prop) return;
-      
       let amount = prop.clientPrice;
       const type = s.serviceType.toUpperCase();
       if (type === 'REFRESH') amount = prop.clientRefreshPrice || amount;
       else if (type === 'MID STAY CLEANING') amount = prop.clientMidStayPrice || amount;
-      
-      invoiceItems.push({
-        description: `${s.serviceType.toUpperCase()} - ${s.propertyName}`,
-        date: s.date,
-        amount
-      });
+      invoiceItems.push({ description: `${s.serviceType.toUpperCase()} - ${s.propertyName}`, date: s.date, amount });
     });
 
     targetTasks.forEach(t => {
-      invoiceItems.push({
-        description: `TASK: ${t.taskName.toUpperCase()} - ${t.propertyName}`,
-        date: t.date,
-        amount: t.billablePrice || 0
-      });
+      invoiceItems.push({ description: `TASK: ${t.taskName.toUpperCase()} - ${t.propertyName}`, date: t.date, amount: t.billablePrice || 0 });
     });
 
     if (invoiceItems.length === 0) {
@@ -203,7 +189,6 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
       totalAmount,
       status: 'draft'
     };
-
     setGeneratedPreview(preview);
   };
 
@@ -223,7 +208,6 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
   const labelStyle = "text-[7px] font-black text-slate-500 uppercase tracking-[0.4em] mb-1.5 block px-1";
   const inputStyle = "w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 text-[10px] font-bold uppercase tracking-widest outline-none focus:border-[#0D9488] transition-all shadow-inner";
 
-  // RENDER PAYROLL DETAIL VIEW
   if (selectedPayslipUserId) {
     const targetUser = users.find(u => u.id === selectedPayslipUserId);
     if (!targetUser) {
@@ -237,7 +221,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                 className="flex items-center gap-2 text-teal-600 font-black text-[10px] uppercase tracking-widest mb-4 hover:text-teal-700"
             >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><polyline points="15 18 9 12 15 6"/></svg>
-                Back to Payroll Registry
+                Back to Finance Dashboard
             </button>
             <PersonnelProfile 
                 user={targetUser} 
@@ -425,17 +409,109 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
         </div>
       )}
 
+      {activeModule === 'records' && (
+        <div className="space-y-6 animate-in slide-in-from-bottom-4">
+           <div className="flex gap-4 px-2 border-b border-slate-100">
+              <button onClick={() => setRecordsSubView('payouts')} className={`pb-4 text-[10px] font-black uppercase tracking-widest transition-all ${recordsSubView === 'payouts' ? 'text-teal-600 border-b-2 border-teal-600' : 'text-slate-400'}`}>Payout Archive</button>
+              <button onClick={() => setRecordsSubView('invoices')} className={`pb-4 text-[10px] font-black uppercase tracking-widest transition-all ${recordsSubView === 'invoices' ? 'text-teal-600 border-b-2 border-teal-600' : 'text-slate-400'}`}>Invoice Archive</button>
+              <button onClick={() => setRecordsSubView('statutory')} className={`pb-4 text-[10px] font-black uppercase tracking-widest transition-all ${recordsSubView === 'statutory' ? 'text-teal-600 border-b-2 border-teal-600' : 'text-slate-400'}`}>Statutory Docs</button>
+           </div>
+
+           {recordsSubView === 'payouts' && (
+             <div className="bg-white border border-slate-100 rounded-[40px] shadow-sm overflow-hidden">
+                 <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                       <thead className="bg-slate-50 text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
+                          <tr>
+                             <th className="px-8 py-4">Recipient</th>
+                             <th className="px-8 py-4">Reference Date</th>
+                             <th className="px-8 py-4 text-right">Net Value (€)</th>
+                             <th className="px-8 py-4 text-right">Action</th>
+                          </tr>
+                       </thead>
+                       <tbody className="divide-y divide-slate-50">
+                          {allSavedPayslips.length === 0 ? (
+                             <tr><td colSpan={4} className="px-8 py-20 text-center opacity-20 text-[10px] uppercase font-black">Archive is empty</td></tr>
+                          ) : allSavedPayslips.map(ps => (
+                             <tr key={ps.id} className="hover:bg-slate-50 transition-colors group">
+                                <td className="px-8 py-5">
+                                   <p className="text-[11px] font-bold text-slate-900 uppercase">{ps.userName}</p>
+                                   <p className="text-[7px] text-teal-600 font-black uppercase mt-0.5">{ps.month}</p>
+                                </td>
+                                <td className="px-8 py-5 text-[9px] font-bold text-slate-400 uppercase">{new Date(ps.generatedAt).toLocaleDateString()}</td>
+                                <td className="px-8 py-5 text-right text-sm font-black text-slate-900">€{ps.netPay.toFixed(2)}</td>
+                                <td className="px-8 py-5 text-right">
+                                   <button onClick={() => setSelectedPayslipUserId(ps.userId)} className="bg-slate-900 text-white px-4 py-1.5 rounded-lg text-[8px] font-black uppercase">RETRIEVE</button>
+                                </td>
+                             </tr>
+                          ))}
+                       </tbody>
+                    </table>
+                 </div>
+             </div>
+           )}
+
+           {recordsSubView === 'invoices' && (
+             <div className="bg-white border border-slate-100 rounded-[40px] shadow-sm overflow-hidden">
+                 <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                       <thead className="bg-slate-50 text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
+                          <tr>
+                             <th className="px-8 py-4">Client Partner</th>
+                             <th className="px-8 py-4">Invoice #</th>
+                             <th className="px-8 py-4 text-center">Status</th>
+                             <th className="px-8 py-4 text-right">Value (€)</th>
+                          </tr>
+                       </thead>
+                       <tbody className="divide-y divide-slate-50">
+                          {invoices.length === 0 ? (
+                             <tr><td colSpan={4} className="px-8 py-20 text-center opacity-20 text-[10px] uppercase font-black">Archive is empty</td></tr>
+                          ) : invoices.map(inv => (
+                             <tr key={inv.id} className="hover:bg-slate-50 transition-colors">
+                                <td className="px-8 py-5 text-[11px] font-bold text-slate-900 uppercase">{inv.clientName}</td>
+                                <td className="px-8 py-5 text-[10px] font-black text-slate-400">{inv.invoiceNumber}</td>
+                                <td className="px-8 py-5 text-center">
+                                   <span className={`px-3 py-1 rounded-full text-[7px] font-black uppercase ${inv.status === 'paid' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>{inv.status}</span>
+                                </td>
+                                <td className="px-8 py-5 text-right text-sm font-black text-slate-900">€{inv.totalAmount.toFixed(2)}</td>
+                             </tr>
+                          ))}
+                       </tbody>
+                    </table>
+                 </div>
+             </div>
+           )}
+
+           {recordsSubView === 'statutory' && (
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {[
+                  { name: 'FS3 ANNUAL SUMMARIES', icon: '📝', desc: 'Year-end tax statements for personnel.' },
+                  { name: 'VAT QUARTERLY LOGS', icon: '📊', desc: 'Consolidated VAT data exports.' },
+                  { name: 'SSC COMPLIANCE', icon: '🛡️', desc: 'Social Security payment verification files.' }
+                ].map((doc, idx) => (
+                  <div key={idx} className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-4 hover:border-teal-200 transition-all cursor-pointer">
+                     <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-2xl">{doc.icon}</div>
+                     <div>
+                        <h4 className="text-sm font-bold text-slate-900 uppercase tracking-tight">{doc.name}</h4>
+                        <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">{doc.desc}</p>
+                     </div>
+                     <button className="text-[8px] font-black text-teal-600 uppercase tracking-widest border-b border-teal-600 pb-0.5">GENERATE REPORT</button>
+                  </div>
+                ))}
+             </div>
+           )}
+        </div>
+      )}
+
       {/* INVOICE GENERATION MODAL */}
       {showInvoiceModal && (
         <div className="fixed inset-0 bg-slate-900/80 z-[500] flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
            <div className="bg-white rounded-[48px] w-full max-w-2xl p-10 space-y-10 shadow-2xl relative text-left my-auto animate-in zoom-in-95">
               <button onClick={() => { setShowInvoiceModal(false); setGeneratedPreview(null); }} className="absolute top-10 right-10 text-slate-300 hover:text-slate-900 text-2xl">&times;</button>
-              
               <div className="space-y-1">
                  <h2 className="text-2xl font-bold text-slate-900 uppercase tracking-tight">Invoice Generator</h2>
                  <p className="text-[9px] font-black text-teal-600 uppercase tracking-[0.4em]">Service Consolidation Suite</p>
               </div>
-
               {!generatedPreview ? (
                  <div className="space-y-6">
                     <div>
@@ -456,12 +532,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                           <input type="number" className={inputStyle} value={invoiceForm.discountRate} onChange={e => setInvoiceForm({...invoiceForm, discountRate: parseFloat(e.target.value) || 0})} placeholder="0" />
                        </div>
                     </div>
-                    <button 
-                       onClick={handlePreviewInvoice}
-                       className="w-full bg-slate-900 text-white font-black py-5 rounded-2xl uppercase tracking-[0.3em] text-[10px] shadow-xl active:scale-95 hover:bg-black transition-all"
-                    >
-                       CONSULT BILLABLE DATABASE
-                    </button>
+                    <button onClick={handlePreviewInvoice} className="w-full bg-slate-900 text-white font-black py-5 rounded-2xl uppercase tracking-[0.3em] text-[10px] shadow-xl active:scale-95 hover:bg-black transition-all">CONSULT BILLABLE DATABASE</button>
                  </div>
               ) : (
                  <div className="space-y-8 animate-in slide-in-from-bottom-4">
@@ -471,20 +542,13 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                              <p className="text-[10px] font-black text-slate-900 uppercase tracking-tight">{generatedPreview.clientName}</p>
                              <p className="text-[8px] font-bold text-slate-400 uppercase mt-1">Period: {invoiceForm.startDate} to {invoiceForm.endDate}</p>
                           </div>
-                          <div className="text-right">
-                             <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">DRAFT {generatedPreview.invoiceNumber}</p>
-                          </div>
+                          <div className="text-right"><p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">DRAFT {generatedPreview.invoiceNumber}</p></div>
                        </div>
-                       
                        <div className="space-y-3 max-h-48 overflow-y-auto no-scrollbar">
                           {generatedPreview.items.map((item, idx) => (
-                             <div key={idx} className="flex justify-between items-center text-[9px] font-bold uppercase text-slate-600">
-                                <span className="truncate pr-4">{item.description}</span>
-                                <span className="shrink-0 text-slate-900">€{item.amount.toFixed(2)}</span>
-                             </div>
+                             <div key={idx} className="flex justify-between items-center text-[9px] font-bold uppercase text-slate-600"><span className="truncate pr-4">{item.description}</span><span className="shrink-0 text-slate-900">€{item.amount.toFixed(2)}</span></div>
                           ))}
                        </div>
-
                        <div className="pt-6 border-t border-slate-200 space-y-2">
                           <div className="flex justify-between text-[9px] font-bold uppercase text-slate-400"><span>Subtotal</span><span>€{generatedPreview.subtotal?.toFixed(2)}</span></div>
                           {generatedPreview.discount! > 0 && <div className="flex justify-between text-[9px] font-bold uppercase text-rose-500"><span>Discount</span><span>-€{generatedPreview.discount?.toFixed(2)}</span></div>}
@@ -492,7 +556,6 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                           <div className="flex justify-between text-xl font-black text-slate-900 uppercase pt-2"><span>Total Due</span><span>€{generatedPreview.totalAmount.toFixed(2)}</span></div>
                        </div>
                     </div>
-                    
                     <div className="flex gap-3">
                        <button onClick={handleSaveInvoice} className="flex-1 bg-emerald-600 text-white font-black py-5 rounded-2xl uppercase tracking-[0.2em] text-[10px] shadow-xl active:scale-95">FINALIZE & POST</button>
                        <button onClick={() => setGeneratedPreview(null)} className="px-8 border border-slate-200 text-slate-400 font-black rounded-2xl uppercase text-[10px] tracking-widest">EDIT</button>
