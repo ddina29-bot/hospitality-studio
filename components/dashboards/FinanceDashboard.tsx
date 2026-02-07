@@ -163,7 +163,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                           <div className="flex gap-2 items-center">
                              <span className="text-lg font-bold text-slate-300">€</span>
                              <span className="text-[9px] font-bold">C1</span>
-                             <DigitBox value={Math.floor(stats.totalPayrollGross)} length={8} />
+                             <DigitBox value={stats.totalPayrollGross.toFixed(2)} length={10} />
                           </div>
                        </div>
                        <div className="flex justify-between items-center bg-slate-50 p-2">
@@ -171,7 +171,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                           <div className="flex gap-2 items-center">
                              <span className="text-lg font-bold text-slate-300">€</span>
                              <span className="text-[9px] font-bold">C4</span>
-                             <DigitBox value={Math.floor(stats.totalPayrollGross)} length={8} />
+                             <DigitBox value={stats.totalPayrollGross.toFixed(2)} length={10} />
                           </div>
                        </div>
                     </div>
@@ -186,14 +186,14 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                              <label className="text-[10px] font-bold text-slate-700">Tax Deductions (Main/Other)</label>
                              <div className="flex gap-2 items-center">
                                 <span className="text-[9px] font-bold">D1</span>
-                                <DigitBox value={Math.floor(stats.totalPayrollTax)} length={6} />
+                                <DigitBox value={stats.totalPayrollTax.toFixed(2)} length={8} />
                              </div>
                           </div>
                           <div className="flex justify-between items-center border-t border-slate-100 pt-3">
                              <label className="text-[10px] font-black uppercase text-slate-900">Total Tax Deductions</label>
                              <div className="flex gap-2 items-center">
                                 <span className="text-[9px] font-bold">D4</span>
-                                <DigitBox value={Math.floor(stats.totalPayrollTax)} length={6} />
+                                <DigitBox value={stats.totalPayrollTax.toFixed(2)} length={8} />
                              </div>
                           </div>
                        </div>
@@ -202,21 +202,21 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                              <label className="text-[10px] font-bold text-slate-700">Social Security Contributions</label>
                              <div className="flex gap-2 items-center">
                                 <span className="text-[9px] font-bold">D5</span>
-                                <DigitBox value={Math.floor(stats.totalNI_Due)} length={6} />
+                                <DigitBox value={stats.totalNI_Due.toFixed(2)} length={8} />
                              </div>
                           </div>
                           <div className="flex justify-between items-center">
                              <label className="text-[10px] font-bold text-slate-700">Maternity Fund Contributions</label>
                              <div className="flex gap-2 items-center">
                                 <span className="text-[9px] font-bold">D5a</span>
-                                <DigitBox value={Math.floor(stats.maternityFund)} length={6} />
+                                <DigitBox value={stats.maternityFund.toFixed(2)} length={8} />
                              </div>
                           </div>
                           <div className="flex justify-between items-center bg-indigo-50 p-3 border-2 border-[#3B82F6]">
                              <label className="text-[11px] font-black uppercase text-[#3B82F6]">Total Due to Commissioner</label>
                              <div className="flex gap-2 items-center">
                                 <span className="text-[9px] font-bold">D6</span>
-                                <DigitBox value={Math.floor(stats.totalDue)} length={8} color="blue-500" />
+                                <DigitBox value={stats.totalDue.toFixed(2)} length={10} color="blue-500" />
                              </div>
                           </div>
                        </div>
@@ -248,7 +248,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                              <label className="text-[11px] font-black uppercase text-slate-900">Total Payment</label>
                              <div className="flex gap-2 items-center">
                                 <span className="text-[9px] font-bold">E1</span>
-                                <DigitBox value={Math.floor(stats.totalDue)} length={8} />
+                                <DigitBox value={stats.totalDue.toFixed(2)} length={10} />
                              </div>
                           </div>
                           <div className="pt-10">
