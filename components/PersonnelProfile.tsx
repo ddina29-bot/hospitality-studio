@@ -61,7 +61,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
 
   const monthOptions = useMemo(() => {
     const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-    const years = [2025, 2026];
+    const years = [2024, 2025];
     const opts: string[] = [];
     years.forEach(y => months.forEach(m => opts.push(`${m} ${y}`)));
     return opts;
@@ -110,14 +110,14 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
             else if (prop) pieceRate = getCleanerRateForShift(s.serviceType, prop) / teamCount;
 
             if (user.paymentType === 'Fixed Wage') {
-                deploymentEarnings += pieceRate; // Pure bonus
+                deploymentEarnings += pieceRate; 
             } else if (user.paymentType === 'Per Clean') {
-                deploymentEarnings += Math.max(pieceRate, durationPay); // Hybrid: better of two
+                deploymentEarnings += Math.max(pieceRate, durationPay);
             } else {
-                deploymentEarnings += durationPay; // Standard hourly
+                deploymentEarnings += durationPay;
             }
         } else if (user.paymentType !== 'Fixed Wage') {
-            deploymentEarnings += durationPay; // Unapproved still pays base duration if not fixed wage
+            deploymentEarnings += durationPay;
         }
     });
 
@@ -133,6 +133,20 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
       totalNet: Math.max(0, actualGrossPay - ni - tax)
     };
   }, [filteredShifts, user, properties, activeHistoricalPayslip, manualGrossPay]);
+
+  const annualAggregates = useMemo(() => {
+    const payslips = user.payslips || [];
+    const currentYear = new Date().getFullYear().toString();
+    const yearlySlips = payslips.filter(ps => ps.month.includes(currentYear));
+    
+    return {
+        gross: yearlySlips.reduce((acc, ps) => acc + ps.grossPay, 0),
+        tax: yearlySlips.reduce((acc, ps) => acc + ps.tax, 0),
+        ni: yearlySlips.reduce((acc, ps) => acc + ps.ni, 0),
+        net: yearlySlips.reduce((acc, ps) => acc + ps.netPay, 0),
+        slipsCount: yearlySlips.length
+    };
+  }, [user.payslips]);
 
   const handleCommitPayslip = () => {
     if (!onUpdateUser) return;
@@ -174,6 +188,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                  <h2 className="text-2xl font-bold text-slate-900 uppercase tracking-tight">{user.name}</h2>
                  <p className="text-[10px] font-black text-[#0D9488] uppercase tracking-widest mt-1">{user.role} • {user.paymentType}</p>
                  <p className="text-[9px] font-bold text-slate-400 uppercase mt-0.5">{user.email}</p>
+                 {user.activationDate && <p className="text-[7px] font-black text-slate-300 uppercase tracking-widest mt-2">Member Since: {new Date(user.activationDate).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }).toUpperCase()}</p>}
               </div>
            </div>
            
@@ -183,6 +198,9 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                  <p className="text-sm font-black text-slate-900 text-center">€{user.payRate?.toFixed(2)}</p>
                  <p className="text-[7px] font-bold text-slate-300 uppercase text-center tracking-widest">{user.paymentType === 'Per Hour' ? 'Per Hour' : 'Base'}</p>
               </div>
+              {isCurrentUserAdmin && (
+                <button onClick={() => setViewingDoc('fs3')} className="bg-slate-900 text-white px-8 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all">GENERATE FS3</button>
+              )}
               {(isViewingSelf || isCurrentUserAdmin) && (
                 <button onClick={() => setShowLeaveForm(true)} className="bg-indigo-600 text-white px-8 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all">REQUEST LEAVE</button>
               )}
@@ -257,9 +275,39 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                   </div>
               </div>
            )}
+
+           {activeSubTab === 'LEAVE REQUESTS' && (
+              <div className="bg-white border border-slate-100 rounded-[2.5rem] shadow-xl overflow-hidden text-left animate-in slide-in-from-right-4">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                       <thead className="bg-slate-50 border-b border-slate-100">
+                          <tr>
+                             <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest">Type</th>
+                             <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest">Period</th>
+                             <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
+                          </tr>
+                       </thead>
+                       <tbody className="divide-y divide-slate-50">
+                          {(leaveRequests || []).filter(l => l.userId === user.id).length === 0 ? (
+                             <tr><td colSpan={3} className="px-10 py-20 text-center opacity-20 text-[10px] uppercase font-black">No leave history</td></tr>
+                          ) : (leaveRequests || []).filter(l => l.userId === user.id).map(l => (
+                             <tr key={l.id}>
+                                <td className="px-10 py-6 text-[11px] font-black text-slate-900 uppercase">{l.type}</td>
+                                <td className="px-10 py-6 text-[10px] font-bold text-slate-400 tracking-tight">{l.startDate} TO {l.endDate}</td>
+                                <td className="px-10 py-6 text-center">
+                                   <span className={`px-4 py-1.5 rounded-full text-[8px] font-black uppercase tracking-widest ${l.status === 'approved' ? 'bg-emerald-600 text-white' : l.status === 'rejected' ? 'bg-rose-600 text-white' : 'bg-amber-100 text-amber-700'}`}>{l.status}</span>
+                                </td>
+                             </tr>
+                          ))}
+                       </tbody>
+                    </table>
+                  </div>
+              </div>
+           )}
         </div>
       </div>
 
+      {/* PAYSLIP MODAL */}
       {viewingDoc === 'payslip' && (
         <div className="fixed inset-0 bg-slate-900/60 z-[500] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
            <div className="bg-white rounded-[3rem] w-full max-w-3xl p-14 space-y-12 shadow-2xl relative text-left my-auto animate-in zoom-in-95">
@@ -290,6 +338,105 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                  <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.5em]">OPERATIONS_CORE_VERIFIED</p>
                  <button onClick={() => window.print()} className="bg-slate-50 text-slate-400 px-6 py-2 rounded-xl text-[8px] font-black uppercase no-print">Export PDF</button>
               </div>
+           </div>
+        </div>
+      )}
+
+      {/* FS3 ANNUAL MODAL (NEW) */}
+      {viewingDoc === 'fs3' && (
+        <div className="fixed inset-0 bg-slate-900/60 z-[500] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
+           <div className="bg-white rounded-[3rem] w-full max-w-4xl p-14 space-y-12 shadow-2xl relative text-left my-auto animate-in zoom-in-95 border-t-[12px] border-slate-900">
+              <button onClick={() => setViewingDoc(null)} className="absolute top-10 right-10 text-slate-300 hover:text-slate-900 text-2xl no-print">&times;</button>
+              <header className="flex justify-between items-start border-b-2 border-slate-900 pb-8">
+                 <div className="space-y-2">
+                    <h1 className="text-2xl font-black uppercase text-slate-900 leading-none">FS3 ANNUAL SUMMARY</h1>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Year End Tax Statement</p>
+                 </div>
+                 <div className="text-right">
+                    <p className="text-xs font-black text-slate-900 uppercase">YEAR: {new Date().getFullYear()}</p>
+                    <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase">Official Record</p>
+                 </div>
+              </header>
+
+              <div className="grid grid-cols-2 gap-12">
+                 <div className="space-y-6">
+                    <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.4em] border-b border-slate-50 pb-2">Employer Details</p>
+                    <div className="space-y-1">
+                        <p className="text-sm font-black text-slate-900 uppercase">{organization?.legalEntity || organization?.name || 'RESET STUDIO'}</p>
+                        <p className="text-xs font-bold text-slate-400">{organization?.address}</p>
+                        <p className="text-[10px] font-black text-teal-600 uppercase mt-2">PE NO: {organization?.peNumber || 'N/A'}</p>
+                    </div>
+                 </div>
+                 <div className="space-y-6">
+                    <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.4em] border-b border-slate-50 pb-2">Employee Details</p>
+                    <div className="space-y-1">
+                        <p className="text-sm font-black text-slate-900 uppercase">{user.name}</p>
+                        <p className="text-xs font-bold text-slate-400">{user.idPassportNumber || 'N/A'}</p>
+                        <p className="text-[10px] font-black text-teal-600 uppercase mt-2">NI NO: {user.niNumber || 'N/A'}</p>
+                    </div>
+                 </div>
+              </div>
+
+              <div className="bg-slate-50 p-10 rounded-[2.5rem] border border-slate-100">
+                  <div className="space-y-6">
+                     <div className="flex justify-between items-center border-b border-slate-200 pb-4">
+                        <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Aggregate Gross Wage</span>
+                        <span className="text-xl font-black text-slate-900">€{annualAggregates.gross.toFixed(2)}</span>
+                     </div>
+                     <div className="flex justify-between items-center border-b border-slate-200 pb-4">
+                        <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Total NI Deductions</span>
+                        <span className="text-xl font-black text-rose-600">-€{annualAggregates.ni.toFixed(2)}</span>
+                     </div>
+                     <div className="flex justify-between items-center border-b border-slate-200 pb-4">
+                        <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Total PAYE Tax Paid</span>
+                        <span className="text-xl font-black text-rose-600">-€{annualAggregates.tax.toFixed(2)}</span>
+                     </div>
+                     <div className="flex justify-between items-center pt-2">
+                        <span className="text-sm font-black text-slate-900 uppercase tracking-widest">Yearly Net Payout</span>
+                        <span className="text-3xl font-black text-emerald-600">€{annualAggregates.net.toFixed(2)}</span>
+                     </div>
+                  </div>
+              </div>
+
+              <div className="pt-10 flex justify-between items-end no-print">
+                 <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.5em]">CERTIFIED_ANNUAL_REPORT</p>
+                 <div className="flex gap-3">
+                    <button onClick={() => window.print()} className="bg-slate-900 text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase shadow-lg">Download PDF</button>
+                    <button onClick={() => setViewingDoc(null)} className="bg-slate-100 text-slate-400 px-8 py-3 rounded-xl text-[10px] font-black uppercase">Dismiss</button>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {showLeaveForm && (
+        <div className="fixed inset-0 bg-slate-900/60 z-[500] flex items-center justify-center p-4 backdrop-blur-md">
+           <div className="bg-white rounded-[2.5rem] w-full max-w-md p-10 space-y-8 shadow-2xl relative text-left animate-in zoom-in-95">
+              <button onClick={() => setShowLeaveForm(false)} className="absolute top-8 right-8 text-slate-300 hover:text-slate-900 font-black text-xl">&times;</button>
+              <div className="space-y-1">
+                 <h2 className="text-2xl font-bold uppercase text-slate-900 tracking-tight">Request Absence</h2>
+                 <p className="text-[9px] font-black text-indigo-600 uppercase tracking-[0.4em]">Official Leave Application</p>
+              </div>
+              <form onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!leaveStart || !leaveEnd) return;
+                  onRequestLeave?.(leaveType, leaveStart, leaveEnd);
+                  setShowLeaveForm(false);
+              }} className="space-y-6">
+                 <div>
+                    <label className={labelStyle}>Leave Category</label>
+                    <select className={inputStyle} value={leaveType} onChange={e => setLeaveType(e.target.value as LeaveType)}>
+                       <option value="Vacation Leave">Vacation Leave</option>
+                       <option value="Sick Leave">Sick Leave</option>
+                       <option value="Day Off">Standard Day Off</option>
+                    </select>
+                 </div>
+                 <div className="grid grid-cols-2 gap-4">
+                    <div><label className={labelStyle}>Starting On</label><input required type="date" className={inputStyle} value={leaveStart} onChange={e => setLeaveStart(e.target.value)} /></div>
+                    <div><label className={labelStyle}>Ending On</label><input required type="date" className={inputStyle} value={leaveEnd} onChange={e => setLeaveEnd(e.target.value)} /></div>
+                 </div>
+                 <button type="submit" className="w-full bg-indigo-600 text-white font-black py-4 rounded-xl uppercase tracking-widest text-[10px] shadow-xl active:scale-95 transition-all">SUBMIT APPLICATION</button>
+              </form>
            </div>
         </div>
       )}

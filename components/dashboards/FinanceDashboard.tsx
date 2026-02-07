@@ -24,12 +24,8 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
   const [activeModule, setActiveModule] = useState<'payroll' | 'invoicing' | 'records'>('payroll');
   const [recordsSubView, setRecordsSubView] = useState<'payouts' | 'invoices' | 'statutory'>('payouts');
   const [selectedPayslipUserId, setSelectedPayslipUserId] = useState<string | null>(null);
-  const [activeStatReport, setActiveStatReport] = useState<'FS3' | 'VAT' | 'SSC' | null>(null);
+  const [activeStatReport, setActiveStatReport] = useState<'FS5' | 'VAT' | 'SSC' | null>(null);
   
-  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
-  const [invoiceForm, setInvoiceForm] = useState({ clientId: '', startDate: '', endDate: '', dueDate: '', discountRate: 0 });
-  const [generatedPreview, setGeneratedPreview] = useState<Invoice | null>(null);
-
   const stats = useMemo(() => {
     const totalBilled = (invoices || []).reduce((acc, i) => acc + (i.totalAmount || 0), 0);
     const pendingPay = (invoices || []).filter(i => i.status === 'sent').reduce((acc, i) => acc + (i.totalAmount || 0), 0);
@@ -48,12 +44,12 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
     return { totalBilled, pendingPay, totalVat, totalPayrollGross, totalPayrollTax, totalPayrollNI };
   }, [invoices, users]);
 
-  const handleStatReport = (type: 'FS3' | 'VAT' | 'SSC') => setActiveStatReport(type);
+  const handleStatReport = (type: 'FS5' | 'VAT' | 'SSC') => setActiveStatReport(type);
 
   const renderStatReport = () => {
     if (!activeStatReport) return null;
     const year = new Date().getFullYear();
-    const titleMap = { FS3: 'Annual Employee Summary', VAT: 'Quarterly VAT Liability', SSC: 'Social Security Compliance' };
+    const titleMap = { FS5: 'Monthly / Quarterly Aggregate (Tax Deductions)', VAT: 'Quarterly VAT Liability', SSC: 'Social Security Compliance' };
 
     return (
         <div className="fixed inset-0 bg-slate-900/60 z-[600] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
@@ -65,23 +61,27 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                     <p className="text-[10px] font-black text-[#0D9488] uppercase tracking-widest mt-1">STATUTORY REPORT • {activeStatReport}</p>
                  </div>
                  <div className="text-right">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">FISCAL PERIOD</p>
-                    <p className="text-lg font-black text-slate-900 uppercase">JAN - DEC {year}</p>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">FISCAL CYCLE</p>
+                    <p className="text-lg font-black text-slate-900 uppercase">ACTIVE {year}</p>
                  </div>
               </header>
 
               <div className="space-y-8">
                  <h2 className="text-xl font-bold text-slate-900 uppercase border-l-4 border-[#0D9488] pl-4">{titleMap[activeStatReport]}</h2>
                  
-                 {activeStatReport === 'FS3' && (
-                    <div className="grid grid-cols-2 gap-8">
-                        <div className="p-6 bg-slate-50 rounded-2xl">
-                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2">Aggregate Gross Payouts</p>
-                            <p className="text-2xl font-black text-slate-900">€{stats.totalPayrollGross.toFixed(2)}</p>
+                 {activeStatReport === 'FS5' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="p-8 bg-slate-50 rounded-3xl space-y-2">
+                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Aggregate Gross Remuneration</p>
+                            <p className="text-3xl font-black text-slate-900">€{stats.totalPayrollGross.toFixed(2)}</p>
                         </div>
-                        <div className="p-6 bg-slate-50 rounded-2xl">
-                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2">Withheld PAYE Tax</p>
-                            <p className="text-2xl font-black text-rose-600">€{stats.totalPayrollTax.toFixed(2)}</p>
+                        <div className="p-8 bg-rose-50 rounded-3xl space-y-2 border border-rose-100">
+                            <p className="text-[8px] font-black text-rose-400 uppercase tracking-widest">Total PAYE Tax Withheld</p>
+                            <p className="text-3xl font-black text-rose-600">€{stats.totalPayrollTax.toFixed(2)}</p>
+                        </div>
+                        <div className="md:col-span-2 p-8 bg-indigo-50 rounded-3xl border border-indigo-100">
+                            <p className="text-[8px] font-black text-indigo-400 uppercase tracking-widest mb-4">Statutory Notes</p>
+                            <p className="text-[10px] text-indigo-900 font-medium leading-relaxed uppercase">Aggregate figures reflect all recorded payslips in the system for the current fiscal period. Individual FS3 forms must be generated from each employee's personnel file for year-end reporting.</p>
                         </div>
                     </div>
                  )}
@@ -103,10 +103,10 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                     <div className="p-8 bg-slate-900 rounded-[2rem] text-white">
                         <p className="text-[8px] font-black text-teal-400 uppercase tracking-[0.4em] mb-4">NI Social Security Ledger</p>
                         <div className="flex justify-between items-center border-b border-white/10 pb-6 mb-6">
-                            <span className="text-xs uppercase font-bold text-slate-400 tracking-widest">Total NI Payout Requirement</span>
+                            <span className="text-xs uppercase font-bold text-slate-400 tracking-widest">Total NI Contribution Pool</span>
                             <span className="text-3xl font-black text-white">€{stats.totalPayrollNI.toFixed(2)}</span>
                         </div>
-                        <p className="text-[9px] text-slate-500 italic">This figure reflects the total Class 1 NI contributions calculated across all employee payslips for the current fiscal cycle.</p>
+                        <p className="text-[9px] text-slate-500 italic">This figure reflects combined Class 1 NI contributions (Employer + Employee shares where applicable) for the active cycle.</p>
                     </div>
                  )}
               </div>
@@ -138,7 +138,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
          <div className="space-y-8 animate-in slide-in-from-bottom-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {[
-                  { id: 'FS3', name: 'FS3 ANNUAL SUMMARIES', icon: '📝', desc: 'Year-end tax statements for personnel.' },
+                  { id: 'FS5', name: 'FS5 AGGREGATE LOGS', icon: '📝', desc: 'Monthly/Annual tax deduction summaries.' },
                   { id: 'VAT', name: 'VAT QUARTERLY LOGS', icon: '📊', desc: 'Consolidated VAT data exports.' },
                   { id: 'SSC', name: 'SSC COMPLIANCE', icon: '🛡️', desc: 'Social Security payment verification files.' }
                 ].map((doc) => (
@@ -185,9 +185,9 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
       {activeModule === 'payroll' && (
         <div className="space-y-6">
            <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-8 animate-in slide-in-from-left-4">
-              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-widest">Awaiting Processing</h3>
+              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-widest">Awaiting Payout Processing</h3>
               <div className="space-y-4">
-                  {users.filter(u => u.status === 'active' && ['cleaner', 'supervisor', 'driver'].includes(u.role)).map(staff => (
+                  {users.filter(u => u.status === 'active' && ['cleaner', 'supervisor', 'driver', 'housekeeping'].includes(u.role)).map(staff => (
                     <div key={staff.id} className="bg-slate-50 rounded-3xl border border-slate-100 p-6 flex flex-col md:flex-row items-center justify-between gap-6 hover:border-teal-200 transition-all">
                         <div className="flex items-center gap-6 flex-1 w-full text-left">
                           <div className="w-14 h-14 rounded-2xl bg-white border border-slate-200 text-teal-600 flex items-center justify-center font-bold text-2xl shadow-sm">
@@ -200,7 +200,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                               </p>
                           </div>
                         </div>
-                        <button onClick={() => setSelectedPayslipUserId(staff.id)} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">OPEN LEDGER</button>
+                        <button onClick={() => setSelectedPayslipUserId(staff.id)} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">GENERATE PAYSLIP / FS3</button>
                     </div>
                   ))}
               </div>

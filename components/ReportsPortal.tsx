@@ -13,21 +13,16 @@ interface ReportsPortalProps {
 }
 
 type ReportTab = 'audit' | 'employees' | 'incidents' | 'anomalies';
-type SortOrder = 'newest' | 'oldest' | 'type';
 
 const ReportsPortal: React.FC<ReportsPortalProps> = ({ 
-  auditReports = [], 
   users = [], 
-  supplyRequests = [], 
   shifts = [],
   leaveRequests = [],
-  userRole,
   anomalyReports = []
 }) => {
   const [activeTab, setActiveTab] = useState<ReportTab>('audit');
   const [incidentSearch, setIncidentSearch] = useState('');
   const [auditSearch, setAuditSearch] = useState('');
-  const [selectedAuditShift, setSelectedAuditShift] = useState<Shift | null>(null);
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
 
   const handleGeneratePDF = (shift: Shift, e?: React.MouseEvent) => {
@@ -72,15 +67,15 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
               <p class="text-[10px] font-black ${isApproved ? 'text-[#0D9488]' : 'text-rose-600'} uppercase tracking-[0.4em] mb-2">OFFICIAL DEPLOYMENT RECORD</p>
               <h1 class="text-4xl font-bold uppercase tracking-tighter mb-4">${shift.propertyName}</h1>
               <div class="space-y-2">
-                 <div class="flex items-center gap-4">
+                 <div className="flex items-center gap-4">
                     <span class="text-[9px] font-black uppercase tracking-widest text-slate-400 w-24">PERSONNEL</span>
                     <span class="text-sm font-bold text-black uppercase">${assignedStaffNames}</span>
                  </div>
-                 <div class="flex items-center gap-4">
+                 <div className="flex items-center gap-4">
                     <span class="text-[9px] font-black uppercase tracking-widest text-slate-400 w-24">DATE</span>
                     <span class="text-sm font-bold text-black uppercase tracking-widest bg-slate-100 px-2 rounded">${shift.date}</span>
                  </div>
-                 <div class="flex items-center gap-4">
+                 <div className="flex items-center gap-4">
                     <span class="text-[9px] font-black uppercase tracking-widest text-slate-400 w-24">TIMELINE</span>
                     <span class="text-sm font-bold text-black uppercase">${startTimeStr} — ${endTimeStr}</span>
                  </div>
@@ -106,7 +101,7 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
         </div>
 
         <div class="mt-12 text-center">
-           <p class="text-[8px] font-black uppercase text-slate-300 tracking-[0.5em]">DIGITALLY VERIFIED BY RESET STUDIO OPS CORE</p>
+           <p class="text-[8px] font-black uppercase text-slate-300 tracking-[0.5em]">DIGITALLY_VERIFIED_BY_RESET_STUDIO_OPS_CORE</p>
         </div>
 
         <script>window.onload = function() { setTimeout(function(){ window.print(); }, 500); }</script>
@@ -150,7 +145,6 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
   const auditHistory = useMemo(() => {
     const lowerSearch = auditSearch.toLowerCase();
     return shifts.filter(s => {
-        // INCLUDE ALL COMPLETED SHIFTS (Approved or Rejected)
         if (s.status !== 'completed' || s.approvalStatus === 'pending') return false;
         if (!lowerSearch) return true;
         const propName = s.propertyName?.toLowerCase() || '';
@@ -175,13 +169,13 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
   }, [shifts, incidentSearch]);
 
   const employeeLeaveStats = useMemo(() => {
-    const stats: Record<string, { name: string, sick: number, vacation: number, off: number, total: number }> = {};
+    const stats: Record<string, { name: string, role: string, sick: number, vacation: number, off: number, total: number }> = {};
     
-    users.filter(u => ['cleaner', 'supervisor', 'driver'].includes(u.role)).forEach(u => {
-        stats[u.id] = { name: u.name, sick: 0, vacation: 0, off: 0, total: 0 };
+    users.forEach(u => {
+        stats[u.id] = { name: u.name, role: u.role, sick: 0, vacation: 0, off: 0, total: 0 };
     });
 
-    leaveRequests.filter(l => l.status === 'approved').forEach(l => {
+    (leaveRequests || []).filter(l => l.status === 'approved').forEach(l => {
         if (stats[l.userId]) {
             if (l.type === 'Sick Leave') stats[l.userId].sick++;
             else if (l.type === 'Vacation Leave') stats[l.userId].vacation++;
@@ -319,7 +313,7 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
          <div className="space-y-10 animate-in slide-in-from-right-4">
             <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-sm space-y-6">
                 <div className="flex justify-between items-center">
-                    <h3 className="text-sm font-bold uppercase tracking-widest">Personnel Leave Intelligence</h3>
+                    <h3 className="text-sm font-bold uppercase tracking-widest">Global Personnel Attendance</h3>
                     <p className="text-[10px] text-slate-400 font-black uppercase">Approved Absence Tracking</p>
                 </div>
                 <div className="overflow-x-auto">
@@ -327,16 +321,18 @@ const ReportsPortal: React.FC<ReportsPortalProps> = ({
                         <thead className="bg-slate-50 border-b border-slate-100">
                            <tr>
                               <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Operator</th>
+                              <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Role</th>
                               <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Day Off</th>
                               <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Sick</th>
                               <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Vacation</th>
-                              <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Frequency Score</th>
+                              <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Aggregate</th>
                            </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
                            {employeeLeaveStats.map((stat, i) => (
                               <tr key={i} className="hover:bg-slate-50/50">
                                  <td className="px-6 py-4 font-bold text-xs text-slate-900 uppercase">{stat.name}</td>
+                                 <td className="px-6 py-4 text-[9px] font-black text-teal-600 uppercase tracking-widest">{stat.role}</td>
                                  <td className="px-6 py-4 text-center font-bold text-xs">{stat.off}</td>
                                  <td className="px-6 py-4 text-center font-bold text-xs text-rose-600">{stat.sick}</td>
                                  <td className="px-6 py-4 text-center font-bold text-xs text-teal-600">{stat.vacation}</td>
