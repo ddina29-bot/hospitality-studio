@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { TabType, Shift, User, Property, Invoice, Client, OrganizationSettings, ManualTask } from '../../types';
+import { TabType, Shift, User, Property, Invoice, Client, OrganizationSettings, ManualTask, SavedPayslip } from '../../types';
 import PersonnelProfile from '../PersonnelProfile';
 
 interface FinanceDashboardProps {
@@ -28,7 +28,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
   const stats = useMemo(() => {
     let totalPayrollGross = 0;
     let totalPayrollTax = 0;
-    let totalPayrollNI = 0;
+    let totalPayrollNI_Payee = 0;
     let totalPayees = 0;
 
     users.forEach(u => {
@@ -36,131 +36,237 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
         u.payslips?.forEach(ps => {
             totalPayrollGross += ps.grossPay;
             totalPayrollTax += ps.tax;
-            totalPayrollNI += ps.ni;
+            totalPayrollNI_Payee += ps.ni;
         });
     });
 
-    const maternityFund = totalPayrollGross * 0.003; // Official 0.3% Maternity Fund
+    const totalNI_Due = totalPayrollNI_Payee * 2; // Payee + Payer share
+    const maternityFund = totalPayrollGross * 0.003; 
 
     return { 
         totalPayrollGross, 
         totalPayrollTax, 
-        totalPayrollNI, 
+        totalPayrollNI_Payee,
+        totalNI_Due,
         totalPayees,
         maternityFund,
-        totalDue: totalPayrollTax + totalPayrollNI + maternityFund 
+        totalDue: totalPayrollTax + totalNI_Due + maternityFund 
     };
   }, [users]);
+
+  // Helper to render box-digits for FS5
+  const DigitBox = ({ value, length, color = "slate-400" }: { value: string | number, length: number, color?: string }) => {
+    const s = String(value).replace(/[.,]/g, '').padStart(length, ' ');
+    return (
+      <div className="flex gap-0.5">
+        {s.split('').map((char, i) => (
+          <div key={i} className={`w-5 h-7 border border-${color} bg-white flex items-center justify-center text-[11px] font-bold text-slate-800`}>
+            {char === ' ' ? '' : char}
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   const renderFS5Report = () => {
     if (!activeStatReport || activeStatReport !== 'FS5') return null;
     const now = new Date();
-    const month = now.toLocaleString('default', { month: 'long' }).toUpperCase();
-    const year = now.getFullYear();
+    const monthIndex = String(now.getMonth() + 1).padStart(2, '0');
+    const yearStr = String(now.getFullYear());
+    const currentUserObj = JSON.parse(localStorage.getItem('current_user_obj') || '{}');
 
     return (
-        <div className="fixed inset-0 bg-slate-900/60 z-[600] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
-           <div className="bg-white rounded-[0.5rem] w-full max-w-4xl p-10 space-y-8 shadow-2xl relative text-left my-auto animate-in zoom-in-95 border border-slate-300 font-sans">
+        <div className="fixed inset-0 bg-slate-900/80 z-[600] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
+           <div className="bg-white rounded-sm w-full max-w-5xl p-10 space-y-6 shadow-2xl relative text-left my-auto animate-in zoom-in-95 border-2 border-slate-300 font-sans text-slate-900">
               <button onClick={() => setActiveStatReport(null)} className="absolute top-6 right-6 text-slate-300 hover:text-slate-900 text-2xl no-print">&times;</button>
               
-              <header className="flex justify-between items-center border-b-4 border-blue-600 pb-6">
-                 <div>
-                    <h1 className="text-4xl font-black text-blue-600 flex items-center gap-6">
-                       FS5
-                       <div className="text-left">
-                          <p className="text-xs uppercase font-bold leading-none tracking-tighter text-slate-900">Final Settlement System (FSS)</p>
-                          <p className="text-[10px] uppercase font-medium leading-none mt-1 text-slate-500">Payer's Monthly Payment Advice</p>
-                       </div>
-                    </h1>
+              {/* Official Header */}
+              <div className="flex justify-between items-start border-b-4 border-slate-900 pb-4">
+                 <div className="flex items-center gap-5">
+                    <img src="https://logodix.com/logo/2012053.png" className="h-12 grayscale brightness-0" alt="Malta Tax" />
+                    <div>
+                       <h1 className="text-[12px] font-black uppercase leading-tight">Tax & Customs Administration</h1>
+                       <p className="text-[10px] font-bold uppercase text-slate-500">Malta</p>
+                    </div>
+                 </div>
+                 <div className="text-center">
+                    <h2 className="text-6xl font-black text-[#3B82F6] italic tracking-tighter">FS5</h2>
                  </div>
                  <div className="text-right">
-                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Malta Tax & Customs Administration</p>
+                    <h2 className="text-[14px] font-black uppercase tracking-tight">Final Settlement System (FSS)</h2>
+                    <p className="text-[11px] uppercase font-medium">Payer's Monthly Payment Advice</p>
                  </div>
-              </header>
+              </div>
 
               <div className="grid grid-cols-12 gap-8">
-                 {/* Section A */}
-                 <div className="col-span-7 bg-blue-50/20 p-6 border border-blue-100 rounded">
-                    <p className="text-[10px] font-black text-blue-800 uppercase mb-4 border-b border-blue-100 pb-1">A. PAYER INFORMATION</p>
-                    <div className="space-y-4">
+                 {/* A. PAYER INFORMATION */}
+                 <div className="col-span-7 space-y-3">
+                    <div className="bg-[#3B82F6] text-white px-3 py-1 text-[11px] font-black uppercase">A PAYER INFORMATION</div>
+                    <div className="border border-slate-200 p-5 space-y-4">
                        <div>
-                          <label className="text-[8px] font-bold text-slate-400 block uppercase">Business Name</label>
-                          <p className="text-sm font-black uppercase text-slate-900">{organization?.legalEntity || organization?.name || 'RESET STUDIO'}</p>
+                          <label className="text-[8px] font-bold text-slate-400 uppercase block mb-1">Business Name</label>
+                          <p className="text-xs font-black uppercase border-b border-slate-100 pb-1">{organization?.legalEntity || organization?.name || 'RESET STUDIO'}</p>
                        </div>
                        <div>
-                          <label className="text-[8px] font-bold text-slate-400 block uppercase">Business Address</label>
-                          <p className="text-xs font-bold uppercase text-slate-600">{organization?.address || 'N/A'}</p>
+                          <label className="text-[8px] font-bold text-slate-400 uppercase block mb-1">Business Address</label>
+                          <p className="text-[10px] font-bold uppercase leading-relaxed">{organization?.address || 'N/A'}</p>
+                       </div>
+                       <div className="grid grid-cols-2 gap-6">
+                          <div>
+                             <label className="text-[8px] font-bold text-slate-400 uppercase block mb-1">Telephone Number</label>
+                             <p className="text-xs font-black border-b border-slate-100 pb-1">{organization?.phone || 'N/A'}</p>
+                          </div>
+                          <div>
+                             <label className="text-[8px] font-bold text-slate-400 uppercase block mb-1">Email Address</label>
+                             <p className="text-xs font-black border-b border-slate-100 pb-1 lowercase">{organization?.email || 'N/A'}</p>
+                          </div>
                        </div>
                     </div>
                  </div>
 
-                 {/* Section Header Boxes (Right) */}
-                 <div className="col-span-5 space-y-4">
-                    <div className="p-4 border-2 border-slate-800 rounded flex justify-between items-center bg-slate-50">
-                       <span className="text-[10px] font-black uppercase text-slate-400">Payer P.E. No.</span>
-                       <div className="flex gap-1">
-                          {(organization?.peNumber || '00000').split('').map((char, i) => (
-                             <span key={i} className="w-6 h-8 border border-slate-300 flex items-center justify-center bg-white font-black text-sm">{char}</span>
-                          ))}
+                 {/* Top Right Controls */}
+                 <div className="col-span-5 flex flex-col justify-between py-6">
+                    <div className="flex justify-between items-center">
+                       <label className="text-[10px] font-black uppercase text-slate-700">Payer P.E. No.</label>
+                       <div className="flex gap-2 items-center">
+                          <span className="text-[9px] font-bold">A1</span>
+                          <DigitBox value={organization?.peNumber || '12522'} length={6} />
                        </div>
                     </div>
-                    <div className="p-4 border-2 border-slate-800 rounded flex justify-between items-center bg-slate-900 text-white">
-                       <span className="text-[10px] font-black uppercase">Payment For Month Of</span>
-                       <span className="text-xl font-black uppercase">{month} {year}</span>
+                    <div className="flex justify-between items-center">
+                       <label className="text-[10px] font-black uppercase text-slate-700">Payment for Month of</label>
+                       <div className="flex gap-2 items-center">
+                          <span className="text-[9px] font-bold">A2</span>
+                          <DigitBox value={`${monthIndex}${yearStr}`} length={6} />
+                       </div>
                     </div>
                  </div>
 
-                 {/* Section B & C */}
-                 <div className="col-span-12 grid grid-cols-2 gap-8">
-                    <div className="bg-slate-50 p-6 border border-slate-200 rounded">
-                       <p className="text-[10px] font-black uppercase mb-4 border-b border-slate-200 pb-1 text-slate-400">B. NUMBER OF PAYEES</p>
+                 {/* B. NUMBER OF PAYEES */}
+                 <div className="col-span-12 space-y-3">
+                    <div className="bg-[#3B82F6] text-white px-3 py-1 text-[11px] font-black uppercase">B NUMBER OF PAYEES</div>
+                    <div className="border border-slate-200 p-4 flex justify-between items-center">
+                       <label className="text-[10px] font-bold text-slate-700">Number of Payees (FSS Main Method applies)</label>
+                       <div className="flex gap-2 items-center">
+                          <span className="text-[9px] font-bold">B1</span>
+                          <DigitBox value={stats.totalPayees} length={8} />
+                       </div>
+                    </div>
+                 </div>
+
+                 {/* C. GROSS EMOLUMENTS */}
+                 <div className="col-span-12 space-y-3">
+                    <div className="bg-[#3B82F6] text-white px-3 py-1 text-[11px] font-black uppercase">C GROSS EMOLUMENTS</div>
+                    <div className="border border-slate-200 p-5 space-y-4">
                        <div className="flex justify-between items-center">
-                          <span className="text-xs font-bold text-slate-600 uppercase">FSS Main Method Payees</span>
-                          <span className="text-2xl font-black text-slate-900">{stats.totalPayees}</span>
+                          <label className="text-[10px] font-bold text-slate-700">Gross Emoluments (FSS Main or FSS Other applies)</label>
+                          <div className="flex gap-2 items-center">
+                             <span className="text-lg font-bold text-slate-300">€</span>
+                             <span className="text-[9px] font-bold">C1</span>
+                             <DigitBox value={Math.floor(stats.totalPayrollGross)} length={8} />
+                          </div>
                        </div>
-                    </div>
-                    <div className="bg-slate-50 p-6 border border-slate-200 rounded">
-                       <p className="text-[10px] font-black uppercase mb-4 border-b border-slate-200 pb-1 text-slate-400">C. GROSS EMOLUMENTS</p>
-                       <div className="flex justify-between items-center">
-                          <span className="text-xs font-bold text-slate-600 uppercase">Total Gross Emoluments</span>
-                          <span className="text-2xl font-black text-slate-900">€{stats.totalPayrollGross.toFixed(2)}</span>
+                       <div className="flex justify-between items-center bg-slate-50 p-2">
+                          <label className="text-[10px] font-black uppercase text-slate-900 italic">Total Gross Emoluments and Fringe Benefits</label>
+                          <div className="flex gap-2 items-center">
+                             <span className="text-lg font-bold text-slate-300">€</span>
+                             <span className="text-[9px] font-bold">C4</span>
+                             <DigitBox value={Math.floor(stats.totalPayrollGross)} length={8} />
+                          </div>
                        </div>
                     </div>
                  </div>
 
-                 {/* Section D - The Aggregate Calculation */}
-                 <div className="col-span-12 border-2 border-blue-700 p-8 rounded bg-blue-50/10">
-                    <p className="text-[11px] font-black uppercase mb-6 text-blue-900 border-b-2 border-blue-700 pb-2">D. TAX DEDUCTIONS AND SSC DUE TO THE COMMISSIONER</p>
-                    <div className="space-y-5">
-                       <div className="flex justify-between items-center text-xs font-bold">
-                          <span className="text-slate-500 uppercase tracking-tighter">Tax Deductions (FSS Main)</span>
-                          <span className="font-black text-xl text-slate-900">€{stats.totalPayrollTax.toFixed(2)}</span>
+                 {/* D. TAX DEDUCTIONS AND SSC */}
+                 <div className="col-span-12 space-y-3">
+                    <div className="bg-[#3B82F6] text-white px-3 py-1 text-[11px] font-black uppercase">D TAX DEDUCTIONS AND SSC DUE TO THE COMMISSIONER</div>
+                    <div className="border border-slate-200 p-5 grid grid-cols-2 gap-12">
+                       <div className="space-y-4">
+                          <div className="flex justify-between items-center">
+                             <label className="text-[10px] font-bold text-slate-700">Tax Deductions (Main/Other)</label>
+                             <div className="flex gap-2 items-center">
+                                <span className="text-[9px] font-bold">D1</span>
+                                <DigitBox value={Math.floor(stats.totalPayrollTax)} length={6} />
+                             </div>
+                          </div>
+                          <div className="flex justify-between items-center border-t border-slate-100 pt-3">
+                             <label className="text-[10px] font-black uppercase text-slate-900">Total Tax Deductions</label>
+                             <div className="flex gap-2 items-center">
+                                <span className="text-[9px] font-bold">D4</span>
+                                <DigitBox value={Math.floor(stats.totalPayrollTax)} length={6} />
+                             </div>
+                          </div>
                        </div>
-                       <div className="flex justify-between items-center text-xs font-bold">
-                          <span className="text-slate-500 uppercase tracking-tighter">Social Security Contributions (NI)</span>
-                          <span className="font-black text-xl text-slate-900">€{stats.totalPayrollNI.toFixed(2)}</span>
+                       <div className="space-y-4">
+                          <div className="flex justify-between items-center">
+                             <label className="text-[10px] font-bold text-slate-700">Social Security Contributions</label>
+                             <div className="flex gap-2 items-center">
+                                <span className="text-[9px] font-bold">D5</span>
+                                <DigitBox value={Math.floor(stats.totalNI_Due)} length={6} />
+                             </div>
+                          </div>
+                          <div className="flex justify-between items-center">
+                             <label className="text-[10px] font-bold text-slate-700">Maternity Fund Contributions</label>
+                             <div className="flex gap-2 items-center">
+                                <span className="text-[9px] font-bold">D5a</span>
+                                <DigitBox value={Math.floor(stats.maternityFund)} length={6} />
+                             </div>
+                          </div>
+                          <div className="flex justify-between items-center bg-indigo-50 p-3 border-2 border-[#3B82F6]">
+                             <label className="text-[11px] font-black uppercase text-[#3B82F6]">Total Due to Commissioner</label>
+                             <div className="flex gap-2 items-center">
+                                <span className="text-[9px] font-bold">D6</span>
+                                <DigitBox value={Math.floor(stats.totalDue)} length={8} color="blue-500" />
+                             </div>
+                          </div>
                        </div>
-                       <div className="flex justify-between items-center text-xs font-bold">
-                          <span className="text-slate-500 uppercase tracking-tighter">Maternity Fund Contributions (0.3%)</span>
-                          <span className="font-black text-xl text-slate-900">€{stats.maternityFund.toFixed(2)}</span>
+                    </div>
+                 </div>
+
+                 {/* E. PAYMENT DETAILS */}
+                 <div className="col-span-12 space-y-3">
+                    <div className="bg-[#3B82F6] text-white px-3 py-1 text-[11px] font-black uppercase">E PAYMENT DETAILS</div>
+                    <div className="border border-slate-200 p-6 grid grid-cols-2 gap-12">
+                       <div className="space-y-6">
+                          <div className="flex justify-between items-center">
+                             <label className="text-[10px] font-black uppercase text-slate-600">Date of Payment</label>
+                             <DigitBox value={new Date().toLocaleDateString('en-GB').replace(/\//g, '')} length={8} />
+                          </div>
+                          <div>
+                             <label className="text-[8px] font-bold text-slate-500 uppercase block mb-1">Full Name</label>
+                             <p className="text-xs font-black uppercase border-b border-slate-200 pb-1">{currentUserObj.name || organization?.name}</p>
+                          </div>
+                          <div>
+                             <label className="text-[8px] font-bold text-slate-500 uppercase block mb-1">Signature</label>
+                             <div className="h-10 italic font-serif text-2xl border-b border-slate-200 opacity-60">
+                                {currentUserObj.name?.split(' ')[0] || 'Dina'}
+                             </div>
+                          </div>
                        </div>
-                       <div className="pt-8 border-t-4 border-blue-700 flex justify-between items-center mt-6">
-                          <span className="text-lg font-black uppercase text-blue-900 leading-none">Total Due to the Commissioner</span>
-                          <div className="text-right">
-                             <p className="text-4xl font-black text-blue-700 tracking-tighter">€{stats.totalDue.toFixed(2)}</p>
-                             <p className="text-[8px] font-black text-slate-300 uppercase mt-2 tracking-[0.2em]">Authorized Digital Submission</p>
+                       <div className="space-y-6 flex flex-col justify-between">
+                          <div className="flex justify-between items-center">
+                             <label className="text-[11px] font-black uppercase text-slate-900">Total Payment</label>
+                             <div className="flex gap-2 items-center">
+                                <span className="text-[9px] font-bold">E1</span>
+                                <DigitBox value={Math.floor(stats.totalDue)} length={8} />
+                             </div>
+                          </div>
+                          <div className="pt-10">
+                             <p className="text-[8px] text-slate-400 italic leading-tight text-center uppercase">
+                                This form is to be sent to the Malta Tax and Customs Administration with the Monthly remittance.
+                             </p>
                           </div>
                        </div>
                     </div>
                  </div>
               </div>
 
-              <div className="pt-10 flex justify-between items-end no-print">
-                 <div className="flex gap-4">
-                    <button onClick={() => window.print()} className="bg-blue-700 text-white px-10 py-4 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-2xl active:scale-95 transition-all">Print FS5 Advice</button>
-                    <button onClick={() => setActiveStatReport(null)} className="bg-slate-100 text-slate-400 px-10 py-4 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-slate-200">Dismiss</button>
+              <div className="pt-4 flex justify-between items-center no-print">
+                 <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.5em]">SYSTEM_GENERATED_OFFICIAL_FS5_REPLICA</p>
+                 <div className="flex gap-2">
+                    <button onClick={() => window.print()} className="bg-slate-900 text-white px-10 py-3 rounded-sm font-black uppercase text-[10px] tracking-widest shadow-xl">Print Advice</button>
+                    <button onClick={() => setActiveStatReport(null)} className="bg-slate-100 text-slate-500 px-10 py-3 rounded-sm font-black uppercase text-[10px] tracking-widest border border-slate-200">Close</button>
                  </div>
-                 <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.5em]">MT_OFFICIAL_FSS_CORE_V1</p>
               </div>
            </div>
         </div>
@@ -168,53 +274,52 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
   };
 
   return (
-    <div className="space-y-10 animate-in fade-in duration-700 text-left pb-24">
+    <div className="space-y-6 md:space-y-8 animate-in fade-in duration-700 text-left pb-24">
       {renderFS5Report()}
       <header className="flex flex-col space-y-0.5 px-2">
-        <p className="text-[#0D9488] font-black uppercase tracking-[0.4em] text-[8px]">Financial Controller</p>
-        <h1 className="text-3xl font-bold text-slate-900 tracking-tight uppercase leading-tight font-brand">Finance Studio</h1>
+        <p className="text-[#0D9488] font-black uppercase tracking-[0.4em] text-[7px]">Finance Control</p>
+        <h1 className="text-2xl font-bold text-slate-900 tracking-tight uppercase leading-tight font-brand">Finance Studio</h1>
       </header>
 
-      <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl w-fit shadow-inner">
-          <button onClick={() => setActiveModule('payroll')} className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeModule === 'payroll' ? 'bg-[#0D9488] text-white shadow-lg' : 'text-slate-400 hover:bg-white'}`}>Payroll</button>
-          <button onClick={() => setActiveModule('invoicing')} className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeModule === 'invoicing' ? 'bg-[#0D9488] text-white shadow-lg' : 'text-slate-400 hover:bg-white'}`}>Invoicing</button>
-          <button onClick={() => setActiveModule('records')} className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeModule === 'records' ? 'bg-[#0D9488] text-white shadow-lg' : 'text-slate-400 hover:bg-white'}`}>Statutory</button>
+      <div className="flex gap-1.5 p-1 bg-slate-100 rounded-xl w-fit shadow-inner">
+          <button onClick={() => setActiveModule('payroll')} className={`px-5 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${activeModule === 'payroll' ? 'bg-white text-[#0D9488] shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Payroll</button>
+          <button onClick={() => setActiveModule('invoicing')} className={`px-5 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${activeModule === 'invoicing' ? 'bg-white text-[#0D9488] shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Invoicing</button>
+          <button onClick={() => setActiveModule('records')} className={`px-5 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${activeModule === 'records' ? 'bg-white text-[#0D9488] shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Statutory</button>
       </div>
 
       {activeModule === 'records' && (
-         <div className="space-y-8 animate-in slide-in-from-bottom-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div onClick={() => setActiveStatReport('FS5')} className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-4 hover:border-blue-200 transition-all cursor-pointer group">
-                   <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center text-3xl group-hover:scale-110 transition-transform">📄</div>
+         <div className="space-y-6 animate-in slide-in-from-bottom-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div onClick={() => setActiveStatReport('FS5')} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-3 hover:border-blue-200 transition-all cursor-pointer group">
+                   <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-xl">📄</div>
                    <div>
-                      <h4 className="text-sm font-bold text-slate-900 uppercase tracking-tight">FS5 MONTHLY PAYMENT</h4>
-                      <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">Payer's Monthly Payment Advice for Tax, NI, and Maternity contributions.</p>
+                      <h4 className="text-xs font-bold text-slate-900 uppercase tracking-tight">FS5 Monthly Payment</h4>
+                      <p className="text-[9px] text-slate-400 mt-1 leading-relaxed">Payer's Monthly Payment Advice for Tax & NI.</p>
                    </div>
-                   <button className="text-[8px] font-black text-blue-600 uppercase tracking-widest border-b-2 border-blue-600 pb-0.5">GENERATE DOCUMENT</button>
                 </div>
             </div>
          </div>
       )}
 
       {activeModule === 'payroll' && (
-        <div className="space-y-6">
-           <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-8 animate-in slide-in-from-left-4">
-              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-widest">Active Payroll Pipeline</h3>
-              <div className="space-y-4">
+        <div className="space-y-4">
+           <div className="bg-white p-5 md:p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6 animate-in slide-in-from-left-2">
+              <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.3em]">Active Payroll Pipeline</h3>
+              <div className="space-y-2">
                   {users.filter(u => u.status === 'active' && ['housekeeping', 'driver', 'cleaner', 'supervisor', 'admin', 'laundry'].includes(u.role)).map(staff => (
-                    <div key={staff.id} className="bg-slate-50 rounded-3xl border border-slate-100 p-6 flex flex-col md:flex-row items-center justify-between gap-6 hover:border-teal-200 transition-all shadow-sm">
-                        <div className="flex items-center gap-6 flex-1 w-full text-left">
-                          <div className="w-14 h-14 rounded-2xl bg-white border border-slate-200 text-teal-600 flex items-center justify-center font-bold text-2xl shadow-sm overflow-hidden">
+                    <div key={staff.id} className="bg-slate-50 rounded-2xl border border-slate-100 p-3 md:p-4 flex items-center justify-between gap-4 hover:border-teal-200 transition-all">
+                        <div className="flex items-center gap-4 flex-1 min-w-0">
+                          <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 text-teal-600 flex items-center justify-center font-bold text-lg shadow-sm overflow-hidden shrink-0">
                               {staff.photoUrl ? <img src={staff.photoUrl} className="w-full h-full object-cover" /> : staff.name.charAt(0)}
                           </div>
-                          <div>
-                              <h4 className="text-lg font-bold text-slate-900 uppercase tracking-tight">{staff.name}</h4>
-                              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">
-                                {staff.role} • {staff.maritalStatus || 'Single'} {staff.isParent ? `(Parent / ${staff.childrenCount} kids)` : ''}
+                          <div className="min-w-0">
+                              <h4 className="text-sm font-bold text-slate-900 uppercase truncate">{staff.name}</h4>
+                              <p className="text-[8px] text-slate-400 uppercase font-bold truncate">
+                                {staff.role} • {staff.maritalStatus || 'Single'} {staff.isParent ? `(Parent)` : ''}
                               </p>
                           </div>
                         </div>
-                        <button onClick={() => setSelectedPayslipUserId(staff.id)} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">PROCESS FS3 / PAYSLIP</button>
+                        <button onClick={() => setSelectedPayslipUserId(staff.id)} className="bg-slate-900 text-white px-5 py-2 rounded-lg font-black uppercase text-[8px] tracking-widest shadow-sm hover:bg-black transition-all shrink-0">PROCESS</button>
                     </div>
                   ))}
               </div>
@@ -223,9 +328,9 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
       )}
 
       {selectedPayslipUserId && (
-        <div className="fixed inset-0 bg-slate-900/60 z-[500] flex items-center justify-center p-4 backdrop-blur-md">
-           <div className="bg-[#F0FDFA] rounded-[3rem] w-full max-w-5xl h-[90vh] overflow-y-auto p-10 shadow-2xl relative">
-              <button onClick={() => setSelectedPayslipUserId(null)} className="absolute top-10 right-10 text-slate-400 hover:text-black text-2xl">&times;</button>
+        <div className="fixed inset-0 bg-slate-900/60 z-[500] flex items-center justify-center p-4 backdrop-blur-sm">
+           <div className="bg-[#F0FDFA] rounded-2xl w-full max-w-5xl h-[85vh] overflow-y-auto p-6 md:p-8 shadow-2xl relative">
+              <button onClick={() => setSelectedPayslipUserId(null)} className="absolute top-6 right-6 text-slate-400 hover:text-black text-xl">&times;</button>
               <PersonnelProfile 
                 user={users.find(u => u.id === selectedPayslipUserId)!} 
                 shifts={shifts} 
