@@ -94,16 +94,24 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
       };
     }
 
-    let totalPieceRateEarned = 0;
-    let totalHourlyEarned = 0;
+    // 1. Core Base Initialization
+    let baseSalary = 0;
+    if (user.paymentType === 'Fixed Wage') {
+      baseSalary = Number(user.payRate) || 0;
+    }
 
+    let bonusesFromCleans = 0;
+    let hourlyEarnings = 0;
+
+    // 2. Deployment Processing
     filteredShifts.forEach(s => {
         const prop = properties?.find(p => p.id === s.propertyId);
         if (!prop && s.serviceType !== 'TO FIX') return;
 
         const durationMs = (s.actualEndTime || 0) - (s.actualStartTime || 0);
         const hours = Math.max(0, durationMs / (1000 * 60 * 60));
-        const hourlyBaseForShift = hours * (user.payRate || 5.00);
+        const hourlyRate = Number(user.payRate) || 5.00;
+        const basePayForHoursSpent = hours * hourlyRate;
 
         if (s.approvalStatus === 'approved') {
             const teamCount = s.userIds?.length || 1;
@@ -111,18 +119,28 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
             if (s.serviceType === 'TO FIX') flatRate = s.fixWorkPayment || 0;
             else if (prop) flatRate = getCleanerRateForShift(s.serviceType, prop) / teamCount;
 
-            if (user.paymentType === 'Per Clean' || user.paymentType === 'Fixed Wage') {
-                totalPieceRateEarned += Math.max(flatRate, user.paymentType === 'Fixed Wage' ? 0 : hourlyBaseForShift);
+            if (user.paymentType === 'Fixed Wage') {
+                // Fixed Wage: Every clean is a bonus on top of base
+                bonusesFromCleans += flatRate;
+            } else if (user.paymentType === 'Per Clean') {
+                // Per Clean: Better of piece-rate or hourly
+                hourlyEarnings += Math.max(flatRate, basePayForHoursSpent);
             } else {
-                totalHourlyEarned += hourlyBaseForShift;
+                // Per Hour: Standard duration pay
+                hourlyEarnings += basePayForHoursSpent;
             }
-        } else if (user.paymentType === 'Per Hour') {
-            totalHourlyEarned += hourlyBaseForShift;
+        } else {
+            // Pending or Rejected: Only base hourly applies if applicable
+            if (user.paymentType !== 'Fixed Wage') {
+              hourlyEarnings += basePayForHoursSpent;
+            }
         }
     });
 
-    const calculatedGross = totalPieceRateEarned + totalHourlyEarned;
+    const calculatedGross = baseSalary + bonusesFromCleans + hourlyEarnings;
     const actualGrossPay = manualGrossPay !== null ? manualGrossPay : calculatedGross;
+    
+    // Malta standard NI/Tax estimates
     const ni = actualGrossPay * 0.1;
     const tax = actualGrossPay * 0.15;
 
@@ -242,7 +260,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                       <div className="p-8 bg-emerald-50 border border-emerald-100 rounded-[2rem] flex flex-col justify-center">
                          <p className={subLabelStyle}>Total Net Payout Preview</p>
                          <p className="text-5xl font-black text-emerald-700 tracking-tighter leading-none">€{payrollData.totalNet.toFixed(2)}</p>
-                         <p className="text-[8px] font-black text-emerald-600/50 uppercase tracking-widest mt-4">Includes piece-rates for {filteredShifts.length} deployments</p>
+                         <p className="text-[8px] font-black text-emerald-600/50 uppercase tracking-widest mt-4">Includes bonuses for {filteredShifts.length} deployments</p>
                          <button onClick={handleCommitPayslip} className="mt-8 bg-indigo-600 text-white font-black py-4 rounded-xl uppercase text-[10px] tracking-widest shadow-xl hover:bg-indigo-700 transition-all active:scale-95">COMMIT TO REGISTRY</button>
                       </div>
                    </div>

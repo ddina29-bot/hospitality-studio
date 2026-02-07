@@ -85,7 +85,6 @@ const App: React.FC = () => {
   
   const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Keyboard shortcut for Build Mode (Ctrl+B / Cmd+B)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
@@ -342,7 +341,7 @@ const App: React.FC = () => {
       case 'worksheet':
         return <EmployeeWorksheet user={user} shifts={shifts} properties={properties} />;
       case 'logistics':
-        return <DriverPortal user={user} shifts={shifts} setShifts={setShifts} properties={properties} users={users} timeEntries={timeEntries} setTimeEntries={setTimeEntries} />;
+        return <DriverPortal user={user} shifts={shifts} setShifts={setShifts} properties={properties} setProperties={setProperties} users={users} timeEntries={timeEntries} setTimeEntries={setTimeEntries} />;
       case 'laundry':
         return <LaundryDashboard user={user} setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} setShifts={setShifts} users={users} properties={properties} onTogglePrepared={(id) => setShifts(prev => prev.map(s => s.id === id ? {...s, isLaundryPrepared: !s.isLaundryPrepared} : s))} timeEntries={timeEntries} setTimeEntries={setTimeEntries} organization={organization} />;
       case 'inventory_admin':

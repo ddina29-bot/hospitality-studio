@@ -40,6 +40,11 @@ const EmployeeWorksheet: React.FC<EmployeeWorksheetProps> = ({ user, shifts, pro
 
     let totalHours = 0;
     let totalEarnings = 0;
+    
+    // 1. Initialise base salary for Fixed Wage users
+    if (user.paymentType === 'Fixed Wage') {
+      totalEarnings = user.payRate || 0;
+    }
 
     const rows = filtered.map(s => {
       const prop = properties.find(p => p.id === s.propertyId);
@@ -48,7 +53,7 @@ const EmployeeWorksheet: React.FC<EmployeeWorksheetProps> = ({ user, shifts, pro
       totalHours += hours;
 
       let payout = 0;
-      const hourlyRate = user.payRate || 5.00;
+      const hourlyRate = user.paymentType === 'Fixed Wage' ? 0 : (user.payRate || 5.00);
       const basePayForHoursSpent = hours * hourlyRate;
 
       if (s.approvalStatus === 'approved') {
@@ -61,10 +66,11 @@ const EmployeeWorksheet: React.FC<EmployeeWorksheetProps> = ({ user, shifts, pro
               flatRate = getCleanerRateForShift(s.serviceType, prop) / teamCount;
           }
 
-          if (user.paymentType === 'Per Clean' || user.paymentType === 'Fixed Wage') {
-              // For Fixed Wage users, piece rate is a pure bonus.
-              // For Per Clean users, it's the target pay.
-              payout = Math.max(flatRate, user.paymentType === 'Fixed Wage' ? 0 : basePayForHoursSpent);
+          if (user.paymentType === 'Fixed Wage') {
+              // For Fixed Wage users, every approved piece rate clean is a bonus
+              payout = flatRate;
+          } else if (user.paymentType === 'Per Clean') {
+              payout = Math.max(flatRate, basePayForHoursSpent);
           } else {
               payout = basePayForHoursSpent;
           }
@@ -85,6 +91,20 @@ const EmployeeWorksheet: React.FC<EmployeeWorksheetProps> = ({ user, shifts, pro
         payout: payout.toFixed(2)
       };
     });
+
+    // 2. Add Base Salary row if applicable at the top
+    if (user.paymentType === 'Fixed Wage') {
+      rows.unshift({
+        id: 'base-salary',
+        date: selectedMonth,
+        propertyName: 'RETAINER / BASE SALARY',
+        service: 'FIXED MONTHLY PAYOUT',
+        time: 'N/A',
+        hours: 'N/A',
+        status: 'approved',
+        payout: (user.payRate || 0).toFixed(2)
+      });
+    }
 
     return { rows, totalHours: totalHours.toFixed(1), totalEarnings: totalEarnings.toFixed(2) };
   }, [shifts, properties, user, selectedMonth]);
