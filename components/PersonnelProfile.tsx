@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { User, LeaveRequest, LeaveType, Shift, Property, OrganizationSettings, SavedPayslip, PaymentType } from '../types';
+import { User, LeaveRequest, LeaveType, Shift, Property, OrganizationSettings, SavedPayslip, PaymentType, TimeEntry } from '../types';
 
 // Updated Maltese Tax Calculation (2026 Budget Alignment)
 const calculateMaltesePayroll = (gross: number, status: string, isParent: boolean) => {
@@ -49,6 +49,62 @@ export const getCleanerRateForShift = (serviceType: string, prop: Property): num
   return prop.cleanerPrice || 0;
 };
 
+// Global helper for role-based gross calculation
+export const calculateUserGrossForPeriod = (user: User, shifts: Shift[], timeEntries: TimeEntry[], properties: Property[], monthLabel: string) => {
+  if (user.paymentType === 'Fixed Wage') return user.payRate || 0;
+
+  const hourlyRate = user.payRate || 5.00;
+  let totalGross = 0;
+
+  // Logic for Laundry (Clock-in/out based)
+  if (user.role === 'laundry') {
+    const periodEntries = (timeEntries || []).filter(e => {
+        const d = new Date(e.timestamp);
+        const m = `${d.toLocaleString('en-GB', { month: 'short' }).toUpperCase()} ${d.getFullYear()}`;
+        return e.userId === user.id && m === monthLabel;
+    }).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+    let clockedMinutes = 0;
+    for (let i = 0; i < periodEntries.length; i++) {
+        if (periodEntries[i].type === 'in' && periodEntries[i+1]?.type === 'out') {
+            const start = new Date(periodEntries[i].timestamp).getTime();
+            const end = new Date(periodEntries[i+1].timestamp).getTime();
+            clockedMinutes += (end - start) / 60000;
+            i++; // skip the 'out' entry
+        }
+    }
+    return (clockedMinutes / 60) * hourlyRate;
+  }
+
+  // Logic for Cleaners / Supervisors (Shift based)
+  const completedShifts = shifts.filter(s => {
+    const d = s.date.includes('-') ? new Date(s.date) : new Date(`${s.date} ${new Date().getFullYear()}`);
+    const m = `${d.toLocaleString('en-GB', { month: 'short' }).toUpperCase()} ${d.getFullYear()}`;
+    return s.userIds.includes(user.id) && s.status === 'completed' && m === monthLabel;
+  });
+
+  completedShifts.forEach(s => {
+    const durationHrs = Math.max(0, ((s.actualEndTime || 0) - (s.actualStartTime || 0)) / (1000 * 60 * 60));
+    const hourlyEarned = durationHrs * hourlyRate;
+
+    if (user.paymentType === 'Per Clean' && s.approvalStatus === 'approved') {
+        const prop = properties.find(p => p.id === s.propertyId);
+        const teamCount = s.userIds.length || 1;
+        let pieceRate = 0;
+        if (s.serviceType === 'TO FIX') pieceRate = s.fixWorkPayment || 0;
+        else if (prop) pieceRate = getCleanerRateForShift(s.serviceType, prop) / teamCount;
+        
+        // Hybrid: Higher of Hourly or Piece-rate
+        totalGross += Math.max(hourlyEarned, pieceRate);
+    } else {
+        // Strict Hourly (or rejected shift pay)
+        totalGross += hourlyEarned;
+    }
+  });
+
+  return totalGross;
+};
+
 interface PersonnelProfileProps {
   user: User;
   leaveRequests?: LeaveRequest[];
@@ -59,9 +115,13 @@ interface PersonnelProfileProps {
   organization?: OrganizationSettings;
   initialDocView?: 'fs3' | 'payslip' | 'worksheet' | 'preview' | null;
   initialHistoricalPayslip?: SavedPayslip | null;
+  timeEntries?: TimeEntry[];
 }
 
-const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests = [], onRequestLeave, shifts = [], properties = [], onUpdateUser, organization, initialDocView, initialHistoricalPayslip }) => {
+const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ 
+  user, leaveRequests = [], onRequestLeave, shifts = [], properties = [], 
+  onUpdateUser, organization, initialDocView, initialHistoricalPayslip, timeEntries = [] 
+}) => {
   const currentUserObj = JSON.parse(localStorage.getItem('current_user_obj') || '{}');
   const isCurrentUserAdmin = currentUserObj.role === 'admin';
   
@@ -74,6 +134,29 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
      return `${now.toLocaleString('default', { month: 'short' }).toUpperCase()} ${now.getFullYear()}`;
   }); 
 
+  // Dynamic Date Range Helper
+  const currentPeriodDates = useMemo(() => {
+    try {
+      const parts = selectedDocMonth.split(' ');
+      const monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+      const monthIdx = monthNames.indexOf(parts[0]);
+      const year = parseInt(parts[1]);
+      
+      const start = new Date(year, monthIdx, 1);
+      const end = new Date(year, monthIdx + 1, 0);
+
+      const format = (d: Date) => d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      
+      return {
+        from: format(start),
+        until: format(end),
+        monthIndex: monthIdx + 1
+      };
+    } catch (e) {
+      return { from: '01/01/2026', until: '31/01/2026', monthIndex: 1 };
+    }
+  }, [selectedDocMonth]);
+
   const annualAggregates = useMemo(() => {
     const slips = user.payslips || [];
     const totals = slips.reduce((acc, ps) => ({
@@ -83,9 +166,8 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
       net: acc.net + ps.netPay
     }), { gross: 0, tax: 0, niPayee: 0, net: 0 });
 
-    // Calculate Payer shares based on 2026 rules
-    const niPayer = totals.gross * 0.10; // Matches Payee 10%
-    const maternityPayer = totals.gross * 0.003; // 0.3% Maternity Fund
+    const niPayer = totals.gross * 0.10; 
+    const maternityPayer = totals.gross * 0.003; 
 
     return { 
         ...totals, 
@@ -104,22 +186,25 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         ni: activeHistoricalPayslip.ni,
       };
     }
-    const baseSalary = user.payRate || 0;
-    const calc = calculateMaltesePayroll(baseSalary, user.maritalStatus || 'Single', !!user.isParent);
-    return { grossPay: baseSalary, ni: calc.ni, tax: calc.tax, totalNet: calc.net };
-  }, [user, activeHistoricalPayslip]);
+    const calculatedGross = calculateUserGrossForPeriod(user, shifts, timeEntries, properties, selectedDocMonth);
+    const calc = calculateMaltesePayroll(calculatedGross, user.maritalStatus || 'Single', !!user.isParent);
+    return { grossPay: calculatedGross, ni: calc.ni, tax: calc.tax, totalNet: calc.net };
+  }, [user, activeHistoricalPayslip, shifts, timeEntries, properties, selectedDocMonth]);
 
   const handleCommitPayslip = () => {
     if (!onUpdateUser) return;
     const newPayslip: SavedPayslip = {
       id: `ps-${Date.now()}`,
       month: selectedDocMonth,
-      periodFrom: '', periodUntil: '',
+      periodFrom: currentPeriodDates.from,
+      periodUntil: currentPeriodDates.until,
       grossPay: payrollData.grossPay,
       netPay: payrollData.totalNet,
       tax: payrollData.tax,
       ni: payrollData.ni,
-      niWeeks: 4, govBonus: 0, daysWorked: 20,
+      niWeeks: 4, 
+      govBonus: 0, 
+      daysWorked: 20,
       generatedAt: new Date().toISOString(),
       generatedBy: currentUserObj.name || 'Admin'
     };
@@ -128,7 +213,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     setActiveSubTab('PAYSLIP REGISTRY');
   };
 
-  // Helper to render box-digits for FS3
   const DigitBox = ({ value, length }: { value: string | number, length: number }) => {
     const s = String(value).replace(/[.,]/g, '').padStart(length, ' ');
     return (
@@ -145,7 +229,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
   return (
     <div className="bg-transparent min-h-fit text-left font-brand animate-in fade-in duration-500">
       <div className="mx-auto space-y-6">
-        {/* Profile Card - Compact */}
+        {/* Profile Card */}
         <section className="bg-white border border-slate-100 rounded-2xl p-5 flex flex-col md:flex-row items-center justify-between gap-6 shadow-sm">
            <div className="flex items-center gap-5 text-left">
               <div className="w-14 h-14 rounded-xl bg-teal-50 flex items-center justify-center text-[#0D9488] font-bold text-xl shadow-inner border border-teal-100 overflow-hidden shrink-0">
@@ -159,10 +243,13 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                  </p>
               </div>
            </div>
-           <div className="flex gap-2">
+           <div className="flex gap-2 items-center">
+              <select value={selectedDocMonth} onChange={(e) => setSelectedDocMonth(e.target.value)} className="bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 text-[9px] font-black uppercase outline-none focus:border-teal-500">
+                {['JAN 2026', 'FEB 2026', 'MAR 2026', 'APR 2026', 'MAY 2026', 'JUN 2026', 'JUL 2026', 'AUG 2026', 'SEP 2026', 'OCT 2025', 'NOV 2025', 'DEC 2025'].map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
               <div className="bg-slate-50 px-5 py-2 rounded-xl border border-slate-100 text-center">
-                 <p className="text-[6px] font-black text-slate-400 uppercase tracking-widest mb-0.5">GROSS</p>
-                 <p className="text-xs font-black text-slate-900">€{user.payRate?.toFixed(2)}</p>
+                 <p className="text-[6px] font-black text-slate-400 uppercase tracking-widest mb-0.5">CURRENT GROSS</p>
+                 <p className="text-xs font-black text-slate-900">€{payrollData.grossPay.toFixed(2)}</p>
               </div>
               {isCurrentUserAdmin && (
                 <button onClick={() => setViewingDoc('fs3')} className="bg-slate-900 text-white px-6 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest shadow-sm active:scale-95 transition-all">FS3</button>
@@ -186,12 +273,15 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
               <section className="bg-white border border-slate-100 rounded-2xl p-6 shadow-md space-y-6 animate-in slide-in-from-bottom-2">
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                      <div className="space-y-4 text-left">
-                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">FSS Summary (2026 Rules)</h3>
+                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">FSS Summary ({selectedDocMonth})</h3>
                         <div className="space-y-2">
                             <div className="flex justify-between text-[9px] font-bold text-slate-500 uppercase"><span>Monthly Gross</span><span className="text-slate-900">€{payrollData.grossPay.toFixed(2)}</span></div>
                             <div className="flex justify-between text-[9px] font-bold text-slate-500 uppercase"><span>PAYE Tax</span><span className={`${payrollData.tax > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{payrollData.tax > 0 ? `-€${payrollData.tax.toFixed(2)}` : '€0.00 (Exempt)'}</span></div>
                             <div className="flex justify-between text-[9px] font-bold text-slate-500 uppercase"><span>NI (10%)</span><span className="text-rose-600">-€{payrollData.ni.toFixed(2)}</span></div>
                         </div>
+                        <p className="text-[7px] text-slate-400 italic uppercase">
+                          * {user.role === 'laundry' ? 'Calculated from HQ Time Clock entries.' : 'Calculated from completed shift deployments.'}
+                        </p>
                      </div>
                      <div className="p-6 bg-emerald-50 border border-emerald-100 rounded-2xl flex flex-col justify-center shadow-inner group">
                         <p className="text-[7px] font-black text-emerald-600 uppercase tracking-widest mb-2">Net Wage Payout</p>
@@ -231,13 +321,12 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         </div>
       </div>
 
-      {/* FS3 ANNUAL MODAL - LEGAL FORMAT MATCH */}
+      {/* FS3 ANNUAL MODAL */}
       {viewingDoc === 'fs3' && (
         <div className="fixed inset-0 bg-slate-900/80 z-[500] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
            <div className="bg-[#FFFFFF] rounded-sm w-full max-w-5xl p-8 space-y-4 shadow-2xl relative text-left my-auto animate-in zoom-in-95 border-2 border-slate-300 font-sans text-slate-900 leading-tight">
               <button onClick={() => setViewingDoc(null)} className="absolute top-4 right-4 text-slate-300 hover:text-slate-900 text-2xl no-print">&times;</button>
               
-              {/* Header Section */}
               <div className="flex justify-between items-start border-b border-slate-200 pb-2">
                  <div className="flex items-center gap-4">
                     <img src="https://logodix.com/logo/2012053.png" className="h-10 grayscale brightness-0" alt="Malta Tax" />
@@ -255,10 +344,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                  </div>
               </div>
 
-              {/* Main Form Content */}
               <div className="grid grid-cols-12 gap-x-6 gap-y-4">
-                 
-                 {/* A. PAYEE INFORMATION */}
                  <div className="col-span-7 space-y-2">
                     <div className="bg-[#3B82F6] text-white px-2 py-0.5 text-[10px] font-black uppercase">A PAYEE INFORMATION</div>
                     <div className="grid grid-cols-2 gap-4 border border-slate-200 p-3">
@@ -302,7 +388,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                     </div>
                  </div>
 
-                 {/* C. GROSS EMOLUMENTS */}
                  <div className="col-span-5 space-y-2">
                     <div className="bg-[#3B82F6] text-white px-2 py-0.5 text-[10px] font-black uppercase">C GROSS EMOLUMENTS</div>
                     <div className="border border-slate-200 p-3 space-y-3">
@@ -323,7 +408,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                     </div>
                  </div>
 
-                 {/* D. TOTAL DEDUCTIONS */}
                  <div className="col-span-12 space-y-2">
                     <div className="bg-[#3B82F6] text-white px-2 py-0.5 text-[10px] font-black uppercase">D TOTAL DEDUCTIONS</div>
                     <div className="border border-slate-200 p-3 grid grid-cols-2 gap-8">
@@ -344,7 +428,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                     </div>
                  </div>
 
-                 {/* E. SOCIAL SECURITY & MATERNITY FUND */}
                  <div className="col-span-12 space-y-2">
                     <div className="bg-[#3B82F6] text-white px-2 py-0.5 text-[10px] font-black uppercase">E SOCIAL SECURITY AND MATERNITY FUND INFORMATION</div>
                     <div className="border border-slate-200 overflow-hidden">
@@ -377,19 +460,11 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                                 <td className="border-r border-slate-200 p-2 text-indigo-900 font-black">{annualAggregates.niTotal.toFixed(2)}</td>
                                 <td className="p-2 text-indigo-700">{annualAggregates.maternityPayer.toFixed(2)}</td>
                              </tr>
-                             <tr className="bg-slate-100 font-black">
-                                <td className="border-r border-slate-200 p-1" colSpan={4}>TOTAL</td>
-                                <td className="border-r border-slate-200 p-1 text-blue-800">{annualAggregates.niPayee.toFixed(2)}</td>
-                                <td className="border-r border-slate-200 p-1">{annualAggregates.niPayer.toFixed(2)}</td>
-                                <td className="border-r border-slate-200 p-1 text-indigo-900">{annualAggregates.niTotal.toFixed(2)}</td>
-                                <td className="p-1">{annualAggregates.maternityPayer.toFixed(2)}</td>
-                             </tr>
                           </tbody>
                        </table>
                     </div>
                  </div>
 
-                 {/* F. PAYER INFORMATION */}
                  <div className="col-span-12 space-y-2">
                     <div className="bg-[#3B82F6] text-white px-2 py-0.5 text-[10px] font-black uppercase">F PAYER INFORMATION</div>
                     <div className="border border-slate-200 p-4 grid grid-cols-2 gap-12">
@@ -400,15 +475,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                           </div>
                           <div>
                              <label className="text-[8px] font-bold text-slate-500 uppercase">Principal's Full Name</label>
-                             <p className="text-xs font-black uppercase border-b border-slate-200 pb-1">{currentUserObj.name || 'Dina Dadai'}</p>
-                          </div>
-                          <div className="flex gap-10">
-                             <div className="flex-1">
-                                <label className="text-[8px] font-bold text-slate-500 uppercase">Principal's Signature</label>
-                                <div className="h-10 italic font-serif text-lg opacity-80 pt-2 border-b border-slate-200">
-                                   {currentUserObj.name || 'Dina'}
-                                </div>
-                             </div>
+                             <p className="text-xs font-black uppercase border-b border-slate-200 pb-1">{currentUserObj.name || 'Dina Didai'}</p>
                           </div>
                        </div>
                        <div className="space-y-4">
@@ -419,13 +486,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                           <div className="flex justify-between items-center">
                              <label className="text-[8px] font-black uppercase text-slate-600">F2 Date</label>
                              <DigitBox value={new Date().toLocaleDateString('en-GB').replace(/\//g, '')} length={8} />
-                          </div>
-                          <div className="pt-4">
-                             <p className="text-[7px] text-slate-400 leading-tight italic uppercase">
-                                This form is to be completed in quadruplicate. The original is to be sent to the 
-                                Malta Tax and Customs Administration with the FS7, two copies are to be given 
-                                to the Payee and the other copy is to be retained by the Payer. 
-                             </p>
                           </div>
                        </div>
                     </div>
@@ -443,20 +503,17 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         </div>
       )}
 
-      {/* PAYSLIP / PREVIEW MODAL - Redesigned to match provided image */}
+      {/* PAYSLIP / PREVIEW MODAL */}
       {(viewingDoc === 'payslip' || viewingDoc === 'preview') && (
         <div className="fixed inset-0 bg-slate-900/80 z-[500] flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
            <div className="bg-white rounded-sm w-full max-w-4xl p-6 md:p-8 space-y-4 shadow-2xl relative text-left my-auto animate-in zoom-in-95 border-2 border-slate-300 font-sans text-slate-900 leading-tight">
               <button onClick={() => { setViewingDoc(null); setActiveHistoricalPayslip(null); }} className="absolute top-4 right-4 text-slate-300 hover:text-slate-900 text-xl no-print">&times;</button>
               
-              {/* Blue Header Bar */}
               <div className="bg-[#D9EAF7] text-center py-1.5 border border-slate-300">
                 <h1 className="text-[12px] font-black uppercase tracking-[0.2em]">PAYSLIP</h1>
               </div>
 
-              {/* Main Info Columns */}
               <div className="grid grid-cols-2 gap-x-12 px-2 pt-4">
-                 {/* Employer Details */}
                  <div className="space-y-4">
                     <div className="space-y-0.5">
                        <p className="text-[11px] font-black uppercase">{organization?.name || 'Dina Didai'}</p>
@@ -468,39 +525,27 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
 
                     <div className="grid grid-cols-[80px_1fr] gap-y-1 text-[11px] font-bold">
                        <span className="text-slate-500 uppercase">Period</span>
-                       <span className="text-right w-24">1</span>
+                       <span className="text-right w-24">{activeHistoricalPayslip ? (activeHistoricalPayslip.month.split(' ')[0] === 'JAN' ? '1' : '...') : currentPeriodDates.monthIndex}</span>
                        
                        <span className="text-slate-500 uppercase">From:</span>
-                       <span className="text-right w-24">{activeHistoricalPayslip?.periodFrom || '01/01/2024'}</span>
+                       <span className="text-right w-24">{activeHistoricalPayslip?.periodFrom || currentPeriodDates.from}</span>
                        
                        <span className="text-slate-500 uppercase">To:</span>
-                       <span className="text-right w-24">{activeHistoricalPayslip?.periodUntil || '31/01/2024'}</span>
-                       
+                       <span className="text-right w-24">{activeHistoricalPayslip?.periodUntil || currentPeriodDates.until}</span>
+
                        <span className="text-slate-500 uppercase">NI Category:</span>
                        <span className="text-right w-24">C</span>
-                       
                        <span className="text-slate-500 uppercase">Tax:</span>
                        <span className="text-right w-24">{user.maritalStatus || 'Married'}</span>
                     </div>
                  </div>
 
-                 {/* Employee Details & YTD */}
                  <div className="space-y-4">
                     <div className="grid grid-cols-[80px_1fr] gap-y-1 text-[11px] font-bold">
                        <span className="text-slate-500 uppercase">Employee:</span>
                        <span className="uppercase text-slate-900">{user.name.split(' ').reverse().join(' ')}</span>
-                       
-                       <span className="text-slate-500 uppercase">Address:</span>
-                       <span className="uppercase text-slate-900 leading-tight whitespace-pre-line">
-                          {user.homeAddress || '67, Rihana Res, Flat 1\nTriq ir-Rihan, Fgura Malta'}
-                       </span>
-
                        <span className="text-slate-500 uppercase pt-2">ID:</span>
                        <span className="uppercase text-slate-900 pt-2">{user.idPassportNumber || '417090M'}</span>
-
-                       <span className="text-slate-500 uppercase">Payee's SSC:</span>
-                       <span className="uppercase text-slate-900">{user.niNumber || 'B41986887'}</span>
-
                        <span className="text-slate-500 uppercase">Designation:</span>
                        <span className="uppercase text-slate-900">{user.role || 'Driver'}</span>
                     </div>
@@ -508,31 +553,20 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                     <div className="pt-6 grid grid-cols-[120px_1fr] gap-y-1 text-[11px] font-bold text-blue-600">
                        <span className="uppercase opacity-80">Gross to date:</span>
                        <span className="text-right w-24">{annualAggregates.gross.toFixed(2)}</span>
-                       
-                       <span className="uppercase opacity-80">FSS Main to date:</span>
-                       <span className="text-right w-24">{annualAggregates.tax.toFixed(2)}</span>
-                       
-                       <span className="uppercase opacity-80">NI to date:</span>
-                       <span className="text-right w-24">{annualAggregates.niPayee.toFixed(2)}</span>
-                       
                        <span className="uppercase opacity-80">Net wages to date:</span>
                        <span className="text-right w-24">{annualAggregates.net.toFixed(2)}</span>
                     </div>
                  </div>
               </div>
 
-              {/* Financial Ledger Section */}
               <div className="px-2 pt-8 pb-10 max-w-sm">
                  <div className="grid grid-cols-[140px_1fr] gap-y-1 text-[11px] font-bold">
                     <span className="uppercase">Basic Pay</span>
                     <span className="text-right pr-4">{(activeHistoricalPayslip?.grossPay || payrollData.grossPay).toFixed(2)}</span>
-                    
                     <span className="uppercase">FSS Main</span>
                     <span className="text-right pr-4">{(activeHistoricalPayslip?.tax || payrollData.tax).toFixed(2)}</span>
-                    
                     <span className="uppercase">NI</span>
                     <span className="text-right pr-4 border-b border-slate-900">{(activeHistoricalPayslip?.ni || payrollData.ni).toFixed(2)}</span>
-                    
                     <span className="uppercase pt-1">Net wage</span>
                     <span className="text-right pr-4 pt-1 font-black underline decoration-double underline-offset-2">
                        {(activeHistoricalPayslip?.netPay || payrollData.totalNet).toFixed(2)}
@@ -540,7 +574,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                  </div>
               </div>
 
-              {/* Action Buttons */}
               <div className="pt-6 flex justify-between items-center border-t border-slate-100 no-print px-2">
                  <button onClick={() => window.print()} className="bg-slate-100 text-slate-500 px-10 py-2.5 rounded-sm text-[9px] font-black uppercase tracking-widest border border-slate-200">Print / Export</button>
                  {viewingDoc === 'preview' && (

@@ -1,15 +1,16 @@
 
 import React, { useState, useMemo } from 'react';
-import { User, Shift, Property } from '../types';
-import { getCleanerRateForShift } from './PersonnelProfile';
+import { User, Shift, Property, TimeEntry } from '../types';
+import { getCleanerRateForShift, calculateUserGrossForPeriod } from './PersonnelProfile';
 
 interface EmployeeWorksheetProps {
   user: User;
   shifts: Shift[];
   properties: Property[];
+  timeEntries?: TimeEntry[];
 }
 
-const EmployeeWorksheet: React.FC<EmployeeWorksheetProps> = ({ user, shifts, properties }) => {
+const EmployeeWorksheet: React.FC<EmployeeWorksheetProps> = ({ user, shifts, properties, timeEntries = [] }) => {
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const d = new Date();
     return `${d.toLocaleString('en-GB', { month: 'short' }).toUpperCase()} ${d.getFullYear()}`;
@@ -25,76 +26,101 @@ const EmployeeWorksheet: React.FC<EmployeeWorksheetProps> = ({ user, shifts, pro
     return list;
   }, []);
 
-  const worksheetData = useMemo(() => {
-    const filtered = shifts.filter(s => {
-      const isMine = s.userIds.includes(user.id);
-      const isDone = s.status === 'completed';
-      const shiftDate = s.date.includes('-') ? new Date(s.date) : new Date(`${s.date} ${new Date().getFullYear()}`);
-      const monthLabel = `${shiftDate.toLocaleString('en-GB', { month: 'short' }).toUpperCase()} ${shiftDate.getFullYear()}`;
-      return isMine && isDone && monthLabel === selectedMonth;
-    }).sort((a, b) => {
-        const dateA = a.date.includes('-') ? new Date(a.date).getTime() : new Date(`${a.date} ${new Date().getFullYear()}`).getTime();
-        const dateB = b.date.includes('-') ? new Date(b.date).getTime() : new Date(`${b.date} ${new Date().getFullYear()}`).getTime();
-        return dateB - dateA;
-    });
+  const totalCalculatedGross = useMemo(() => {
+    return calculateUserGrossForPeriod(user, shifts, timeEntries, properties, selectedMonth);
+  }, [user, shifts, timeEntries, properties, selectedMonth]);
 
+  const stats = useMemo(() => {
+    const isLaundry = user.role === 'laundry';
     let totalHours = 0;
-    let totalEarnings = user.paymentType === 'Fixed Wage' ? (user.payRate || 0) : 0;
 
-    const rows = filtered.map(s => {
-      const prop = properties.find(p => p.id === s.propertyId);
-      const durationMs = (s.actualEndTime || 0) - (s.actualStartTime || 0);
-      const hours = Math.max(0, durationMs / (1000 * 60 * 60));
-      totalHours += hours;
+    if (isLaundry) {
+      const periodEntries = timeEntries.filter(e => {
+        const d = new Date(e.timestamp);
+        const m = `${d.toLocaleString('en-GB', { month: 'short' }).toUpperCase()} ${d.getFullYear()}`;
+        return e.userId === user.id && m === selectedMonth;
+      }).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
-      let payout = 0;
-      const hourlyRate = user.payRate || 5.00;
-      const durationPay = hours * hourlyRate;
-
-      if (s.approvalStatus === 'approved') {
-          const teamCount = s.userIds?.length || 1;
-          let pieceRate = 0;
-          if (s.serviceType === 'TO FIX') pieceRate = s.fixWorkPayment || 0;
-          else if (prop) pieceRate = getCleanerRateForShift(s.serviceType, prop) / teamCount;
-
-          if (user.paymentType === 'Fixed Wage') {
-              payout = pieceRate;
-          } else if (user.paymentType === 'Per Clean') {
-              payout = Math.max(pieceRate, durationPay);
-          } else {
-              payout = durationPay;
-          }
-      } else {
-          payout = user.paymentType === 'Fixed Wage' ? 0 : durationPay;
+      let clockedMinutes = 0;
+      for (let i = 0; i < periodEntries.length; i++) {
+        if (periodEntries[i].type === 'in' && periodEntries[i+1]?.type === 'out') {
+            clockedMinutes += (new Date(periodEntries[i+1].timestamp).getTime() - new Date(periodEntries[i].timestamp).getTime()) / 60000;
+            i++;
+        }
       }
-
-      totalEarnings += payout;
-
-      return {
-        id: s.id,
-        date: s.date,
-        propertyName: s.propertyName,
-        service: s.serviceType,
-        hours: hours.toFixed(1),
-        status: s.approvalStatus,
-        payout: payout.toFixed(2)
-      };
-    });
-
-    if (user.paymentType === 'Fixed Wage') {
-      rows.unshift({
-        id: 'base-fixed',
-        date: selectedMonth,
-        propertyName: 'BASE SALARY RETAINER',
-        service: 'RETAINER',
-        hours: 'N/A',
-        status: 'approved',
-        payout: (user.payRate || 0).toFixed(2)
+      totalHours = clockedMinutes / 60;
+    } else {
+      shifts.filter(s => {
+        const d = s.date.includes('-') ? new Date(s.date) : new Date(`${s.date} ${new Date().getFullYear()}`);
+        const m = `${d.toLocaleString('en-GB', { month: 'short' }).toUpperCase()} ${d.getFullYear()}`;
+        return s.userIds.includes(user.id) && s.status === 'completed' && m === selectedMonth;
+      }).forEach(s => {
+        totalHours += ((s.actualEndTime || 0) - (s.actualStartTime || 0)) / (1000 * 60 * 60);
       });
     }
 
-    return { rows, totalHours: totalHours.toFixed(1), totalEarnings: totalEarnings.toFixed(2) };
-  }, [shifts, properties, user, selectedMonth]);
+    return { totalHours };
+  }, [user, shifts, timeEntries, selectedMonth]);
+
+  const shiftRows = useMemo(() => {
+    if (user.role === 'laundry') return [];
+    
+    return shifts.filter(s => {
+      const d = s.date.includes('-') ? new Date(s.date) : new Date(`${s.date} ${new Date().getFullYear()}`);
+      const m = `${d.toLocaleString('en-GB', { month: 'short' }).toUpperCase()} ${d.getFullYear()}`;
+      return s.userIds.includes(user.id) && s.status === 'completed' && m === selectedMonth;
+    }).map(s => {
+        const hours = ((s.actualEndTime || 0) - (s.actualStartTime || 0)) / (1000 * 60 * 60);
+        const hourlyRate = user.payRate || 5.0;
+        const hourlyEarned = hours * hourlyRate;
+        
+        let pieceRate = 0;
+        if (user.paymentType === 'Per Clean' && s.approvalStatus === 'approved') {
+            const prop = properties.find(p => p.id === s.propertyId);
+            const teamCount = s.userIds.length || 1;
+            if (s.serviceType === 'TO FIX') pieceRate = s.fixWorkPayment || 0;
+            else if (prop) pieceRate = getCleanerRateForShift(s.serviceType, prop) / teamCount;
+        }
+
+        return {
+            id: s.id,
+            date: s.date,
+            name: s.propertyName,
+            service: s.serviceType,
+            hours: hours.toFixed(1),
+            earned: Math.max(hourlyEarned, pieceRate).toFixed(2),
+            method: pieceRate > hourlyEarned ? 'PIECE' : 'HOURLY'
+        };
+    });
+  }, [shifts, user, selectedMonth, properties]);
+
+  const laundryRows = useMemo(() => {
+    if (user.role !== 'laundry') return [];
+    
+    const entries = timeEntries.filter(e => {
+        const d = new Date(e.timestamp);
+        const m = `${d.toLocaleString('en-GB', { month: 'short' }).toUpperCase()} ${d.getFullYear()}`;
+        return e.userId === user.id && m === selectedMonth;
+    }).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+    const rows = [];
+    for (let i = 0; i < entries.length; i++) {
+        if (entries[i].type === 'in' && entries[i+1]?.type === 'out') {
+            const start = new Date(entries[i].timestamp);
+            const end = new Date(entries[i+1].timestamp);
+            const hrs = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+            rows.push({
+                id: entries[i].id,
+                date: start.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase(),
+                time: `${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} - ${end.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`,
+                hours: hrs.toFixed(1),
+                earned: (hrs * (user.payRate || 5.0)).toFixed(2)
+            });
+            i++;
+        }
+    }
+    return rows;
+  }, [timeEntries, user, selectedMonth]);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700 text-left max-w-6xl mx-auto">
@@ -110,11 +136,11 @@ const EmployeeWorksheet: React.FC<EmployeeWorksheetProps> = ({ user, shifts, pro
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
          <div className="bg-[#1E293B] p-8 rounded-[2.5rem] text-white shadow-xl flex justify-between items-center">
-            <div className="space-y-1"><p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Period Activity</p><p className="text-4xl font-bold font-brand tracking-tighter">{worksheetData.totalHours} <span className="text-sm text-slate-500">HRS</span></p></div>
-            <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center text-3xl">⏱️</div>
+            <div className="space-y-1"><p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Period Activity</p><p className="text-4xl font-bold font-brand tracking-tighter">{stats.totalHours.toFixed(1)} <span className="text-sm text-slate-500">HRS</span></p></div>
+            <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center text-3xl">{user.role === 'laundry' ? '🧺' : '⏱️'}</div>
          </div>
          <div className="bg-white p-8 rounded-[2.5rem] border border-teal-100 shadow-xl flex justify-between items-center">
-            <div className="space-y-1"><p className="text-[8px] font-black text-teal-600 uppercase tracking-widest">Est. Gross Earnings</p><p className="text-4xl font-bold font-brand tracking-tighter text-[#0D9488]">€{worksheetData.totalEarnings}</p></div>
+            <div className="space-y-1"><p className="text-[8px] font-black text-teal-600 uppercase tracking-widest">Est. Gross Earnings</p><p className="text-4xl font-bold font-brand tracking-tighter text-[#0D9488]">€{totalCalculatedGross.toFixed(2)}</p></div>
             <div className="w-16 h-16 bg-teal-50 rounded-2xl flex items-center justify-center text-3xl">💶</div>
          </div>
       </div>
@@ -124,24 +150,46 @@ const EmployeeWorksheet: React.FC<EmployeeWorksheetProps> = ({ user, shifts, pro
           <table className="w-full text-left">
             <thead className="bg-slate-50 border-b border-slate-100">
               <tr>
-                <th className="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest">Apartment / Service</th>
+                <th className="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest">{user.role === 'laundry' ? 'Work Session' : 'Apartment / Service'}</th>
                 <th className="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Hours</th>
                 <th className="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Earning (€)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {worksheetData.rows.length === 0 ? (
-                <tr><td colSpan={3} className="px-8 py-20 text-center text-slate-300 italic text-[10px] font-black uppercase tracking-widest">No completed sessions found.</td></tr>
-              ) : worksheetData.rows.map(row => (
-                <tr key={row.id} className="hover:bg-teal-50/20 transition-colors">
-                  <td className="px-8 py-6">
-                    <p className="text-xs font-bold text-slate-900 uppercase leading-none">{row.propertyName}</p>
-                    <div className="flex items-center gap-2 mt-1.5"><span className="text-[8px] font-black text-slate-300 uppercase tracking-widest">{row.date}</span><span className="w-1 h-1 rounded-full bg-slate-200"></span><span className="text-[8px] font-black text-teal-600 uppercase tracking-widest">{row.service}</span></div>
-                  </td>
-                  <td className="px-8 py-6 text-center text-xs font-bold text-slate-500">{row.hours}</td>
-                  <td className="px-8 py-6 text-right"><p className="text-sm font-black text-slate-900 tracking-tight">€{row.payout}</p></td>
-                </tr>
-              ))}
+              {user.role === 'laundry' ? (
+                laundryRows.length === 0 ? (
+                  <tr><td colSpan={3} className="px-8 py-20 text-center text-slate-300 italic text-[10px] font-black uppercase tracking-widest">No HQ Clock-ins found.</td></tr>
+                ) : laundryRows.map(row => (
+                  <tr key={row.id} className="hover:bg-teal-50/20 transition-colors">
+                    <td className="px-8 py-6">
+                      <p className="text-xs font-bold text-slate-900 uppercase leading-none">Laundry HQ Session</p>
+                      <div className="flex items-center gap-2 mt-1.5"><span className="text-[8px] font-black text-slate-300 uppercase tracking-widest">{row.date}</span><span className="w-1 h-1 rounded-full bg-slate-200"></span><span className="text-[8px] font-black text-indigo-600 uppercase tracking-widest">{row.time}</span></div>
+                    </td>
+                    <td className="px-8 py-6 text-center text-xs font-bold text-slate-500">{row.hours}</td>
+                    <td className="px-8 py-6 text-right font-black text-slate-900">€{row.earned}</td>
+                  </tr>
+                ))
+              ) : (
+                shiftRows.length === 0 ? (
+                  <tr><td colSpan={3} className="px-8 py-20 text-center text-slate-300 italic text-[10px] font-black uppercase tracking-widest">No completed sessions found.</td></tr>
+                ) : shiftRows.map(row => (
+                  <tr key={row.id} className="hover:bg-teal-50/20 transition-colors">
+                    <td className="px-8 py-6">
+                      <p className="text-xs font-bold text-slate-900 uppercase leading-none">{row.name}</p>
+                      <div className="flex items-center gap-2 mt-1.5"><span className="text-[8px] font-black text-slate-300 uppercase tracking-widest">{row.date}</span><span className="w-1 h-1 rounded-full bg-slate-200"></span><span className="text-[8px] font-black text-teal-600 uppercase tracking-widest">{row.service}</span></div>
+                    </td>
+                    <td className="px-8 py-6 text-center text-xs font-bold text-slate-500">{row.hours}</td>
+                    <td className="px-8 py-6 text-right">
+                       <div className="flex flex-col items-end">
+                         <p className="text-sm font-black text-slate-900 tracking-tight">€{row.earned}</p>
+                         <span className={`text-[6px] font-black uppercase px-1 rounded ${row.method === 'PIECE' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-400'}`}>
+                           {row.method} RATE
+                         </span>
+                       </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
