@@ -39,12 +39,7 @@ const EmployeeWorksheet: React.FC<EmployeeWorksheetProps> = ({ user, shifts, pro
     });
 
     let totalHours = 0;
-    let totalEarnings = 0;
-    
-    // 1. Initialise base salary for Fixed Wage users
-    if (user.paymentType === 'Fixed Wage') {
-      totalEarnings = user.payRate || 0;
-    }
+    let totalEarnings = user.paymentType === 'Fixed Wage' ? (user.payRate || 0) : 0;
 
     const rows = filtered.map(s => {
       const prop = properties.find(p => p.id === s.propertyId);
@@ -53,29 +48,24 @@ const EmployeeWorksheet: React.FC<EmployeeWorksheetProps> = ({ user, shifts, pro
       totalHours += hours;
 
       let payout = 0;
-      const hourlyRate = user.paymentType === 'Fixed Wage' ? 0 : (user.payRate || 5.00);
-      const basePayForHoursSpent = hours * hourlyRate;
+      const hourlyRate = user.payRate || 5.00;
+      const durationPay = hours * hourlyRate;
 
       if (s.approvalStatus === 'approved') {
           const teamCount = s.userIds?.length || 1;
-          
-          let flatRate = 0;
-          if (s.serviceType === 'TO FIX') {
-              flatRate = s.fixWorkPayment || 0;
-          } else if (prop) {
-              flatRate = getCleanerRateForShift(s.serviceType, prop) / teamCount;
-          }
+          let pieceRate = 0;
+          if (s.serviceType === 'TO FIX') pieceRate = s.fixWorkPayment || 0;
+          else if (prop) pieceRate = getCleanerRateForShift(s.serviceType, prop) / teamCount;
 
           if (user.paymentType === 'Fixed Wage') {
-              // For Fixed Wage users, every approved piece rate clean is a bonus
-              payout = flatRate;
+              payout = pieceRate;
           } else if (user.paymentType === 'Per Clean') {
-              payout = Math.max(flatRate, basePayForHoursSpent);
+              payout = Math.max(pieceRate, durationPay);
           } else {
-              payout = basePayForHoursSpent;
+              payout = durationPay;
           }
       } else {
-          payout = s.approvalStatus === 'rejected' ? basePayForHoursSpent : 0;
+          payout = user.paymentType === 'Fixed Wage' ? 0 : durationPay;
       }
 
       totalEarnings += payout;
@@ -85,21 +75,18 @@ const EmployeeWorksheet: React.FC<EmployeeWorksheetProps> = ({ user, shifts, pro
         date: s.date,
         propertyName: s.propertyName,
         service: s.serviceType,
-        time: `${new Date(s.actualStartTime || 0).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${new Date(s.actualEndTime || 0).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
         hours: hours.toFixed(1),
         status: s.approvalStatus,
         payout: payout.toFixed(2)
       };
     });
 
-    // 2. Add Base Salary row if applicable at the top
     if (user.paymentType === 'Fixed Wage') {
       rows.unshift({
-        id: 'base-salary',
+        id: 'base-fixed',
         date: selectedMonth,
-        propertyName: 'RETAINER / BASE SALARY',
-        service: 'FIXED MONTHLY PAYOUT',
-        time: 'N/A',
+        propertyName: 'BASE SALARY RETAINER',
+        service: 'RETAINER',
         hours: 'N/A',
         status: 'approved',
         payout: (user.payRate || 0).toFixed(2)
@@ -122,13 +109,13 @@ const EmployeeWorksheet: React.FC<EmployeeWorksheetProps> = ({ user, shifts, pro
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-         <div className="bg-[#1E293B] p-8 rounded-[2.5rem] text-white shadow-xl flex justify-between items-center relative overflow-hidden group">
-            <div className="space-y-1 relative z-10"><p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Period Activity</p><p className="text-4xl font-bold font-brand tracking-tighter">{worksheetData.totalHours} <span className="text-sm text-slate-500">HRS</span></p></div>
-            <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center text-3xl group-hover:scale-110 transition-transform relative z-10">⏱️</div>
+         <div className="bg-[#1E293B] p-8 rounded-[2.5rem] text-white shadow-xl flex justify-between items-center">
+            <div className="space-y-1"><p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Period Activity</p><p className="text-4xl font-bold font-brand tracking-tighter">{worksheetData.totalHours} <span className="text-sm text-slate-500">HRS</span></p></div>
+            <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center text-3xl">⏱️</div>
          </div>
-         <div className="bg-white p-8 rounded-[2.5rem] border border-teal-100 shadow-xl flex justify-between items-center relative overflow-hidden group">
-            <div className="space-y-1 relative z-10"><p className="text-[8px] font-black text-teal-600 uppercase tracking-widest">Est. Additional Earnings</p><p className="text-4xl font-bold font-brand tracking-tighter text-[#0D9488]">€{worksheetData.totalEarnings}</p></div>
-            <div className="w-16 h-16 bg-teal-50 rounded-2xl flex items-center justify-center text-3xl group-hover:scale-110 transition-transform relative z-10">💶</div>
+         <div className="bg-white p-8 rounded-[2.5rem] border border-teal-100 shadow-xl flex justify-between items-center">
+            <div className="space-y-1"><p className="text-[8px] font-black text-teal-600 uppercase tracking-widest">Est. Gross Earnings</p><p className="text-4xl font-bold font-brand tracking-tighter text-[#0D9488]">€{worksheetData.totalEarnings}</p></div>
+            <div className="w-16 h-16 bg-teal-50 rounded-2xl flex items-center justify-center text-3xl">💶</div>
          </div>
       </div>
 
@@ -137,21 +124,21 @@ const EmployeeWorksheet: React.FC<EmployeeWorksheetProps> = ({ user, shifts, pro
           <table className="w-full text-left">
             <thead className="bg-slate-50 border-b border-slate-100">
               <tr>
-                <th className="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest">Date / Apartment</th>
-                <th className="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
+                <th className="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest">Apartment / Service</th>
+                <th className="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Hours</th>
                 <th className="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Earning (€)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {worksheetData.rows.length === 0 ? (
-                <tr><td colSpan={3} className="px-8 py-20 text-center text-slate-300 italic text-[10px] font-black uppercase tracking-widest">No completed sessions found for this period.</td></tr>
+                <tr><td colSpan={3} className="px-8 py-20 text-center text-slate-300 italic text-[10px] font-black uppercase tracking-widest">No completed sessions found.</td></tr>
               ) : worksheetData.rows.map(row => (
                 <tr key={row.id} className="hover:bg-teal-50/20 transition-colors">
                   <td className="px-8 py-6">
                     <p className="text-xs font-bold text-slate-900 uppercase leading-none">{row.propertyName}</p>
                     <div className="flex items-center gap-2 mt-1.5"><span className="text-[8px] font-black text-slate-300 uppercase tracking-widest">{row.date}</span><span className="w-1 h-1 rounded-full bg-slate-200"></span><span className="text-[8px] font-black text-teal-600 uppercase tracking-widest">{row.service}</span></div>
                   </td>
-                  <td className="px-8 py-6 text-center"><span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border ${row.status === 'approved' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : row.status === 'rejected' ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>{row.status}</span></td>
+                  <td className="px-8 py-6 text-center text-xs font-bold text-slate-500">{row.hours}</td>
                   <td className="px-8 py-6 text-right"><p className="text-sm font-black text-slate-900 tracking-tight">€{row.payout}</p></td>
                 </tr>
               ))}

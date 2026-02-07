@@ -10,7 +10,6 @@ export const getCleanerRateForShift = (serviceType: string, prop: Property): num
   if (type === 'TO CHECK APARTMENT') return prop.cleanerAuditPrice || 0;
   if (type === 'COMMON AREA') return prop.cleanerCommonAreaPrice || 0;
   if (type === 'BEDS ONLY') return prop.cleanerBedsOnlyPrice || 0;
-  // Default to standard checkout price
   return prop.cleanerPrice || 0;
 };
 
@@ -30,8 +29,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
   const currentUserObj = JSON.parse(localStorage.getItem('current_user_obj') || '{}');
   const isCurrentUserAdmin = currentUserObj.role === 'admin';
   const isViewingSelf = currentUserObj.id === user.id;
-  
-  const canManageFinancials = isCurrentUserAdmin;
   
   const [viewingDoc, setViewingDoc] = useState<'payslip' | 'worksheet' | 'fs3' | null>(initialDocView || null);
   const [activeHistoricalPayslip, setActiveHistoricalPayslip] = useState<SavedPayslip | null>(initialHistoricalPayslip || null);
@@ -94,16 +91,9 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
       };
     }
 
-    // 1. Core Base Initialization
-    let baseSalary = 0;
-    if (user.paymentType === 'Fixed Wage') {
-      baseSalary = Number(user.payRate) || 0;
-    }
+    let baseSalary = user.paymentType === 'Fixed Wage' ? (Number(user.payRate) || 0) : 0;
+    let deploymentEarnings = 0;
 
-    let bonusesFromCleans = 0;
-    let hourlyEarnings = 0;
-
-    // 2. Deployment Processing
     filteredShifts.forEach(s => {
         const prop = properties?.find(p => p.id === s.propertyId);
         if (!prop && s.serviceType !== 'TO FIX') return;
@@ -111,36 +101,27 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         const durationMs = (s.actualEndTime || 0) - (s.actualStartTime || 0);
         const hours = Math.max(0, durationMs / (1000 * 60 * 60));
         const hourlyRate = Number(user.payRate) || 5.00;
-        const basePayForHoursSpent = hours * hourlyRate;
+        const durationPay = hours * hourlyRate;
 
         if (s.approvalStatus === 'approved') {
             const teamCount = s.userIds?.length || 1;
-            let flatRate = 0;
-            if (s.serviceType === 'TO FIX') flatRate = s.fixWorkPayment || 0;
-            else if (prop) flatRate = getCleanerRateForShift(s.serviceType, prop) / teamCount;
+            let pieceRate = 0;
+            if (s.serviceType === 'TO FIX') pieceRate = s.fixWorkPayment || 0;
+            else if (prop) pieceRate = getCleanerRateForShift(s.serviceType, prop) / teamCount;
 
             if (user.paymentType === 'Fixed Wage') {
-                // Fixed Wage: Every clean is a bonus on top of base
-                bonusesFromCleans += flatRate;
+                deploymentEarnings += pieceRate; // Pure bonus
             } else if (user.paymentType === 'Per Clean') {
-                // Per Clean: Better of piece-rate or hourly
-                hourlyEarnings += Math.max(flatRate, basePayForHoursSpent);
+                deploymentEarnings += Math.max(pieceRate, durationPay); // Hybrid: better of two
             } else {
-                // Per Hour: Standard duration pay
-                hourlyEarnings += basePayForHoursSpent;
+                deploymentEarnings += durationPay; // Standard hourly
             }
-        } else {
-            // Pending or Rejected: Only base hourly applies if applicable
-            if (user.paymentType !== 'Fixed Wage') {
-              hourlyEarnings += basePayForHoursSpent;
-            }
+        } else if (user.paymentType !== 'Fixed Wage') {
+            deploymentEarnings += durationPay; // Unapproved still pays base duration if not fixed wage
         }
     });
 
-    const calculatedGross = baseSalary + bonusesFromCleans + hourlyEarnings;
-    const actualGrossPay = manualGrossPay !== null ? manualGrossPay : calculatedGross;
-    
-    // Malta standard NI/Tax estimates
+    const actualGrossPay = manualGrossPay !== null ? manualGrossPay : (baseSalary + deploymentEarnings);
     const ni = actualGrossPay * 0.1;
     const tax = actualGrossPay * 0.15;
 
@@ -151,15 +132,11 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
       govBonus: 0,
       totalNet: Math.max(0, actualGrossPay - ni - tax)
     };
-  }, [filteredShifts, user, payPeriodFrom, payPeriodUntil, properties, activeHistoricalPayslip, manualGrossPay]);
-
-  const userLeaveRequests = useMemo(() => {
-    return (leaveRequests || []).filter(l => l.userId === user.id).sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
-  }, [leaveRequests, user.id]);
+  }, [filteredShifts, user, properties, activeHistoricalPayslip, manualGrossPay]);
 
   const handleCommitPayslip = () => {
     if (!onUpdateUser) return;
-    if (!window.confirm(`CONFIRM FINANCIAL COMMITMENT:\n\nGenerate permanent record for ${user.name}?`)) return;
+    if (!window.confirm(`COMMIT FINANCIAL RECORD:\n\nGenerate official payslip for ${user.name}?`)) return;
 
     const newPayslip: SavedPayslip = {
       id: `ps-${Date.now()}`,
@@ -178,223 +155,140 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     };
 
     onUpdateUser({ ...user, payslips: [...(user.payslips || []), newPayslip] });
-    alert("Record committed to registry.");
+    alert("Payroll commitment secured.");
     setActiveSubTab('PAYSLIP REGISTRY');
   };
 
-  const handleSubmitLeave = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!leaveStart || !leaveEnd) return;
-    onRequestLeave?.(leaveType, leaveStart, leaveEnd);
-    setShowLeaveForm(false);
-    setLeaveStart('');
-    setLeaveEnd('');
-  };
-
-  const subLabelStyle = "text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5";
-  const inputStyle = "w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-[10px] font-black uppercase tracking-widest outline-none focus:border-teal-500 transition-all shadow-inner";
-
-  const visibleSubTabs = useMemo(() => {
-    const tabs: ('PENDING PAYOUTS' | 'PAYSLIP REGISTRY' | 'LEAVE REQUESTS')[] = ['PAYSLIP REGISTRY', 'LEAVE REQUESTS'];
-    if (canManageFinancials) tabs.unshift('PENDING PAYOUTS');
-    return tabs;
-  }, [canManageFinancials]);
+  const labelStyle = "text-[7px] font-black text-slate-500 uppercase tracking-[0.4em] mb-1.5 block px-1";
+  const inputStyle = "w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 text-[10px] font-bold uppercase tracking-widest outline-none focus:border-teal-500 transition-all shadow-inner";
 
   return (
     <div className="bg-transparent min-h-fit text-left font-brand animate-in fade-in duration-500">
       <div className="mx-auto space-y-10">
-        <section className="bg-white border border-slate-100 rounded-[2rem] p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-8 shadow-sm">
-           <div className="flex items-center gap-6 w-full md:w-auto text-left">
-              <div className="w-16 h-16 md:w-20 md:h-20 rounded-[1.5rem] bg-teal-50 flex items-center justify-center text-[#0D9488] font-bold text-3xl shadow-inner overflow-hidden border border-teal-100 shrink-0">
-                 {user.photoUrl ? <img src={user.photoUrl} className="w-full h-full object-cover" /> : user.name.charAt(0)}
+        <section className="bg-white border border-slate-100 rounded-[2rem] p-8 flex flex-col md:flex-row items-center justify-between gap-8 shadow-sm">
+           <div className="flex items-center gap-6 text-left">
+              <div className="w-20 h-20 rounded-[1.5rem] bg-teal-50 flex items-center justify-center text-[#0D9488] font-bold text-3xl shadow-inner border border-teal-100">
+                 {user.photoUrl ? <img src={user.photoUrl} className="w-full h-full object-cover rounded-[1.5rem]" /> : user.name.charAt(0)}
               </div>
               <div>
-                 <h2 className="text-xl md:text-2xl font-bold text-slate-900 uppercase tracking-tight">{user.name}</h2>
+                 <h2 className="text-2xl font-bold text-slate-900 uppercase tracking-tight">{user.name}</h2>
                  <p className="text-[10px] font-black text-[#0D9488] uppercase tracking-widest mt-1">{user.role} • {user.paymentType}</p>
                  <p className="text-[9px] font-bold text-slate-400 uppercase mt-0.5">{user.email}</p>
               </div>
            </div>
            
-           <div className="flex flex-wrap gap-4 w-full md:w-auto">
-              {(isViewingSelf || isCurrentUserAdmin) && (
-                <button onClick={() => setShowLeaveForm(true)} className="bg-indigo-600 text-white px-6 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all">REQUEST ABSENCE</button>
-              )}
-              <div className="bg-slate-50 px-6 py-3 rounded-2xl border border-slate-100 min-w-[120px]">
-                 <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1 text-center">RATE</p>
-                 <p className="text-xs font-bold text-slate-900 text-center">€{user.payRate?.toFixed(2)} / {user.paymentType === 'Per Hour' ? 'HR' : 'PERIOD'}</p>
+           <div className="flex flex-wrap gap-4">
+              <div className="bg-slate-50 px-8 py-3 rounded-2xl border border-slate-100 min-w-[140px]">
+                 <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1 text-center">CONTRACT RATE</p>
+                 <p className="text-sm font-black text-slate-900 text-center">€{user.payRate?.toFixed(2)}</p>
+                 <p className="text-[7px] font-bold text-slate-300 uppercase text-center tracking-widest">{user.paymentType === 'Per Hour' ? 'Per Hour' : 'Base'}</p>
               </div>
+              {(isViewingSelf || isCurrentUserAdmin) && (
+                <button onClick={() => setShowLeaveForm(true)} className="bg-indigo-600 text-white px-8 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all">REQUEST LEAVE</button>
+              )}
            </div>
         </section>
 
         <div className="space-y-6">
-           <div className="flex gap-10 border-b border-slate-200 w-full md:w-auto px-4 overflow-x-auto no-scrollbar">
-              {visibleSubTabs.map(tab => (
-                 <button key={tab} onClick={() => setActiveSubTab(tab)} className={`pb-4 text-[10px] md:text-[11px] font-black tracking-widest transition-all relative whitespace-nowrap ${activeSubTab === tab ? 'text-[#0D9488]' : 'text-slate-400'}`}>
-                    {tab}
-                    {activeSubTab === tab && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0D9488] animate-in slide-in-from-left duration-300"></div>}
-                 </button>
+           <div className="flex gap-10 border-b border-slate-200 px-4">
+              {['PENDING PAYOUTS', 'PAYSLIP REGISTRY', 'LEAVE REQUESTS'].map(tab => (
+                 (tab === 'PENDING PAYOUTS' && !isCurrentUserAdmin) ? null : (
+                   <button key={tab} onClick={() => setActiveSubTab(tab as any)} className={`pb-4 text-[11px] font-black tracking-widest transition-all relative ${activeSubTab === tab ? 'text-[#0D9488]' : 'text-slate-400'}`}>
+                      {tab}
+                      {activeSubTab === tab && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0D9488] animate-in slide-in-from-left"></div>}
+                   </button>
+                 )
               ))}
            </div>
 
-           <div className="animate-in slide-in-from-bottom-4 duration-500">
-              {activeSubTab === 'PENDING PAYOUTS' && canManageFinancials && (
-                <section className="bg-white border border-slate-100 rounded-[2.5rem] p-6 md:p-10 shadow-lg space-y-10 text-left">
-                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-                      <div className="space-y-6">
-                         <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Hybrid Payment Calculator</h3>
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="md:col-span-2">
-                               <label className={subLabelStyle}>Month Focus</label>
-                               <select className={inputStyle} value={selectedDocMonth} onChange={e => setSelectedDocMonth(e.target.value)}>
-                                  {monthOptions.map(m => <option key={m} value={m}>{m}</option>)}
-                               </select>
-                            </div>
-                            <div><label className={subLabelStyle}>From</label><input type="date" className={inputStyle} value={payPeriodFrom} onChange={e => setPayPeriodFrom(e.target.value)} /></div>
-                            <div><label className={subLabelStyle}>Until</label><input type="date" className={inputStyle} value={payPeriodUntil} onChange={e => setPayPeriodUntil(e.target.value)} /></div>
-                         </div>
-                         <div className="pt-4 space-y-2">
-                            <label className={subLabelStyle}>Adjust Manual Gross (€)</label>
-                            <input type="number" step="0.01" className={inputStyle} value={manualGrossPay || ''} onChange={e => setManualGrossPay(e.target.value ? parseFloat(e.target.value) : null)} placeholder="Override calculation..." />
-                         </div>
-                      </div>
-                      <div className="p-8 bg-emerald-50 border border-emerald-100 rounded-[2rem] flex flex-col justify-center">
-                         <p className={subLabelStyle}>Total Net Payout Preview</p>
-                         <p className="text-5xl font-black text-emerald-700 tracking-tighter leading-none">€{payrollData.totalNet.toFixed(2)}</p>
-                         <p className="text-[8px] font-black text-emerald-600/50 uppercase tracking-widest mt-4">Includes bonuses for {filteredShifts.length} deployments</p>
-                         <button onClick={handleCommitPayslip} className="mt-8 bg-indigo-600 text-white font-black py-4 rounded-xl uppercase text-[10px] tracking-widest shadow-xl hover:bg-indigo-700 transition-all active:scale-95">COMMIT TO REGISTRY</button>
-                      </div>
-                   </div>
-                </section>
-              )}
+           {activeSubTab === 'PENDING PAYOUTS' && (
+              <section className="bg-white border border-slate-100 rounded-[2.5rem] p-10 shadow-lg space-y-10 animate-in slide-in-from-bottom-4">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+                     <div className="space-y-6">
+                        <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Pay Period Calculation</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                           <div className="md:col-span-2">
+                              <label className={labelStyle}>Month Focus</label>
+                              <select className={inputStyle} value={selectedDocMonth} onChange={e => setSelectedDocMonth(e.target.value)}>
+                                 {monthOptions.map(m => <option key={m} value={m}>{m}</option>)}
+                              </select>
+                           </div>
+                           <div><label className={labelStyle}>From</label><input type="date" className={inputStyle} value={payPeriodFrom} onChange={e => setPayPeriodFrom(e.target.value)} /></div>
+                           <div><label className={labelStyle}>Until</label><input type="date" className={inputStyle} value={payPeriodUntil} onChange={e => setPayPeriodUntil(e.target.value)} /></div>
+                        </div>
+                     </div>
+                     <div className="p-10 bg-emerald-50 border border-emerald-100 rounded-[2rem] flex flex-col justify-center">
+                        <p className="text-[8px] font-black text-emerald-600 uppercase tracking-[0.4em] mb-4">Calculated Net Payout</p>
+                        <p className="text-6xl font-black text-emerald-700 tracking-tighter leading-none">€{payrollData.totalNet.toFixed(2)}</p>
+                        <p className="text-[9px] font-bold text-emerald-600/40 uppercase mt-4">Inclusive of efficiency bonuses and piece-rates</p>
+                        <button onClick={handleCommitPayslip} className="mt-8 bg-slate-900 text-white font-black py-4 rounded-xl uppercase text-[10px] tracking-widest shadow-xl active:scale-95">COMMIT & NOTIFY STAFF</button>
+                     </div>
+                  </div>
+              </section>
+           )}
 
-              {activeSubTab === 'PAYSLIP REGISTRY' && (
-                <section className="bg-white border border-slate-100 rounded-[2.5rem] shadow-xl overflow-hidden text-left">
-                   <div className="overflow-x-auto">
-                      <table className="w-full text-left">
-                         <thead className="bg-slate-50/80 border-b border-slate-100">
-                            <tr>
-                               <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest">Month</th>
-                               <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest">Period</th>
-                               <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Net (€)</th>
-                               <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Action</th>
-                            </tr>
-                         </thead>
-                         <tbody className="divide-y divide-slate-50">
-                            {(user.payslips || []).length === 0 ? (
-                               <tr><td colSpan={4} className="px-10 py-20 text-center opacity-20 text-[10px] font-black uppercase">No payslips issued</td></tr>
-                            ) : [...(user.payslips || [])].reverse().map(ps => (
-                               <tr key={ps.id}>
-                                  <td className="px-10 py-6 text-[11px] font-black text-slate-900 uppercase">{ps.month}</td>
-                                  <td className="px-10 py-6 text-[10px] font-bold text-slate-400">{ps.periodFrom} — {ps.periodUntil}</td>
-                                  <td className="px-10 py-6 text-right text-sm font-black text-[#0D9488]">€{ps.netPay.toFixed(2)}</td>
-                                  <td className="px-10 py-6 text-right">
-                                     <button onClick={() => { setActiveHistoricalPayslip(ps); setViewingDoc('payslip'); }} className="bg-teal-50 text-teal-700 px-4 py-2 rounded-lg text-[8px] font-black uppercase">View Doc</button>
-                                  </td>
-                               </tr>
-                            ))}
-                         </tbody>
-                      </table>
-                   </div>
-                </section>
-              )}
-
-              {activeSubTab === 'LEAVE REQUESTS' && (
-                <section className="space-y-6 animate-in slide-in-from-right-4">
-                   <div className="bg-indigo-50 border border-indigo-100 p-6 rounded-[2rem] flex items-center justify-between shadow-sm">
-                      <div className="flex items-center gap-4">
-                         <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-xl shadow-sm">⛱️</div>
-                         <div className="text-left">
-                            <p className="text-[10px] font-black text-indigo-900 uppercase tracking-widest">Absence Summary</p>
-                            <p className="text-xs font-bold text-indigo-700 uppercase">{userLeaveRequests.filter(l => l.status === 'approved').length} Approved Absences</p>
-                         </div>
-                      </div>
-                      <button onClick={() => setShowLeaveForm(true)} className="bg-white border border-indigo-200 text-indigo-600 px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest hover:shadow-md transition-all">New Application</button>
-                   </div>
-                   <div className="bg-white border border-slate-100 rounded-[2.5rem] shadow-xl overflow-hidden text-left">
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left">
-                           <thead className="bg-slate-50/80 border-b border-slate-100">
-                              <tr>
-                                 <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest">Type</th>
-                                 <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest">Period</th>
-                                 <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
-                              </tr>
-                           </thead>
-                           <tbody className="divide-y divide-slate-50">
-                              {userLeaveRequests.length === 0 ? (
-                                 <tr><td colSpan={3} className="px-10 py-20 text-center opacity-20 text-[10px] font-black uppercase italic">No leave history found</td></tr>
-                              ) : userLeaveRequests.map(l => (
-                                 <tr key={l.id}>
-                                    <td className="px-10 py-6"><span className="text-[10px] font-black text-slate-900 uppercase">{l.type}</span></td>
-                                    <td className="px-10 py-6"><span className="text-[9px] font-bold text-slate-400 uppercase">{l.startDate} TO {l.endDate}</span></td>
-                                    <td className="px-10 py-6 text-center"><span className={`px-4 py-1.5 rounded-full text-[8px] font-black uppercase tracking-widest shadow-sm ${l.status === 'approved' ? 'bg-emerald-600 text-white' : l.status === 'rejected' ? 'bg-rose-600 text-white' : 'bg-amber-100 text-amber-700'}`}>{l.status}</span></td>
-                                 </tr>
-                              ))}
-                           </tbody>
-                        </table>
-                      </div>
-                   </div>
-                </section>
-              )}
-           </div>
+           {activeSubTab === 'PAYSLIP REGISTRY' && (
+              <div className="bg-white border border-slate-100 rounded-[2.5rem] shadow-xl overflow-hidden text-left animate-in slide-in-from-right-4">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                       <thead className="bg-slate-50 border-b border-slate-100">
+                          <tr>
+                             <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest">Month</th>
+                             <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Gross (€)</th>
+                             <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Net (€)</th>
+                             <th className="px-10 py-6 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Action</th>
+                          </tr>
+                       </thead>
+                       <tbody className="divide-y divide-slate-50">
+                          {(user.payslips || []).length === 0 ? (
+                             <tr><td colSpan={4} className="px-10 py-20 text-center opacity-20 text-[10px] uppercase font-black">No payslips found</td></tr>
+                          ) : [...(user.payslips || [])].reverse().map(ps => (
+                             <tr key={ps.id}>
+                                <td className="px-10 py-6 text-[11px] font-black text-slate-900 uppercase">{ps.month}</td>
+                                <td className="px-10 py-6 text-right text-sm font-bold text-slate-600">€{ps.grossPay.toFixed(2)}</td>
+                                <td className="px-10 py-6 text-right text-sm font-black text-emerald-600">€{ps.netPay.toFixed(2)}</td>
+                                <td className="px-10 py-6 text-right">
+                                   <button onClick={() => { setActiveHistoricalPayslip(ps); setViewingDoc('payslip'); }} className="bg-slate-100 text-slate-900 px-4 py-2 rounded-lg text-[8px] font-black uppercase">View Doc</button>
+                                </td>
+                             </tr>
+                          ))}
+                       </tbody>
+                    </table>
+                  </div>
+              </div>
+           )}
         </div>
       </div>
 
-      {showLeaveForm && (
-        <div className="fixed inset-0 bg-slate-900/60 z-[500] flex items-center justify-center p-4 backdrop-blur-md">
-           <div className="bg-white rounded-[2.5rem] w-full max-w-md p-10 space-y-8 shadow-2xl relative text-left animate-in zoom-in-95">
-              <button onClick={() => setShowLeaveForm(false)} className="absolute top-8 right-8 text-slate-300 hover:text-slate-900 font-black text-xl">&times;</button>
-              <div className="space-y-1">
-                 <h2 className="text-2xl font-bold uppercase text-slate-900 tracking-tight">Request Absence</h2>
-                 <p className="text-[9px] font-black text-indigo-600 uppercase tracking-[0.4em]">Official Leave Application</p>
-              </div>
-              <form onSubmit={handleSubmitLeave} className="space-y-6">
-                 <div>
-                    <label className={subLabelStyle}>Leave Category</label>
-                    <select className={inputStyle} value={leaveType} onChange={e => setLeaveType(e.target.value as LeaveType)}>
-                       <option value="Vacation Leave">Vacation Leave</option>
-                       <option value="Sick Leave">Sick Leave</option>
-                       <option value="Day Off">Standard Day Off</option>
-                    </select>
-                 </div>
-                 <div className="grid grid-cols-2 gap-4">
-                    <div><label className={subLabelStyle}>Starting On</label><input required type="date" className={inputStyle} value={leaveStart} onChange={e => setLeaveStart(e.target.value)} /></div>
-                    <div><label className={subLabelStyle}>Ending On</label><input required type="date" className={inputStyle} value={leaveEnd} onChange={e => setLeaveEnd(e.target.value)} /></div>
-                 </div>
-                 <button type="submit" className="w-full bg-indigo-600 text-white font-black py-4 rounded-xl uppercase tracking-widest text-[10px] shadow-xl active:scale-95 transition-all">SUBMIT APPLICATION</button>
-              </form>
-           </div>
-        </div>
-      )}
-
-      {viewingDoc && (
+      {viewingDoc === 'payslip' && (
         <div className="fixed inset-0 bg-slate-900/60 z-[500] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
-           <div className="bg-white rounded-[3rem] w-full max-w-3xl p-10 md:p-14 space-y-12 shadow-2xl relative text-left my-auto animate-in zoom-in-95">
-              <button onClick={() => { setViewingDoc(null); setActiveHistoricalPayslip(null); }} className="absolute top-10 right-10 text-slate-300 hover:text-slate-900 no-print font-black text-xl">&times;</button>
-              <div>
-                 <header className="flex justify-between items-start border-b-2 border-slate-900 pb-10">
-                    <div className="space-y-2">
-                       <h1 className="text-3xl font-black uppercase tracking-tighter text-slate-900 leading-none">{organization?.legalEntity || organization?.name || 'RESET STUDIO'}</h1>
-                       <p className="text-[11px] font-black text-teal-600 uppercase tracking-widest">OFFICIAL PAYROLL RECORD</p>
-                    </div>
-                    <div className="text-right">
-                       <h2 className="text-lg font-black uppercase tracking-[0.2em] bg-slate-900 text-white px-6 py-1.5">PAYSLIP</h2>
-                       <p className="text-sm font-black text-slate-900 uppercase mt-4">{user.name}</p>
-                       <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase">{selectedDocMonth}</p>
-                    </div>
-                 </header>
-                 <div className="space-y-10 mt-10">
-                    <div className="flex justify-between border-b-4 border-slate-900 pb-8 text-4xl font-black text-emerald-600">
-                       <span className="uppercase tracking-tighter">Net Payout</span>
-                       <span>€{payrollData.totalNet.toFixed(2)}</span>
-                    </div>
-                    <div className="space-y-4">
-                       <div className="flex justify-between text-xs font-bold text-slate-500 uppercase"><span>Gross Earnings</span><span className="text-slate-900 font-black">€{payrollData.grossPay.toFixed(2)}</span></div>
-                       <div className="flex justify-between text-xs font-bold text-slate-500 uppercase"><span>Social Security (NI)</span><span className="text-rose-600 font-black">-€{payrollData.ni.toFixed(2)}</span></div>
-                       <div className="flex justify-between text-xs font-bold text-slate-500 uppercase"><span>FSS PAYE Tax</span><span className="text-rose-600 font-black">-€{payrollData.tax.toFixed(2)}</span></div>
-                    </div>
+           <div className="bg-white rounded-[3rem] w-full max-w-3xl p-14 space-y-12 shadow-2xl relative text-left my-auto animate-in zoom-in-95">
+              <button onClick={() => { setViewingDoc(null); setActiveHistoricalPayslip(null); }} className="absolute top-10 right-10 text-slate-300 hover:text-slate-900 text-2xl no-print">&times;</button>
+              <header className="flex justify-between items-start border-b-2 border-slate-900 pb-10">
+                 <div className="space-y-2">
+                    <h1 className="text-3xl font-black uppercase text-slate-900 leading-none tracking-tighter">{organization?.legalEntity || organization?.name || 'RESET STUDIO'}</h1>
+                    <p className="text-[10px] font-black text-teal-600 uppercase tracking-widest">DIGITAL PAYROLL RECORD</p>
                  </div>
-                 <p className="text-[8px] font-black uppercase text-center text-slate-300 mt-12 tracking-[0.5em]">DIGITALLY VERIFIED BY RESET STUDIO OPS CORE</p>
+                 <div className="text-right">
+                    <div className="bg-slate-900 text-white px-6 py-2 rounded uppercase text-sm font-black tracking-widest mb-4">PAYSLIP</div>
+                    <p className="text-sm font-black text-slate-900 uppercase leading-none">{user.name}</p>
+                    <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase">{activeHistoricalPayslip?.month || selectedDocMonth}</p>
+                 </div>
+              </header>
+              <div className="space-y-10">
+                 <div className="flex justify-between border-b-4 border-slate-900 pb-8 text-4xl font-black text-emerald-600">
+                    <span className="uppercase tracking-tighter">Net Payable</span>
+                    <span>€{(activeHistoricalPayslip?.netPay || payrollData.totalNet).toFixed(2)}</span>
+                 </div>
+                 <div className="space-y-4">
+                    <div className="flex justify-between text-sm font-bold text-slate-500 uppercase"><span>Gross Earnings</span><span className="text-slate-900 font-black">€{(activeHistoricalPayslip?.grossPay || payrollData.grossPay).toFixed(2)}</span></div>
+                    <div className="flex justify-between text-sm font-bold text-slate-500 uppercase"><span>NI Contribution (10%)</span><span className="text-rose-600 font-black">-€{(activeHistoricalPayslip?.ni || payrollData.ni).toFixed(2)}</span></div>
+                    <div className="flex justify-between text-sm font-bold text-slate-500 uppercase"><span>FSS PAYE Tax (15%)</span><span className="text-rose-600 font-black">-€{(activeHistoricalPayslip?.tax || payrollData.tax).toFixed(2)}</span></div>
+                 </div>
+              </div>
+              <div className="pt-10 flex justify-between items-end border-t border-slate-100">
+                 <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.5em]">OPERATIONS_CORE_VERIFIED</p>
+                 <button onClick={() => window.print()} className="bg-slate-50 text-slate-400 px-6 py-2 rounded-xl text-[8px] font-black uppercase no-print">Export PDF</button>
               </div>
            </div>
         </div>
