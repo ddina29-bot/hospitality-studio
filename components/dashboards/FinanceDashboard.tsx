@@ -23,13 +23,8 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
 }) => {
   const [activeModule, setActiveModule] = useState<'payroll' | 'invoicing' | 'records'>('payroll');
   const [payrollSubView, setPayrollSubView] = useState<'pending' | 'registry'>('pending');
-  const [selectedPayslipId, setSelectedPayslipId] = useState<string | null>(null);
+  const [selectedPayslipUserId, setSelectedPayslipUserId] = useState<string | null>(null);
   const [invoiceSearch, setInvoiceSearch] = useState('');
-  
-  const [recordsSearch, setRecordsSearch] = useState('');
-  const [viewingRecordsUser, setViewingRecordsUser] = useState<User | null>(null);
-  const [initialDocMode, setInitialDocMode] = useState<'fs3' | 'payslip' | 'worksheet' | null>(null);
-  const [selectedHistoricalPayslip, setSelectedHistoricalPayslip] = useState<SavedPayslip | null>(null);
   
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [invoiceForm, setInvoiceForm] = useState({
@@ -42,6 +37,15 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
   
   const [generatedPreview, setGeneratedPreview] = useState<Invoice | null>(null);
 
+  // Helper for consistent date parsing across the finance module
+  const parseFinanceDate = (dateStr: string) => {
+    if (!dateStr) return new Date();
+    if (dateStr.includes('-')) return new Date(dateStr);
+    const currentYear = new Date().getFullYear();
+    const d = new Date(`${dateStr} ${currentYear}`);
+    return isNaN(d.getTime()) ? new Date() : d;
+  };
+
   const filteredInvoices = useMemo(() => {
     if (!invoices) return [];
     const q = invoiceSearch.toLowerCase();
@@ -51,21 +55,9 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
     );
   }, [invoices, invoiceSearch]);
 
-  const filteredRecordsUsers = useMemo(() => {
-    return users.filter(u => {
-      const matchesSearch = u.name.toLowerCase().includes(recordsSearch.toLowerCase()) || 
-                            u.role.toLowerCase().includes(recordsSearch.toLowerCase());
-      const isEmployee = ['cleaner', 'supervisor', 'driver', 'housekeeping', 'maintenance', 'laundry'].includes(u.role);
-      return matchesSearch && isEmployee;
-    }).sort((a, b) => {
-        if (a.status === 'inactive' && b.status !== 'inactive') return 1;
-        if (a.status !== 'inactive' && b.status === 'inactive') return -1;
-        return a.name.localeCompare(b.name);
-    });
-  }, [users, recordsSearch]);
-
   const cleanerPayroll = useMemo(() => {
     const data: Record<string, { user: User, shifts: Shift[] }> = {};
+    // Find shifts that are completed but not yet flagged as "paid" in the master shift record
     shifts.filter(s => s.status === 'completed' && !s.paid).forEach(s => {
       s.userIds?.forEach(sid => {
         if (!data[sid]) {
@@ -90,7 +82,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
     return list.sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime());
   }, [users]);
 
-  const calculatePayslipBreakdown = (staffShifts: Shift[], staff: User) => {
+  const calculateTotalNet = (staffShifts: Shift[], staff: User) => {
     let totalPieceRateEarned = 0;
     let totalHourlyEarned = 0;
     let totalHours = 0;
@@ -105,52 +97,25 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
       
       const hourlyRate = staff.payRate || 5.00;
       const basePayForShift = hours * hourlyRate;
-      const isApproved = s.approvalStatus === 'approved';
 
-      if (isApproved) {
+      if (s.approvalStatus === 'approved') {
         const teamCount = s.userIds?.length || 1;
-        
         let flatRate = 0;
-        if (s.serviceType === 'TO FIX') {
-            flatRate = s.fixWorkPayment || 0;
-        } else if (prop) {
-            flatRate = getCleanerRateForShift(s.serviceType, prop) / teamCount;
-        }
+        if (s.serviceType === 'TO FIX') flatRate = s.fixWorkPayment || 0;
+        else if (prop) flatRate = getCleanerRateForShift(s.serviceType, prop) / teamCount;
 
         if (staff.paymentType === 'Per Clean' || staff.paymentType === 'Fixed Wage') {
-            // For Fixed Wage users, piece rate is a pure bonus.
-            // For Per Clean users, it's the target pay.
             totalPieceRateEarned += Math.max(flatRate, staff.paymentType === 'Fixed Wage' ? 0 : basePayForShift);
         } else {
             totalHourlyEarned += basePayForShift;
         }
-      } else if (staff.paymentType === 'Per Hour') {
-        // Unapproved shifts usually revert to base pay or 0.
-        totalHourlyEarned += s.approvalStatus === 'rejected' ? basePayForShift : 0;
       }
     });
 
     const gross = totalPieceRateEarned + totalHourlyEarned;
     const ni = gross * 0.1;
     const tax = gross * 0.15;
-
-    return { totalHours, totalNet: Math.max(0, gross - ni - tax), gross };
-  };
-
-  const activePayslip = useMemo(() => {
-    if (!selectedPayslipId) return null;
-    const entry = cleanerPayroll.find(p => p.user.id === selectedPayslipId);
-    if (!entry) return null;
-    return { ...entry, breakdown: calculatePayslipBreakdown(entry.shifts, entry.user) };
-  }, [selectedPayslipId, cleanerPayroll, properties]);
-
-  const handleMarkPayrollPaid = () => {
-    if (!activePayslip || !setShifts) return;
-    const shiftIds = activePayslip.shifts.map(s => s.id);
-    const now = new Date().toISOString();
-    setShifts(prev => prev.map(s => shiftIds.includes(s.id) ? { ...s, paid: true, payoutDate: now } : s));
-    setSelectedPayslipId(null);
-    alert(`Payment confirmed for ${activePayslip.user.name}. Record locked.`);
+    return { totalHours, totalNet: Math.max(0, gross - ni - tax) };
   };
 
   const handlePreviewInvoice = () => {
@@ -168,8 +133,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
     end.setHours(23, 59, 59, 999);
 
     const targetShifts = shifts.filter(s => {
-      const dStr = s.date.includes('-') ? s.date : `${s.date} ${new Date().getFullYear()}`;
-      const d = new Date(dStr);
+      const d = parseFinanceDate(s.date);
       return s.propertyId && 
              properties.find(p => p.id === s.propertyId)?.clientId === clientId &&
              s.status === 'completed' &&
@@ -177,14 +141,14 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
              d >= start && d <= end;
     });
 
-    const targetTasks = manualTasks.filter(t => {
+    const targetTasks = manualTasks?.filter(t => {
       const d = new Date(t.date);
       return t.propertyId && 
              properties.find(p => p.id === t.propertyId)?.clientId === clientId &&
              t.status === 'completed' &&
              t.isBillable &&
              d >= start && d <= end;
-    });
+    }) || [];
 
     const invoiceItems: InvoiceItem[] = [];
 
@@ -251,25 +215,47 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
     alert("Invoice finalized and added to registry.");
   };
 
-  const labelStyle = "text-[7px] font-black text-slate-500 uppercase tracking-[0.4em] mb-1.5 block px-1";
-  const inputStyle = "w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 text-[10px] font-bold uppercase tracking-widest outline-none focus:border-emerald-500 transition-all shadow-inner";
-
-  const activePreviewClient = useMemo(() => {
-    if (!generatedPreview) return null;
-    return clients?.find(c => c.id === generatedPreview.clientId);
-  }, [generatedPreview, clients]);
-
-  const handleOpenHistoricalDoc = (ps: SavedPayslip & { userObj: User }) => {
-    setViewingRecordsUser(ps.userObj);
-    setInitialDocMode('payslip');
-    setSelectedHistoricalPayslip(ps);
+  const handleUpdateInvoiceStatus = (id: string, newStatus: 'paid' | 'overdue') => {
+    if (!setInvoices) return;
+    setInvoices(prev => prev.map(inv => inv.id === id ? { ...inv, status: newStatus } : inv));
   };
+
+  const labelStyle = "text-[7px] font-black text-slate-500 uppercase tracking-[0.4em] mb-1.5 block px-1";
+  const inputStyle = "w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 text-[10px] font-bold uppercase tracking-widest outline-none focus:border-[#0D9488] transition-all shadow-inner";
+
+  // RENDER PAYROLL DETAIL VIEW
+  if (selectedPayslipUserId) {
+    const targetUser = users.find(u => u.id === selectedPayslipUserId);
+    if (!targetUser) {
+        setSelectedPayslipUserId(null);
+        return null;
+    }
+    return (
+        <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
+            <button 
+                onClick={() => setSelectedPayslipUserId(null)}
+                className="flex items-center gap-2 text-teal-600 font-black text-[10px] uppercase tracking-widest mb-4 hover:text-teal-700"
+            >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><polyline points="15 18 9 12 15 6"/></svg>
+                Back to Payroll Registry
+            </button>
+            <PersonnelProfile 
+                user={targetUser} 
+                shifts={shifts} 
+                properties={properties} 
+                organization={organization} 
+                onUpdateUser={onUpdateUser}
+                initialDocView="payslip"
+            />
+        </div>
+    );
+  }
 
   return (
     <div className="space-y-10 animate-in fade-in duration-700 text-left pb-24">
       <header className="flex flex-col space-y-0.5 px-2">
         <p className="text-[#0D9488] font-black uppercase tracking-[0.4em] text-[8px]">Financial Controller</p>
-        <h1 className="text-3xl font-bold text-slate-900 tracking-tight uppercase leading-tight font-brand">CFO Dashboard</h1>
+        <h1 className="text-3xl font-bold text-slate-900 tracking-tight uppercase leading-tight font-brand">Finance Studio</h1>
         <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wide mt-2">Manage payroll payouts, client billing, and statutory personnel documentation.</p>
       </header>
 
@@ -291,7 +277,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                   <h3 className="text-sm font-bold text-slate-900 uppercase tracking-widest">Awaiting Processing</h3>
                   <div className="space-y-4">
                       {cleanerPayroll.map(entry => {
-                          const totals = calculatePayslipBreakdown(entry.shifts, entry.user);
+                          const totals = calculateTotalNet(entry.shifts, entry.user);
                           return (
                           <div key={entry.user.id} className="bg-slate-50 rounded-3xl border border-slate-100 p-6 flex flex-col md:flex-row items-center justify-between gap-6 hover:border-teal-200 transition-all">
                               <div className="flex items-center gap-6 flex-1 w-full">
@@ -307,10 +293,10 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                               </div>
                               <div className="flex items-center gap-8 w-full md:w-auto justify-between md:justify-end">
                                 <div className="text-right">
-                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">NET PAYABLE</p>
+                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">EST. NET PAYABLE</p>
                                     <p className="text-2xl font-bold text-emerald-600">€{totals.totalNet.toFixed(2)}</p>
                                 </div>
-                                <button onClick={() => setSelectedPayslipId(entry.user.id)} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">DETAILS</button>
+                                <button onClick={() => setSelectedPayslipUserId(entry.user.id)} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">GENERATE PAYSLIP</button>
                               </div>
                           </div>
                           );
@@ -336,13 +322,13 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                           {allSavedPayslips.length === 0 ? (
                             <tr><td colSpan={6} className="px-8 py-20 text-center opacity-20 text-[10px] uppercase font-black">No historical payslips in registry</td></tr>
                           ) : allSavedPayslips.map(ps => (
-                             <tr key={ps.id} className="hover:bg-slate-50 transition-colors group cursor-pointer" onClick={() => handleOpenHistoricalDoc(ps)}>
+                             <tr key={ps.id} className="hover:bg-slate-50 transition-colors group cursor-pointer" onClick={() => setSelectedPayslipUserId(ps.userId)}>
                                 <td className="px-8 py-5">
                                    <p className="text-[11px] font-bold text-slate-900 uppercase">{ps.userName}</p>
                                    <p className="text-[8px] font-black text-teal-600 uppercase tracking-widest mt-0.5">{ps.userObj.role}</p>
                                 </td>
                                 <td className="px-8 py-5 text-[10px] font-black text-slate-900">{ps.month}</td>
-                                <td className="px-8 py-5 text-[9px] font-bold text-slate-400">{ps.periodFrom.split('-').reverse().join('/')} - {ps.periodUntil.split('-').reverse().join('/')}</td>
+                                <td className="px-8 py-5 text-[9px] font-bold text-slate-400">{ps.periodFrom} - {ps.periodUntil}</td>
                                 <td className="px-8 py-5 text-[11px] font-bold text-slate-900">€{ps.grossPay.toFixed(2)}</td>
                                 <td className="px-8 py-5 text-[11px] font-black text-emerald-600">€{ps.netPay.toFixed(2)}</td>
                                 <td className="px-8 py-5 text-right">
@@ -373,10 +359,149 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                 </div>
                 <button onClick={() => { setGeneratedPreview(null); setShowInvoiceModal(true); }} className="h-12 px-10 bg-emerald-600 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest shadow-lg active:scale-95 hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 whitespace-nowrap"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="mr-1"><path d="M12 5v14M5 12h14"/></svg>GENERATE INVOICE</button>
             </div>
-            {/* Invoice registry code remains as per previous version */}
+
+            <div className="bg-white border border-slate-100 rounded-[40px] shadow-sm overflow-hidden">
+                <div className="p-8 border-b border-slate-50 flex justify-between items-center">
+                    <h3 className="text-sm font-bold uppercase tracking-widest text-slate-900">Invoice Registry</h3>
+                    <div className="relative w-64">
+                       <input 
+                         type="text" 
+                         placeholder="SEARCH INVOICES..." 
+                         className="w-full bg-slate-50 border border-slate-100 rounded-full px-10 py-2 text-[10px] font-bold uppercase tracking-widest outline-none focus:border-teal-400 transition-all"
+                         value={invoiceSearch}
+                         onChange={e => setInvoiceSearch(e.target.value)}
+                       />
+                       <div className="absolute left-4 top-2 text-slate-300">🔍</div>
+                    </div>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                       <thead className="bg-slate-50 text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
+                          <tr>
+                             <th className="px-8 py-4">Reference #</th>
+                             <th className="px-8 py-4">Client</th>
+                             <th className="px-8 py-4 text-center">Due Date</th>
+                             <th className="px-8 py-4 text-center">Status</th>
+                             <th className="px-8 py-4 text-right">Total (€)</th>
+                             <th className="px-8 py-4 text-right">Actions</th>
+                          </tr>
+                       </thead>
+                       <tbody className="divide-y divide-slate-50">
+                          {filteredInvoices.length === 0 ? (
+                             <tr><td colSpan={6} className="px-8 py-20 text-center opacity-20 text-[10px] uppercase font-black">No invoices match your search</td></tr>
+                          ) : filteredInvoices.map(inv => (
+                             <tr key={inv.id} className="hover:bg-slate-50 transition-colors">
+                                <td className="px-8 py-5 text-[11px] font-black text-slate-900">{inv.invoiceNumber}</td>
+                                <td className="px-8 py-5">
+                                   <p className="text-[11px] font-bold text-slate-900 uppercase">{inv.clientName}</p>
+                                   <p className="text-[8px] font-black text-teal-600 uppercase tracking-widest mt-0.5">{inv.issueDate}</p>
+                                </td>
+                                <td className="px-8 py-5 text-center text-[10px] font-bold text-slate-500">{inv.dueDate}</td>
+                                <td className="px-8 py-5 text-center">
+                                   <span className={`px-4 py-1.5 rounded-full text-[7px] font-black uppercase tracking-widest shadow-sm ${inv.status === 'paid' ? 'bg-emerald-100 text-emerald-600' : inv.status === 'overdue' ? 'bg-rose-100 text-rose-600' : 'bg-blue-100 text-blue-600'}`}>
+                                      {inv.status}
+                                   </span>
+                                </td>
+                                <td className="px-8 py-5 text-right text-sm font-black text-slate-900">€{inv.totalAmount.toFixed(2)}</td>
+                                <td className="px-8 py-5 text-right">
+                                   <div className="flex justify-end gap-2">
+                                      {inv.status !== 'paid' && (
+                                         <button 
+                                            onClick={() => handleUpdateInvoiceStatus(inv.id, 'paid')}
+                                            className="bg-emerald-50 text-emerald-600 px-4 py-1.5 rounded-lg text-[8px] font-black uppercase hover:bg-emerald-600 hover:text-white transition-all"
+                                         >
+                                            MARK PAID
+                                         </button>
+                                      )}
+                                      <button className="bg-slate-900 text-white px-4 py-1.5 rounded-lg text-[8px] font-black uppercase shadow-lg">PDF</button>
+                                   </div>
+                                </td>
+                             </tr>
+                          ))}
+                       </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
       )}
-      {/* Rest of components follow previous patterns */}
+
+      {/* INVOICE GENERATION MODAL */}
+      {showInvoiceModal && (
+        <div className="fixed inset-0 bg-slate-900/80 z-[500] flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
+           <div className="bg-white rounded-[48px] w-full max-w-2xl p-10 space-y-10 shadow-2xl relative text-left my-auto animate-in zoom-in-95">
+              <button onClick={() => { setShowInvoiceModal(false); setGeneratedPreview(null); }} className="absolute top-10 right-10 text-slate-300 hover:text-slate-900 text-2xl">&times;</button>
+              
+              <div className="space-y-1">
+                 <h2 className="text-2xl font-bold text-slate-900 uppercase tracking-tight">Invoice Generator</h2>
+                 <p className="text-[9px] font-black text-teal-600 uppercase tracking-[0.4em]">Service Consolidation Suite</p>
+              </div>
+
+              {!generatedPreview ? (
+                 <div className="space-y-6">
+                    <div>
+                       <label className={labelStyle}>Select Client Partner</label>
+                       <select className={inputStyle} value={invoiceForm.clientId} onChange={e => setInvoiceForm({...invoiceForm, clientId: e.target.value})}>
+                          <option value="">CHOOSE RECIPIENT...</option>
+                          {clients?.map(c => <option key={c.id} value={c.id}>{c.name.toUpperCase()}</option>)}
+                       </select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                       <div><label className={labelStyle}>Deployment From</label><input type="date" className={inputStyle} value={invoiceForm.startDate} onChange={e => setInvoiceForm({...invoiceForm, startDate: e.target.value})} /></div>
+                       <div><label className={labelStyle}>Deployment Until</label><input type="date" className={inputStyle} value={invoiceForm.endDate} onChange={e => setInvoiceForm({...invoiceForm, endDate: e.target.value})} /></div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                       <div><label className={labelStyle}>Official Due Date</label><input type="date" className={inputStyle} value={invoiceForm.dueDate} onChange={e => setInvoiceForm({...invoiceForm, dueDate: e.target.value})} /></div>
+                       <div>
+                          <label className={labelStyle}>Discount Rate (%)</label>
+                          <input type="number" className={inputStyle} value={invoiceForm.discountRate} onChange={e => setInvoiceForm({...invoiceForm, discountRate: parseFloat(e.target.value) || 0})} placeholder="0" />
+                       </div>
+                    </div>
+                    <button 
+                       onClick={handlePreviewInvoice}
+                       className="w-full bg-slate-900 text-white font-black py-5 rounded-2xl uppercase tracking-[0.3em] text-[10px] shadow-xl active:scale-95 hover:bg-black transition-all"
+                    >
+                       CONSULT BILLABLE DATABASE
+                    </button>
+                 </div>
+              ) : (
+                 <div className="space-y-8 animate-in slide-in-from-bottom-4">
+                    <div className="bg-slate-50 rounded-3xl p-8 border border-slate-100 shadow-inner space-y-6">
+                       <div className="flex justify-between items-start border-b border-slate-200 pb-6">
+                          <div>
+                             <p className="text-[10px] font-black text-slate-900 uppercase tracking-tight">{generatedPreview.clientName}</p>
+                             <p className="text-[8px] font-bold text-slate-400 uppercase mt-1">Period: {invoiceForm.startDate} to {invoiceForm.endDate}</p>
+                          </div>
+                          <div className="text-right">
+                             <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">DRAFT {generatedPreview.invoiceNumber}</p>
+                          </div>
+                       </div>
+                       
+                       <div className="space-y-3 max-h-48 overflow-y-auto no-scrollbar">
+                          {generatedPreview.items.map((item, idx) => (
+                             <div key={idx} className="flex justify-between items-center text-[9px] font-bold uppercase text-slate-600">
+                                <span className="truncate pr-4">{item.description}</span>
+                                <span className="shrink-0 text-slate-900">€{item.amount.toFixed(2)}</span>
+                             </div>
+                          ))}
+                       </div>
+
+                       <div className="pt-6 border-t border-slate-200 space-y-2">
+                          <div className="flex justify-between text-[9px] font-bold uppercase text-slate-400"><span>Subtotal</span><span>€{generatedPreview.subtotal?.toFixed(2)}</span></div>
+                          {generatedPreview.discount! > 0 && <div className="flex justify-between text-[9px] font-bold uppercase text-rose-500"><span>Discount</span><span>-€{generatedPreview.discount?.toFixed(2)}</span></div>}
+                          <div className="flex justify-between text-[9px] font-bold uppercase text-slate-400"><span>VAT (18%)</span><span>€{generatedPreview.vat?.toFixed(2)}</span></div>
+                          <div className="flex justify-between text-xl font-black text-slate-900 uppercase pt-2"><span>Total Due</span><span>€{generatedPreview.totalAmount.toFixed(2)}</span></div>
+                       </div>
+                    </div>
+                    
+                    <div className="flex gap-3">
+                       <button onClick={handleSaveInvoice} className="flex-1 bg-emerald-600 text-white font-black py-5 rounded-2xl uppercase tracking-[0.2em] text-[10px] shadow-xl active:scale-95">FINALIZE & POST</button>
+                       <button onClick={() => setGeneratedPreview(null)} className="px-8 border border-slate-200 text-slate-400 font-black rounded-2xl uppercase text-[10px] tracking-widest">EDIT</button>
+                    </div>
+                 </div>
+              )}
+           </div>
+        </div>
+      )}
     </div>
   );
 };

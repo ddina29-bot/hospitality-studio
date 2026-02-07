@@ -35,7 +35,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
   
   const [viewingDoc, setViewingDoc] = useState<'payslip' | 'worksheet' | 'fs3' | null>(initialDocView || null);
   const [activeHistoricalPayslip, setActiveHistoricalPayslip] = useState<SavedPayslip | null>(initialHistoricalPayslip || null);
-  const [activeModule, setActiveModule] = useState<'PAYROLL' | 'INVOICING' | 'RECORDS'>(isCurrentUserAdmin ? 'PAYROLL' : 'PAYROLL'); 
   const [activeSubTab, setActiveSubTab] = useState<'PENDING PAYOUTS' | 'PAYSLIP REGISTRY' | 'LEAVE REQUESTS'>(isCurrentUserAdmin ? 'PENDING PAYOUTS' : 'PAYSLIP REGISTRY');
   
   const [showLeaveForm, setShowLeaveForm] = useState(false);
@@ -43,10 +42,12 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
   const [leaveStart, setLeaveStart] = useState('');
   const [leaveEnd, setLeaveEnd] = useState('');
 
-  const [selectedDocMonth, setSelectedDocMonth] = useState<string>('JAN 2026'); 
-  const [payPeriodFrom, setPayPeriodFrom] = useState('2026-01-01');
-  const [payPeriodUntil, setPayPeriodUntil] = useState('2026-01-31');
-  
+  const [selectedDocMonth, setSelectedDocMonth] = useState<string>(() => {
+     const now = new Date();
+     return `${now.toLocaleString('default', { month: 'short' }).toUpperCase()} ${now.getFullYear()}`;
+  }); 
+  const [payPeriodFrom, setPayPeriodFrom] = useState('');
+  const [payPeriodUntil, setPayPeriodUntil] = useState('');
   const [manualGrossPay, setManualGrossPay] = useState<number | null>(null);
 
   useEffect(() => {
@@ -63,7 +64,10 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
 
   const monthOptions = useMemo(() => {
     const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-    return months.map(m => `${m} 2026`);
+    const years = [2025, 2026];
+    const opts: string[] = [];
+    years.forEach(y => months.forEach(m => opts.push(`${m} ${y}`)));
+    return opts;
   }, []);
 
   const filteredShifts = useMemo(() => {
@@ -103,26 +107,16 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
 
         if (s.approvalStatus === 'approved') {
             const teamCount = s.userIds?.length || 1;
-            
-            // 1. Determine the Flat Rate for this specific service
             let flatRate = 0;
-            if (s.serviceType === 'TO FIX') {
-                flatRate = s.fixWorkPayment || 0;
-            } else if (prop) {
-                flatRate = getCleanerRateForShift(s.serviceType, prop) / teamCount;
-            }
+            if (s.serviceType === 'TO FIX') flatRate = s.fixWorkPayment || 0;
+            else if (prop) flatRate = getCleanerRateForShift(s.serviceType, prop) / teamCount;
 
-            // 2. Add to totals based on User Payment Type
             if (user.paymentType === 'Per Clean' || user.paymentType === 'Fixed Wage') {
-                // For Fixed Wage users, they only get the per-apartment flat rate as a bonus
-                // For Per Clean users, they get the flat rate (or hourly if it was higher, but usually flat rate)
                 totalPieceRateEarned += Math.max(flatRate, user.paymentType === 'Fixed Wage' ? 0 : hourlyBaseForShift);
             } else {
-                // Per Hour users only get hourly
                 totalHourlyEarned += hourlyBaseForShift;
             }
         } else if (user.paymentType === 'Per Hour') {
-            // Unapproved shifts for hourly workers still show tracked time usually (or 0 depending on company policy)
             totalHourlyEarned += hourlyBaseForShift;
         }
     });
@@ -142,7 +136,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
   }, [filteredShifts, user, payPeriodFrom, payPeriodUntil, properties, activeHistoricalPayslip, manualGrossPay]);
 
   const userLeaveRequests = useMemo(() => {
-    return leaveRequests.filter(l => l.userId === user.id).sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+    return (leaveRequests || []).filter(l => l.userId === user.id).sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
   }, [leaveRequests, user.id]);
 
   const handleCommitPayslip = () => {
@@ -167,6 +161,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
 
     onUpdateUser({ ...user, payslips: [...(user.payslips || []), newPayslip] });
     alert("Record committed to registry.");
+    setActiveSubTab('PAYSLIP REGISTRY');
   };
 
   const handleSubmitLeave = (e: React.FormEvent) => {
@@ -188,22 +183,14 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
   }, [canManageFinancials]);
 
   return (
-    <div className="bg-[#F0FDFA] min-h-screen text-left pb-24 font-brand animate-in fade-in duration-500">
-      {canManageFinancials && (
-        <div className="bg-white/80 backdrop-blur-md sticky top-0 z-30 border-b border-teal-50 px-6 py-2 shadow-sm flex gap-4 overflow-x-auto no-scrollbar">
-           {['PAYROLL', 'INVOICING', 'RECORDS'].map(mod => (
-              <button key={mod} onClick={() => setActiveModule(mod as any)} className={`px-6 py-2.5 rounded-xl text-[10px] font-black tracking-[0.1em] transition-all whitespace-nowrap ${activeModule === mod ? 'bg-[#0D9488] text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>{mod}</button>
-           ))}
-        </div>
-      )}
-
-      <div className="max-w-[1400px] mx-auto px-4 md:px-8 pt-8 space-y-10">
+    <div className="bg-transparent min-h-fit text-left font-brand animate-in fade-in duration-500">
+      <div className="mx-auto space-y-10">
         <section className="bg-white border border-slate-100 rounded-[2rem] p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-8 shadow-sm">
-           <div className="flex items-center gap-6 w-full md:w-auto">
-              <div className="w-16 h-16 md:w-20 md:h-20 rounded-[1.5rem] bg-teal-50 flex items-center justify-center text-[#0D9488] font-bold text-3xl shadow-inner overflow-hidden border border-teal-100">
+           <div className="flex items-center gap-6 w-full md:w-auto text-left">
+              <div className="w-16 h-16 md:w-20 md:h-20 rounded-[1.5rem] bg-teal-50 flex items-center justify-center text-[#0D9488] font-bold text-3xl shadow-inner overflow-hidden border border-teal-100 shrink-0">
                  {user.photoUrl ? <img src={user.photoUrl} className="w-full h-full object-cover" /> : user.name.charAt(0)}
               </div>
-              <div className="text-left">
+              <div>
                  <h2 className="text-xl md:text-2xl font-bold text-slate-900 uppercase tracking-tight">{user.name}</h2>
                  <p className="text-[10px] font-black text-[#0D9488] uppercase tracking-widest mt-1">{user.role} • {user.paymentType}</p>
                  <p className="text-[9px] font-bold text-slate-400 uppercase mt-0.5">{user.email}</p>
@@ -256,7 +243,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                          <p className={subLabelStyle}>Total Net Payout Preview</p>
                          <p className="text-5xl font-black text-emerald-700 tracking-tighter leading-none">€{payrollData.totalNet.toFixed(2)}</p>
                          <p className="text-[8px] font-black text-emerald-600/50 uppercase tracking-widest mt-4">Includes piece-rates for {filteredShifts.length} deployments</p>
-                         <button onClick={handleCommitPayslip} className="mt-8 bg-indigo-600 text-white font-black py-4 rounded-xl uppercase text-[10px] tracking-widest shadow-xl">COMMIT TO REGISTRY</button>
+                         <button onClick={handleCommitPayslip} className="mt-8 bg-indigo-600 text-white font-black py-4 rounded-xl uppercase text-[10px] tracking-widest shadow-xl hover:bg-indigo-700 transition-all active:scale-95">COMMIT TO REGISTRY</button>
                       </div>
                    </div>
                 </section>
@@ -298,7 +285,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                    <div className="bg-indigo-50 border border-indigo-100 p-6 rounded-[2rem] flex items-center justify-between shadow-sm">
                       <div className="flex items-center gap-4">
                          <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-xl shadow-sm">⛱️</div>
-                         <div>
+                         <div className="text-left">
                             <p className="text-[10px] font-black text-indigo-900 uppercase tracking-widest">Absence Summary</p>
                             <p className="text-xs font-bold text-indigo-700 uppercase">{userLeaveRequests.filter(l => l.status === 'approved').length} Approved Absences</p>
                          </div>

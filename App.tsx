@@ -112,7 +112,6 @@ const App: React.FC = () => {
 
   const hydrateState = useCallback(async (emailToUse?: string) => {
     const targetEmail = emailToUse || user?.email;
-    // Skip remote hydration for the build user or if already done
     if (!targetEmail || targetEmail === 'build@reset.studio' || isHydratingInProgress.current || hasHydrated) {
        if (targetEmail === 'build@reset.studio' || hasHydrated) setHasHydrated(true);
        return;
@@ -269,10 +268,9 @@ const App: React.FC = () => {
     };
     
     setUser(mockUser);
-    setHasHydrated(true); // satisfy hydration since we are in local-only build mode now
+    setHasHydrated(true);
     localStorage.setItem('current_user_obj', JSON.stringify(mockUser));
     
-    // Auto-navigate to sensible tab for role
     if (role === 'laundry') setActiveTab('laundry');
     else if (role === 'cleaner') setActiveTab('shifts');
     else if (role === 'driver') setActiveTab('logistics');
@@ -356,7 +354,22 @@ const App: React.FC = () => {
       case 'clients':
         return <AdminPortal user={user} view="clients" clients={clients} setClients={setClients} properties={properties} setActiveTab={setActiveTab} setSelectedClientIdFilter={() => {}} />;
       case 'finance':
-        return <FinanceDashboard setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} users={users} properties={properties} invoices={invoices} setInvoices={setInvoices} clients={clients} organization={organization} manualTasks={manualTasks} onUpdateUser={handleUpdateUser} />;
+        return (
+          <FinanceDashboard 
+            setActiveTab={setActiveTab} 
+            onLogout={handleLogout} 
+            shifts={shifts} 
+            setShifts={setShifts}
+            users={users} 
+            properties={properties} 
+            invoices={invoices} 
+            setInvoices={setInvoices} 
+            clients={clients} 
+            organization={organization} 
+            manualTasks={manualTasks} 
+            onUpdateUser={handleUpdateUser} 
+          />
+        );
       case 'reports':
         return <ReportsPortal users={users} shifts={shifts} userRole={user.role} anomalyReports={anomalyReports} leaveRequests={leaveRequests} />;
       case 'users':
