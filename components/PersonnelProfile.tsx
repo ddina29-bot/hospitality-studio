@@ -385,10 +385,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
 
                  {/* FINANCIAL BREAKDOWN */}
                  <div className="space-y-10">
-                    <div className="flex justify-between border-b-4 border-slate-900 pb-8 text-5xl font-black text-emerald-600">
-                       <span className="uppercase tracking-tighter">Net Payable</span>
-                       <span className="font-mono">€{payrollData.totalNet.toFixed(2)}</span>
-                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-16">
                        <div className="space-y-5">
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] border-b border-slate-50 pb-2">EARNINGS</p>
@@ -401,6 +397,12 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                           <div className="flex justify-between text-xs font-bold text-rose-600"><span>Income Tax ({payrollData.taxBand})</span><span className="font-mono">-€{payrollData.tax.toFixed(2)}</span></div>
                        </div>
                     </div>
+                 </div>
+
+                 {/* MONTHLY TOTALS - REPOSITIONED & RESIZED */}
+                 <div className="flex justify-between items-center py-6 border-y border-slate-100">
+                    <span className="text-base font-black uppercase tracking-tight text-slate-900">Net Payable</span>
+                    <span className="text-base font-black text-emerald-600 font-mono tracking-tighter">€{payrollData.totalNet.toFixed(2)}</span>
                  </div>
 
                  {/* YEAR TO DATE ACCUMULATION SECTION */}
