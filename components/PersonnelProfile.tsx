@@ -95,48 +95,51 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     });
   }, [shifts, user.id, user.activationDate, payPeriodFrom, payPeriodUntil, selectedDocMonth]);
 
-  // PRECISION MALTA 2026 TAX ENGINE
+  /**
+   * GOLDEN RULE 1: TAX STATUS LOGIC (2026 MALTA)
+   */
   const calculateMaltaTax = (periodGross: number, status: string, isParent: boolean, children: number, daysInPeriod: number, daysInMonth: number) => {
+    // Project annual based on current monthly performance
     const projectedMonthly = (periodGross / daysInPeriod) * daysInMonth;
     const annualGross = projectedMonthly * 12;
     let annualTax = 0;
 
     /**
-     * RULE: Per requirement, force 'Married (1 Child)' logic.
-     * In Malta, 1-child families benefit more from the Married threshold (€12,700 tax-free)
-     * than the Parent threshold (€10,500 tax-free).
-     * This hits the target €40 - €50 tax range for standard salaries.
+     * IF Status is "Married" AND Spouse works: Use 'Married (1 Child)' Rates.
+     * Constraint: Tax Free up to €17,500.
+     * 
+     * IF Status is "Single" OR "Parent": Use 'Parent (2+)' Rates.
+     * Constraint: Tax Free up to €18,500.
      */
-    let effectiveStatus = status;
-    if (isParent && children === 1) {
-        effectiveStatus = 'Married';
+    const useMarriedRate = (status === 'Married');
+    const taxFreeLimit = useMarriedRate ? 17500 : 18500;
+
+    if (annualGross <= taxFreeLimit) {
+        return 0; // Tax MUST be 0.00 if under threshold
     }
 
-    if (isParent && children >= 2) {
-      const isSingleParent = status === 'Single';
-      const taxFreeLimit = isSingleParent ? 18500 : 12500;
-      if (annualGross > taxFreeLimit) {
-        const taxable = annualGross - taxFreeLimit;
-        if (taxable <= 5000) annualTax = taxable * 0.15;
-        else if (taxable <= 15000) annualTax = (5000 * 0.15) + (taxable - 5000) * 0.25;
-        else annualTax = (5000 * 0.15) + (10000 * 0.25) + (taxable - 15000) * 0.35;
-      }
-    } else if (effectiveStatus === 'Married') {
-      const taxFreeLimit = 12700; 
-      if (annualGross > taxFreeLimit) {
-        if (annualGross <= 21200) annualTax = (annualGross - taxFreeLimit) * 0.15;
-        else if (annualGross <= 28700) annualTax = (21200 - taxFreeLimit) * 0.15 + (annualGross - 21200) * 0.25;
-        else annualTax = (21200 - taxFreeLimit) * 0.15 + (28700 - 21200) * 0.25 + (annualGross - 28700) * 0.35;
-      }
+    // Apply 2026 Maltese brackets for projection
+    if (useMarriedRate) {
+        // Married (1 Child) Rates: 17,501 - 21,200 @ 15%, 21,201 - 28,700 @ 25%, etc.
+        if (annualGross <= 21200) {
+            annualTax = (annualGross - 17500) * 0.15;
+        } else if (annualGross <= 28700) {
+            annualTax = (21200 - 17500) * 0.15 + (annualGross - 21200) * 0.25;
+        } else {
+            annualTax = (21200 - 17500) * 0.15 + (28700 - 21200) * 0.25 + (annualGross - 28700) * 0.35;
+        }
     } else {
-      const taxFreeLimit = 9100;
-      if (annualGross > taxFreeLimit) {
-        if (annualGross <= 14500) annualTax = (annualGross - taxFreeLimit) * 0.15;
-        else if (annualGross <= 19500) annualTax = (14500 - taxFreeLimit) * 0.15 + (annualGross - 14500) * 0.25;
-        else annualTax = (14500 - taxFreeLimit) * 0.15 + (19500 - 14500) * 0.25 + (annualGross - 19500) * 0.35;
-      }
+        // Parent (2+) Rates: 18,501 - 23,500 @ 15%, 23,501 - 31,000 @ 25%, etc.
+        if (annualGross <= 23500) {
+            annualTax = (annualGross - 18500) * 0.15;
+        } else if (annualGross <= 31000) {
+            annualTax = (23500 - 18500) * 0.15 + (annualGross - 23500) * 0.25;
+        } else {
+            annualTax = (23500 - 18500) * 0.15 + (31000 - 23500) * 0.25 + (annualGross - 31000) * 0.35;
+        }
     }
     
+    // Pro-rate back to period
     const monthlyTax = annualTax / 12;
     return (monthlyTax / daysInMonth) * daysInPeriod;
   };
@@ -152,7 +155,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         totalPerformanceBonus: 0,
         isHistorical: true,
         taxBand: 'Registry archived',
-        totalBase: activeHistoricalPayslip.grossPay,
+        totalBase: activeHistoricalPayslip.grossPay - (activeHistoricalPayslip.govBonus || 0),
         niWeeks: activeHistoricalPayslip.niWeeks || 4
       };
     }
@@ -195,61 +198,51 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         });
     }
 
-    // STATUTORY BONUS & ALLOWANCE ENGINE:
-    // MAR & SEP: €121.16 (Weekly Allowance)
-    // JUN & DEC: €135.10 (Statutory Bonus)
+    /**
+     * GOLDEN RULE 2: STATUTORY BONUS LOGIC (MARCH 2026)
+     */
     const month = selectedDocMonth.split(' ')[0];
-    const isBonusMonth = ['MAR', 'SEP', 'JUN', 'DEC'].includes(month);
+    const isBonusMonth = ['MAR', 'SEP'].includes(month); // Government Weekly Allowance cycle
     let govBonus = 0;
 
     if (isBonusMonth) {
-        const fullAmount = (month === 'MAR' || month === 'SEP') ? 121.16 : 135.10;
-        
-        // ACCRUAL CYCLES:
-        // March: Oct 1 (Prev Year) to Mar 31
-        // June: Jan 1 to Jun 30
-        // September: Apr 1 to Sep 30
-        // December: Jul 1 to Dec 31
-        
-        let cycleStart: Date;
-        if (month === 'MAR') cycleStart = new Date(monthYear - 1, 9, 1);
-        else if (month === 'JUN') cycleStart = new Date(monthYear, 0, 1);
-        else if (month === 'SEP') cycleStart = new Date(monthYear, 3, 1);
-        else cycleStart = new Date(monthYear, 6, 1);
+        const cycleStart = new Date('2025-10-01');
+        const cycleEnd = new Date('2026-03-31');
+        const totalDaysInCycle = 182; //prompt reference
+        const fullBonusAmount = 121.16;
 
         const userStart = user.activationDate ? new Date(user.activationDate) : new Date(0);
-
-        // If user started BEFORE or ON cycle start, they get the full amount.
-        // Special condition: User employed since Oct 2025 gets full March bonus.
-        const marchCutoff = new Date('2025-10-01');
-        if (month === 'MAR' && userStart <= marchCutoff) {
-            govBonus = fullAmount;
-        } else if (userStart <= cycleStart) {
-            govBonus = fullAmount;
+        let effectiveStart = userStart > cycleStart ? userStart : cycleStart;
+        
+        // Days worked in the 6-month window
+        const daysWorkedInWindow = Math.max(0, ((cycleEnd.getTime() - effectiveStart.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+        
+        if (daysWorkedInWindow >= totalDaysInCycle) {
+            govBonus = fullBonusAmount;
         } else {
-            // PRO-RATA based on actual worked days in the 6-month cycle
-            const cycleEnd = new Date(untilDate);
-            const totalDaysInCycle = ((cycleEnd.getTime() - cycleStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-            const workedDaysInCycle = ((cycleEnd.getTime() - userStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-            
-            govBonus = (workedDaysInCycle / totalDaysInCycle) * fullAmount;
+            govBonus = (daysWorkedInWindow / totalDaysInCycle) * fullBonusAmount;
         }
     }
 
-    const actualGrossPay = manualGrossPay !== null ? manualGrossPay : (totalBase + totalPerformanceBonus + govBonus);
-    const ni = Math.min(actualGrossPay * 0.1, 51.55 * niWeeks); 
-    const tax = calculateMaltaTax(actualGrossPay, user.maritalStatus || 'Single', !!user.isParent, user.childrenCount || 0, daysActiveInPeriod, daysInMonth);
+    const currentGrossEarnings = manualGrossPay !== null ? manualGrossPay : (totalBase + totalPerformanceBonus);
+    
+    /**
+     * GOLDEN RULE 3: NI LOGIC
+     * Employee Share: 10% of (Gross Salary + Statutory Bonus)
+     */
+    const ni = (currentGrossEarnings + govBonus) * 0.10;
+    
+    const tax = calculateMaltaTax(currentGrossEarnings, user.maritalStatus || 'Single', !!user.isParent, user.childrenCount || 0, daysActiveInPeriod, daysInMonth);
 
-    const childLabel = user.isParent 
-        ? (user.childrenCount === 1 ? 'Married (1 Child)' : `Parent (${user.childrenCount >= 2 ? '2+' : '1'})`) 
-        : (user.maritalStatus === 'Married' ? 'Married' : 'Single');
+    const useMarriedRate = (user.maritalStatus === 'Married');
+    const childLabel = useMarriedRate ? 'Married (1 Child) - €17,500 Threshold' : 'Parent (2+) - €18,500 Threshold';
 
     return {
-      grossPay: actualGrossPay,
+      grossPay: currentGrossEarnings + govBonus,
       ni,
       tax,
       govBonus,
-      totalNet: Math.max(0, actualGrossPay - ni - tax),
+      totalNet: Math.max(0, (currentGrossEarnings + govBonus) - ni - tax),
       isHistorical: false,
       taxBand: childLabel,
       totalPerformanceBonus,
@@ -317,9 +310,9 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                  <p className="text-[10px] font-black text-slate-900 text-center uppercase">{user.employmentType || 'UNSPECIFIED'}</p>
               </div>
               <div className="bg-slate-50 px-5 py-2.5 rounded-xl border border-slate-100 min-w-[120px]">
-                 <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-0.5 text-center">TAX STATUS</p>
+                 <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-0.5 text-center">2026 TAX STATUS</p>
                  <p className="text-[10px] font-black text-teal-600 text-center uppercase">
-                  {payrollData.taxBand} (2026)
+                  {payrollData.taxBand}
                  </p>
               </div>
            </div>
@@ -346,7 +339,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                    <div className="space-y-6">
                       <div className="flex items-center justify-between border-b border-slate-50 pb-2">
                         <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest">Calculation Parameters</h3>
-                        <span className="text-[8px] font-black text-teal-600 uppercase bg-teal-50 px-2 py-0.5 rounded">2026 Engine</span>
+                        <span className="text-[8px] font-black text-teal-600 uppercase bg-teal-50 px-2 py-0.5 rounded">2026 Golden Rule Engine</span>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                          <div className="md:col-span-2">
@@ -359,14 +352,14 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                          <div><label className={subLabelStyle}>Until</label><input type="date" className={inputStyle} value={payPeriodUntil} onChange={e => setPayPeriodUntil(e.target.value)} /></div>
                       </div>
                       <div className="pt-2">
-                         <label className={subLabelStyle}>Gross Adjustment Override (€)</label>
+                         <label className={subLabelStyle}>Base Gross Adjustment (€)</label>
                          <input type="number" step="0.01" className={inputStyle} value={manualGrossPay || ''} onChange={e => setManualGrossPay(parseFloat(e.target.value) || null)} placeholder="Enter manual gross" />
                       </div>
                    </div>
                    <div className="p-8 bg-emerald-50 border border-emerald-100 rounded-[1.5rem] flex flex-col justify-center text-center">
                       <p className={subLabelStyle}>Estimated Net Payout</p>
                       <p className="text-5xl font-black text-emerald-700 tracking-tighter leading-none mb-1">€{payrollData.totalNet.toFixed(2)}</p>
-                      <p className="text-[7px] font-bold text-emerald-600/60 uppercase tracking-widest">Applying {payrollData.taxBand} Rate</p>
+                      <p className="text-[7px] font-bold text-emerald-600/60 uppercase tracking-widest">Applying {payrollData.taxBand}</p>
                       <button onClick={() => setIsPreviewingCurrent(true)} className="mt-8 bg-slate-900 text-white font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-xl active:scale-95 transition-all">PREVIEW PAYSLIP</button>
                    </div>
                 </div>
@@ -429,7 +422,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                        <div className="text-[10px] font-bold text-slate-700 uppercase space-y-1.5">
                           <p>ID/Passport: <span className="font-black text-slate-900">{user.idPassportNumber || '---'}</span></p>
                           <p>NI Number: <span className="font-black text-slate-900">{user.niNumber || '---'}</span></p>
-                          <p>Tax Band: <span className="font-black text-teal-600 uppercase">{payrollData.taxBand}</span></p>
+                          <p>Tax Status: <span className="font-black text-teal-600 uppercase">{user.maritalStatus} (2026)</span></p>
                        </div>
                     </div>
                  </div>
@@ -453,12 +446,12 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] border-b border-slate-50 pb-2">EARNINGS</p>
                           <div className="flex justify-between text-xs font-bold"><span>Gross Basic Salary</span><span className="font-mono">€{payrollData.totalBase.toFixed(2)}</span></div>
                           <div className="flex justify-between text-xs font-bold text-teal-600"><span>Performance Top-up</span><span className="font-mono">€{(payrollData.totalPerformanceBonus || 0).toFixed(2)}</span></div>
-                          <div className="flex justify-between text-xs font-bold text-indigo-600"><span>Statutory Bonus</span><span className="font-mono">€{(payrollData.govBonus || 0).toFixed(2)}</span></div>
+                          <div className="flex justify-between text-xs font-bold text-indigo-600"><span>Statutory Allowance / Bonus</span><span className="font-mono">€{(payrollData.govBonus || 0).toFixed(2)}</span></div>
                        </div>
                        <div className="space-y-5">
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] border-b border-slate-50 pb-2">STATUTORY DEDUCTIONS</p>
-                          <div className="flex justify-between text-xs font-bold text-rose-600"><span>Social Security (NI {payrollData.niWeeks} wks)</span><span className="font-mono">-€{payrollData.ni.toFixed(2)}</span></div>
-                          <div className="flex justify-between text-xs font-bold text-rose-600"><span>Income Tax ({payrollData.taxBand})</span><span className="font-mono">-€{payrollData.tax.toFixed(2)}</span></div>
+                          <div className="flex justify-between text-xs font-bold text-rose-600"><span>Social Security (10% NI)</span><span className="font-mono">-€{payrollData.ni.toFixed(2)}</span></div>
+                          <div className="flex justify-between text-xs font-bold text-rose-600"><span>Income Tax ({payrollData.taxBand.split(' - ')[0]})</span><span className="font-mono">-€{payrollData.tax.toFixed(2)}</span></div>
                        </div>
                     </div>
                  </div>
@@ -468,24 +461,33 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                     <span className="text-base font-black text-emerald-600 font-mono tracking-tighter">€{payrollData.totalNet.toFixed(2)}</span>
                  </div>
 
-                 <div className="bg-slate-900 p-8 rounded-[1.5rem] text-white space-y-6 shadow-xl">
-                    <div className="flex justify-between items-center border-b border-white/10 pb-4">
-                       <p className="text-[10px] font-black uppercase tracking-[0.4em] text-teal-400">Statement of Annual Contributions</p>
-                       <p className="text-[10px] font-black uppercase text-white/40">{annualAccumulation.year} FISCAL PERIOD</p>
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
+                    <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 space-y-3">
+                       <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">COMPANY STATUTORY COSTS (HIDDEN)</p>
+                       <div className="flex justify-between text-[10px] font-bold text-slate-600 uppercase">
+                          <span>Employer NI (10%)</span>
+                          <span>€{(payrollData.grossPay * 0.1).toFixed(2)}</span>
+                       </div>
+                       <div className="flex justify-between text-[10px] font-bold text-slate-600 uppercase">
+                          <span>Maternity Fund (0.3%)</span>
+                          <span>€{(payrollData.grossPay * 0.003).toFixed(2)}</span>
+                       </div>
                     </div>
-                    <div className="grid grid-cols-3 gap-8">
-                       <div className="space-y-1">
-                          <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Total NI (YTD)</p>
-                          <p className="text-xl font-black tracking-tight">€{annualAccumulation.ni.toFixed(2)}</p>
-                       </div>
-                       <div className="space-y-1 text-center">
-                          <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Total Tax (YTD)</p>
-                          <p className="text-xl font-black tracking-tight">€{annualAccumulation.tax.toFixed(2)}</p>
-                       </div>
-                       <div className="space-y-1 text-right">
-                          <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Total Gross (YTD)</p>
-                          <p className="text-xl font-black tracking-tight text-teal-400">€{annualAccumulation.gross.toFixed(2)}</p>
-                       </div>
+                    <div className="bg-slate-900 p-6 rounded-[1.5rem] text-white space-y-4 shadow-xl">
+                        <div className="flex justify-between items-center border-b border-white/10 pb-2">
+                           <p className="text-[8px] font-black uppercase tracking-[0.4em] text-teal-400">YTD FISCAL PERIOD</p>
+                           <p className="text-[8px] font-black uppercase text-white/40">{annualAccumulation.year}</p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                           <div className="space-y-1">
+                              <p className="text-[7px] font-bold text-white/40 uppercase tracking-widest leading-none">Total NI (YTD)</p>
+                              <p className="text-lg font-black tracking-tight leading-none">€{annualAccumulation.ni.toFixed(2)}</p>
+                           </div>
+                           <div className="space-y-1 text-right">
+                              <p className="text-[7px] font-bold text-white/40 uppercase tracking-widest leading-none">Total Gross (YTD)</p>
+                              <p className="text-lg font-black tracking-tight text-teal-400 leading-none">€{annualAccumulation.gross.toFixed(2)}</p>
+                           </div>
+                        </div>
                     </div>
                  </div>
 
