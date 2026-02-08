@@ -133,7 +133,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     if (user.paymentType === 'Fixed Wage') {
         totalBasic = user.payRate || 0;
     } else {
-        const currentYear = new Date().getFullYear();
         (shifts || []).filter(s => s.userIds.includes(user.id) && s.status === 'completed' && s.date.includes(month)).forEach(s => {
             const prop = properties?.find(p => p.id === s.propertyId);
             const dur = (s.actualEndTime || 0) - (s.actualStartTime || 0);
@@ -179,6 +178,23 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
       isHistorical: false
     };
   }, [shifts, user, properties, activeHistoricalPayslip, manualGrossPay, selectedDocMonth, payPeriodFrom, payPeriodUntil, spouseWorks]);
+
+  const annualAccumulation = useMemo(() => {
+    const yearSuffix = (activeHistoricalPayslip?.month || selectedDocMonth).split(' ').pop();
+    if (!yearSuffix) return { ni: 0, tax: 0, gross: 0, year: '2026' };
+    
+    const relevantSaved = (user.payslips || []).filter(ps => ps.month.endsWith(yearSuffix) && ps.id !== activeHistoricalPayslip?.id);
+    let totalNI = relevantSaved.reduce((sum, ps) => sum + ps.ni, 0);
+    let totalTax = relevantSaved.reduce((sum, ps) => sum + ps.tax, 0);
+    let totalGross = relevantSaved.reduce((sum, ps) => sum + ps.grossPay, 0);
+    
+    // Add current viewing data
+    totalNI += payrollData.niEmployee;
+    totalTax += payrollData.tax;
+    totalGross += payrollData.totalGross;
+    
+    return { ni: totalNI, tax: totalTax, gross: totalGross, year: yearSuffix };
+  }, [user.payslips, selectedDocMonth, activeHistoricalPayslip, payrollData]);
 
   const handleCommitPayslip = () => {
     if (!onUpdateUser) return;
@@ -251,11 +267,23 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                         <span className="text-[8px] font-black text-teal-600 uppercase bg-teal-50 px-2 py-0.5 rounded">2026 Statutory Engine</span>
                       </div>
                       <div className="space-y-4">
-                         <div>
-                            <label className={subLabelStyle}>Fiscal Month</label>
-                            <select className={inputStyle} value={selectedDocMonth} onChange={e => setSelectedDocMonth(e.target.value)}>
-                               {['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'].map(m => <option key={m} value={`${m} 2026`}>{m} 2026</option>)}
-                            </select>
+                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="md:col-span-3">
+                                <label className={subLabelStyle}>Fiscal Month</label>
+                                <select className={inputStyle} value={selectedDocMonth} onChange={e => setSelectedDocMonth(e.target.value)}>
+                                   {['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'].map(m => <option key={m} value={`${m} 2026`}>{m} 2026</option>)}
+                                </select>
+                            </div>
+                            <div className="md:col-span-3 grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className={subLabelStyle}>From</label>
+                                    <input type="date" className={inputStyle} value={payPeriodFrom} onChange={e => setPayPeriodFrom(e.target.value)} />
+                                </div>
+                                <div>
+                                    <label className={subLabelStyle}>Until</label>
+                                    <input type="date" className={inputStyle} value={payPeriodUntil} onChange={e => setPayPeriodUntil(e.target.value)} />
+                                </div>
+                            </div>
                          </div>
                          <div>
                             <label className={subLabelStyle}>Manual Adjustment Override (€)</label>
@@ -346,48 +374,59 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                     </div>
                  </div>
 
-                 {/* EARNINGS VS DEDUCTIONS GRID */}
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-16">
-                    <div className="space-y-6">
-                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] border-b border-slate-50 pb-2">EARNINGS BREAKDOWN</p>
-                       <div className="space-y-3">
-                          <div className="flex justify-between text-xs font-bold uppercase">
-                             <span>Gross Basic Salary</span>
-                             <span className="font-mono">€{payrollData.grossBasic.toFixed(2)}</span>
-                          </div>
-                          {payrollData.performanceBonus > 0 && (
-                            <div className="flex justify-between text-xs font-bold uppercase text-teal-600">
-                               <span>Performance Top-up</span>
-                               <span className="font-mono">€{payrollData.performanceBonus.toFixed(2)}</span>
-                            </div>
-                          )}
-                          <div className="flex justify-between text-xs font-bold uppercase text-indigo-600">
-                             <span>{payrollData.bonusLabel || 'Statutory Bonus'}</span>
-                             <span className="font-mono">€{payrollData.govBonus.toFixed(2)}</span>
-                          </div>
-                          <div className="h-px bg-slate-100 my-4"></div>
-                          <div className="flex justify-between text-xs font-black uppercase text-slate-900">
-                             <span>Total Gross Earnings</span>
-                             <span className="font-mono">€{payrollData.totalGross.toFixed(2)}</span>
-                          </div>
+                 {/* 1. EMPLOYEE VIEW: EARNINGS VS DEDUCTIONS GRID */}
+                 <div className="space-y-8">
+                    <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                       <p className="text-[10px] font-black text-teal-600 uppercase tracking-[0.4em]">1. Employee Earnings Protocol</p>
+                       <div className="flex items-center gap-4 text-right">
+                          <p className="text-[8px] font-bold text-slate-400 uppercase">Period Range</p>
+                          <p className="text-[9px] font-black text-slate-900 uppercase">
+                             {activeHistoricalPayslip?.periodFrom || payPeriodFrom} TO {activeHistoricalPayslip?.periodUntil || payPeriodUntil}
+                          </p>
                        </div>
                     </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-16">
+                       <div className="space-y-6">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] border-b border-slate-50 pb-2">EARNINGS BREAKDOWN</p>
+                          <div className="space-y-3">
+                             <div className="flex justify-between text-xs font-bold uppercase">
+                                <span>Gross Basic Salary</span>
+                                <span className="font-mono">€{payrollData.grossBasic.toFixed(2)}</span>
+                             </div>
+                             {payrollData.performanceBonus > 0 && (
+                               <div className="flex justify-between text-xs font-bold uppercase text-teal-600">
+                                  <span>Performance Top-up</span>
+                                  <span className="font-mono">€{payrollData.performanceBonus.toFixed(2)}</span>
+                               </div>
+                             )}
+                             <div className="flex justify-between text-xs font-bold uppercase text-indigo-600">
+                                <span>{payrollData.bonusLabel || 'Statutory Bonus'}</span>
+                                <span className="font-mono">€{payrollData.govBonus.toFixed(2)}</span>
+                             </div>
+                             <div className="h-px bg-slate-100 my-4"></div>
+                             <div className="flex justify-between text-xs font-black uppercase text-slate-900">
+                                <span>Total Gross Earnings</span>
+                                <span className="font-mono">€{payrollData.totalGross.toFixed(2)}</span>
+                             </div>
+                          </div>
+                       </div>
 
-                    <div className="space-y-6">
-                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] border-b border-slate-50 pb-2">STATUTORY DEDUCTIONS</p>
-                       <div className="space-y-3">
-                          <div className="flex justify-between text-xs font-bold uppercase text-rose-600">
-                             <span>Income Tax (FSS)</span>
-                             <span className="font-mono">-€{payrollData.tax.toFixed(2)}</span>
-                          </div>
-                          <div className="flex justify-between text-xs font-bold uppercase text-rose-600">
-                             <span>Social Security (10% NI)</span>
-                             <span className="font-mono">-€{payrollData.niEmployee.toFixed(2)}</span>
-                          </div>
-                          <div className="h-px bg-slate-100 my-4"></div>
-                          <div className="flex justify-between text-xs font-black uppercase text-rose-800">
-                             <span>Total Deductions</span>
-                             <span className="font-mono">-€{(payrollData.tax + payrollData.niEmployee).toFixed(2)}</span>
+                       <div className="space-y-6">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] border-b border-slate-50 pb-2">STATUTORY DEDUCTIONS</p>
+                          <div className="space-y-3">
+                             <div className="flex justify-between text-xs font-bold uppercase text-rose-600">
+                                <span>Income Tax (FSS)</span>
+                                <span className="font-mono">-€{payrollData.tax.toFixed(2)}</span>
+                             </div>
+                             <div className="flex justify-between text-xs font-bold uppercase text-rose-600">
+                                <span>Social Security (10% NI)</span>
+                                <span className="font-mono">-€{payrollData.niEmployee.toFixed(2)}</span>
+                             </div>
+                             <div className="h-px bg-slate-100 my-4"></div>
+                             <div className="flex justify-between text-xs font-black uppercase text-rose-800">
+                                <span>Total Deductions</span>
+                                <span className="font-mono">-€{(payrollData.tax + payrollData.niEmployee).toFixed(2)}</span>
+                             </div>
                           </div>
                        </div>
                     </div>
@@ -401,6 +440,56 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                     </div>
                     <div className="text-center md:text-right">
                        <p className="text-5xl font-black font-mono tracking-tighter text-teal-400">€{payrollData.totalNet.toFixed(2)}</p>
+                    </div>
+                 </div>
+
+                 {/* YTD AND HIDDEN COSTS GRID */}
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
+                    {/* STAKEHOLDER 2: EMPLOYER HIDDEN COSTS */}
+                    <div className="bg-slate-50 p-8 rounded-[1.5rem] border border-slate-200 space-y-4">
+                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.4em] border-b border-slate-100 pb-2">2. Employer Cost Ledger</p>
+                       <div className="space-y-3">
+                          <div className="flex justify-between text-[10px] font-bold text-slate-600 uppercase">
+                             <span>Employer NI Contribution (10%)</span>
+                             <span className="font-mono">€{payrollData.niEmployer.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between text-[10px] font-bold text-slate-600 uppercase">
+                             <span>Maternity Fund Contribution (0.3%)</span>
+                             <span className="font-mono">€{payrollData.maternityFund.toFixed(2)}</span>
+                          </div>
+                          <div className="h-px bg-slate-200 my-2"></div>
+                          <div className="flex justify-between text-[10px] font-black text-indigo-700 uppercase">
+                             <span>Total Operational Cost</span>
+                             <span className="font-mono">€{(payrollData.totalGross + payrollData.niEmployer + payrollData.maternityFund).toFixed(2)}</span>
+                          </div>
+                       </div>
+                    </div>
+
+                    {/* YTD FISCAL SECTION */}
+                    <div className="bg-slate-900 p-8 rounded-[1.5rem] text-white space-y-6 shadow-xl relative overflow-hidden">
+                       <div className="absolute top-0 right-0 p-8 opacity-[0.05] pointer-events-none">
+                          <svg width="120" height="120" viewBox="0 0 24 24" fill="white"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                       </div>
+                       <div className="relative z-10 space-y-6">
+                          <div className="flex justify-between items-center border-b border-white/10 pb-3">
+                             <p className="text-[10px] font-black uppercase tracking-[0.4em] text-teal-400">YTD FISCAL SUMMARY</p>
+                             <p className="text-[9px] font-black uppercase text-white/40">JAN — DEC {annualAccumulation.year}</p>
+                          </div>
+                          <div className="grid grid-cols-2 gap-x-8 gap-y-6">
+                             <div className="space-y-1">
+                                <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Total Gross (YTD)</p>
+                                <p className="text-xl font-black text-white">€{annualAccumulation.gross.toFixed(2)}</p>
+                             </div>
+                             <div className="space-y-1 text-right">
+                                <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Total NI (YTD)</p>
+                                <p className="text-xl font-black text-white">€{annualAccumulation.ni.toFixed(2)}</p>
+                             </div>
+                             <div className="space-y-1">
+                                <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Total FSS Tax (YTD)</p>
+                                <p className="text-xl font-black text-teal-400">€{annualAccumulation.tax.toFixed(2)}</p>
+                             </div>
+                          </div>
+                       </div>
                     </div>
                  </div>
 
@@ -430,6 +519,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
 };
 
 const subLabelStyle = "text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block";
-const inputStyle = "w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-[10px] font-black uppercase tracking-widest outline-none focus:border-teal-500 transition-all shadow-inner";
+const inputStyle = "w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-[10px] font-bold uppercase tracking-widest outline-none focus:border-teal-500 transition-all shadow-inner";
 
 export default PersonnelProfile;
