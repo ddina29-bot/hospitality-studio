@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { TabType, UserRole, User } from '../types';
+import { TabType, UserRole } from '../types';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -11,78 +11,53 @@ interface LayoutProps {
   notificationCount?: number;
   onOpenNotifications?: () => void;
   isSyncing?: boolean;
-  onBuildModeToggle?: () => void;
 }
 
 const Layout: React.FC<LayoutProps> = ({ 
   children, activeTab, setActiveTab, role, onLogout, 
-  notificationCount = 0, onOpenNotifications, isSyncing = false,
-  onBuildModeToggle
+  notificationCount = 0, onOpenNotifications, isSyncing = false 
 }) => {
   const [showMenu, setShowMenu] = useState(false);
-  const [logoClicks, setLogoClicks] = useState(0);
-
-  const handleLogoClick = () => {
-    const newCount = logoClicks + 1;
-    if (newCount >= 5) {
-      onBuildModeToggle?.();
-      setLogoClicks(0);
-    } else {
-      setLogoClicks(newCount);
-      // Reset count if not finished within 2 seconds
-      setTimeout(() => setLogoClicks(0), 2000);
-    }
-  };
 
   const navItems: { id: TabType; label: string; icon: string; roles: UserRole[] }[] = [
-    { id: 'dashboard', label: 'Dashboard', icon: '📊', roles: ['admin', 'driver', 'housekeeping', 'hr', 'finance', 'client', 'supervisor', 'cleaner'] },
+    { id: 'dashboard', label: 'Home', icon: '📊', roles: ['admin', 'driver', 'housekeeping', 'hr', 'finance', 'client', 'supervisor', 'cleaner'] },
     { id: 'shifts', label: 'Schedule', icon: '🗓️', roles: ['admin', 'cleaner', 'housekeeping', 'supervisor'] },
     { id: 'worksheet', label: 'Worksheet', icon: '📄', roles: ['cleaner', 'supervisor'] },
     { id: 'logistics', label: 'Deliveries', icon: '🚚', roles: ['admin', 'driver', 'housekeeping'] },
     { id: 'laundry', label: 'Laundry', icon: '🧺', roles: ['admin', 'laundry', 'housekeeping'] },
-    { id: 'inventory_admin', label: 'Supplies', icon: '📦', roles: ['admin', 'housekeeping'] },
-    { id: 'tutorials', label: 'Guidelines', icon: '📚', roles: ['admin', 'cleaner', 'driver', 'housekeeping', 'supervisor'] },
-    { id: 'properties', label: 'Properties', icon: '🏠', roles: ['admin', 'housekeeping', 'driver'] },
-    { id: 'clients', label: 'Clients', icon: '🏢', roles: ['admin'] },
-    { id: 'finance', label: 'Finance', icon: '💳', roles: ['admin'] },
-    { id: 'reports', label: 'Reports', icon: '📈', roles: ['admin'] },
-    { id: 'users', label: 'Team', icon: '👥', roles: ['admin'] },
-    { id: 'settings', label: 'My Studio', icon: '⚙️', roles: ['admin', 'cleaner', 'driver', 'housekeeping', 'supervisor', 'maintenance', 'hr', 'finance', 'laundry'] },
+    { id: 'properties', label: 'Portfolio', icon: '🏠', roles: ['admin', 'housekeeping', 'driver'] },
+    { id: 'clients', label: 'Partners', icon: '🏢', roles: ['admin'] },
+    { id: 'users', label: 'Team', icon: '👥', roles: ['admin', 'hr'] },
+    { id: 'finance', label: 'Finance', icon: '💳', roles: ['admin', 'finance'] },
+    { id: 'settings', label: 'Studio', icon: '⚙️', roles: ['admin', 'cleaner', 'driver', 'housekeeping', 'supervisor'] },
   ];
 
   const visibleItems = navItems.filter(item => item.roles.includes(role));
 
+  // Bottom Navigation Items (Most common actions)
+  const bottomNavItems = visibleItems.filter(item => 
+    ['dashboard', 'shifts', 'logistics', 'users', 'settings', 'worksheet'].includes(item.id)
+  ).slice(0, 5);
+
   return (
-    <div className="flex h-screen bg-[#F0FDFA] overflow-hidden w-full">
-      {/* SECONDARY SIDEBAR: DARK SLATE (DESKTOP) */}
+    <div className="flex h-screen bg-[#F0FDFA] overflow-hidden w-full selection:bg-teal-100 selection:text-teal-900">
+      
+      {/* DESKTOP SIDEBAR */}
       <aside className="hidden md:flex flex-col w-64 bg-[#1E293B] text-white shrink-0 shadow-2xl relative z-50">
-        <div className="p-8 flex flex-col gap-4">
+        <div className="p-8 space-y-6">
           <div className="flex justify-between items-start">
-            <div className="flex flex-col cursor-pointer select-none" onClick={handleLogoClick}>
+            <div className="flex flex-col">
               <h1 className="font-brand text-2xl text-white tracking-tighter uppercase leading-none">RESET</h1>
               <p className="text-[9px] font-bold text-teal-400 uppercase tracking-[0.25em] mt-2">HOSPITALITY STUDIO</p>
             </div>
-            <button 
-              onClick={onOpenNotifications}
-              className="relative p-2 rounded-xl hover:bg-white/5 transition-colors"
-            >
-              <span className="text-xl">🔔</span>
-              {notificationCount > 0 && (
-                <span className="absolute top-0 right-0 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center text-[8px] font-black animate-bounce shadow-lg">
-                  {notificationCount}
-                </span>
-              )}
-            </button>
           </div>
 
-          {/* CLOUD SYNC INDICATOR */}
-          <div className="pt-2">
-             <div className={`px-4 py-2 rounded-xl border transition-all duration-500 flex items-center gap-3 ${isSyncing ? 'bg-teal-500/10 border-teal-500/30' : 'bg-slate-800/30 border-slate-700/50'}`}>
-                <div className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-teal-400 animate-ping' : 'bg-slate-50'}`}></div>
-                <span className={`text-[7px] font-black uppercase tracking-[0.2em] ${isSyncing ? 'text-teal-400' : 'text-slate-500'}`}>
-                   {isSyncing ? 'Cloud Syncing...' : 'Cloud Verified'}
-                </span>
-             </div>
+          {/* Sync Indicator */}
+          <div className={`px-4 py-2 rounded-xl border transition-all duration-500 flex items-center gap-3 ${isSyncing ? 'bg-teal-500/10 border-teal-500/30' : 'bg-slate-800/30 border-slate-700/50'}`}>
+            <div className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-teal-400 animate-ping' : 'bg-slate-500'}`}></div>
+            <span className={`text-[7px] font-black uppercase tracking-[0.2em] ${isSyncing ? 'text-teal-400' : 'text-slate-500'}`}>
+               {isSyncing ? 'Syncing...' : 'Cloud Verified'}
+            </span>
           </div>
         </div>
 
@@ -109,92 +84,73 @@ const Layout: React.FC<LayoutProps> = ({
         </div>
       </aside>
 
-      {/* MAIN CONTENT */}
+      {/* MAIN VIEWPORT */}
       <main className="flex-1 flex flex-col min-w-0 relative w-full overflow-hidden">
-        {/* MOBILE HEADER - Actions now in top right */}
-        <header className="md:hidden bg-white border-b border-teal-100 px-4 py-3 flex justify-between items-center sticky top-0 z-40 shadow-sm">
-           <div className="flex flex-col cursor-pointer select-none" onClick={handleLogoClick}>
+        
+        {/* MOBILE HEADER */}
+        <header className="md:hidden bg-white border-b border-teal-100 px-5 py-4 flex justify-between items-center sticky top-0 z-40 shadow-sm">
+           <div className="flex flex-col">
               <h2 className="font-brand font-bold text-[#1E293B] text-lg leading-none tracking-tighter">RESET</h2>
               <div className="flex items-center gap-1.5 mt-0.5">
                  <div className={`w-1 h-1 rounded-full ${isSyncing ? 'bg-teal-500 animate-pulse' : 'bg-slate-300'}`}></div>
                  <span className="text-[6px] font-black text-slate-400 uppercase tracking-widest">{isSyncing ? 'SYNCING' : 'VERIFIED'}</span>
               </div>
            </div>
-           
-           <div className="flex items-center gap-1">
-             <button 
-                onClick={onOpenNotifications} 
-                className="relative w-9 h-9 flex items-center justify-center rounded-xl bg-slate-50 border border-slate-100"
-             >
+           <div className="flex items-center gap-2">
+             <button onClick={onOpenNotifications} className="relative w-10 h-10 flex items-center justify-center rounded-xl bg-slate-50 border border-slate-100">
                <span className="text-lg">🔔</span>
-               {notificationCount > 0 && (
-                 <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center text-[8px] font-black shadow-lg">
-                   {notificationCount}
-                 </span>
-               )}
+               {notificationCount > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center text-[8px] font-black">{notificationCount}</span>}
              </button>
-
-             <button 
-               onClick={() => setShowMenu(true)}
-               className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0D9488]/5 text-[#0D9488] border border-[#0D9488]/10"
-             >
+             <button onClick={() => setShowMenu(!showMenu)} className="w-10 h-10 flex items-center justify-center rounded-xl bg-teal-50 text-teal-600 border border-teal-100">
                <span className="text-xl">☰</span>
-             </button>
-
-             <button 
-               onClick={onLogout}
-               className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center shadow-sm active:scale-95 transition-all ml-1"
-             >
-               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="12" y2="12"/></svg>
              </button>
            </div>
         </header>
 
-        {/* CONTENT VIEWPORT */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-10 custom-scrollbar w-full">
+        {/* CONTENT AREA */}
+        <div className="flex-1 overflow-y-auto p-4 md:p-10 custom-scrollbar w-full pb-24 md:pb-10">
           <div className="w-full max-w-[1400px] mx-auto">
             {children}
           </div>
         </div>
 
-        {/* FULL SCREEN MENU MODAL (MOBILE) */}
-        {showMenu && (
-          <div className="fixed inset-0 bg-[#F0FDFA] z-[100] p-5 animate-in slide-in-from-top duration-300 overflow-y-auto flex flex-col">
-             <div className="flex justify-between items-center mb-6 shrink-0">
-                <div className="flex flex-col text-left">
-                  <h2 className="text-xl font-brand font-bold text-[#1E293B] leading-none tracking-tighter">RESET</h2>
-                  <span className="text-[7px] font-black text-[#0D9488] uppercase tracking-[0.3em]">STUDIO NAVIGATION</span>
-                </div>
-                <button 
-                  onClick={() => setShowMenu(false)} 
-                  className="w-10 h-10 flex items-center justify-center bg-white rounded-full text-xl text-slate-400 border border-slate-100 shadow-sm active:scale-90 transition-all"
-                >
-                  &times;
-                </button>
-             </div>
-             
-             <div className="grid grid-cols-2 gap-3 flex-1 mb-6">
-                {visibleItems.map(item => (
-                  <button 
-                    key={item.id} 
-                    onClick={() => { setActiveTab(item.id); setShowMenu(false); }}
-                    className={`flex flex-col items-center justify-center p-4 rounded-[2rem] transition-all gap-2 border h-28 ${activeTab === item.id ? 'bg-[#0D9488] border-[#0D9488] text-white shadow-lg shadow-teal-900/10 scale-[1.02]' : 'bg-white border-slate-100 text-slate-400 shadow-sm'}`}
-                  >
-                    <span className="text-3xl">{item.icon}</span>
-                    <span className="text-[10px] font-black uppercase tracking-widest text-center px-1">{item.label}</span>
-                  </button>
-                ))}
-             </div>
+        {/* MOBILE BOTTOM NAVIGATION DOCK (Native App Feel) */}
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 glass-dock flex justify-around items-center px-2 py-3 z-[100] h-20 shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.1)]">
+           {bottomNavItems.map(item => (
+              <button 
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`flex flex-col items-center justify-center gap-1 min-w-[64px] transition-all ${activeTab === item.id ? 'text-[#0D9488] scale-110' : 'text-slate-400 opacity-60'}`}
+              >
+                <span className="text-2xl leading-none">{item.icon}</span>
+                <span className="text-[8px] font-black uppercase tracking-widest">{item.label}</span>
+                {activeTab === item.id && <div className="w-1 h-1 bg-teal-500 rounded-full mt-0.5"></div>}
+              </button>
+           ))}
+        </nav>
 
-             <div className="pt-4 border-t border-teal-100 shrink-0 pb-2">
-                <button 
-                  onClick={() => { setShowMenu(false); onLogout(); }}
-                  className="w-full bg-rose-50 text-rose-600 py-5 rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] shadow-sm flex items-center justify-center gap-2 border border-rose-100 active:scale-95 transition-all"
-                >
-                  <span className="text-lg">🚪</span>
-                  TERMINATE SESSION
-                </button>
-             </div>
+        {/* MOBILE OVERLAY MENU */}
+        {showMenu && (
+          <div className="fixed inset-0 bg-black/40 z-[200] md:hidden animate-in fade-in" onClick={() => setShowMenu(false)}>
+            <div className="absolute top-0 right-0 bottom-0 w-4/5 bg-white shadow-2xl p-8 space-y-8 animate-in slide-in-from-right duration-300" onClick={e => e.stopPropagation()}>
+               <div className="flex justify-between items-center">
+                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Navigation</h3>
+                  <button onClick={() => setShowMenu(false)} className="text-2xl text-slate-300">&times;</button>
+               </div>
+               <div className="grid grid-cols-1 gap-3">
+                  {visibleItems.map(item => (
+                    <button 
+                      key={item.id} 
+                      onClick={() => { setActiveTab(item.id); setShowMenu(false); }}
+                      className={`flex items-center gap-4 p-4 rounded-2xl text-xs font-bold uppercase tracking-widest border transition-all ${activeTab === item.id ? 'bg-teal-600 border-teal-600 text-white' : 'bg-slate-50 border-slate-100 text-slate-500'}`}
+                    >
+                      <span className="text-lg">{item.icon}</span>
+                      {item.label}
+                    </button>
+                  ))}
+               </div>
+               <button onClick={onLogout} className="w-full mt-auto py-5 bg-rose-50 text-rose-600 font-black uppercase text-[10px] tracking-widest rounded-2xl border border-rose-100">Terminate Session</button>
+            </div>
           </div>
         )}
       </main>
