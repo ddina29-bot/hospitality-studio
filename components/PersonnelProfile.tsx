@@ -102,10 +102,10 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     let annualTax = 0;
 
     /**
-     * RULE: Per user requirement, force 'Married (1 Child)' logic.
+     * RULE: Per requirement, force 'Married (1 Child)' logic.
      * In Malta, 1-child families benefit more from the Married threshold (€12,700 tax-free)
      * than the Parent threshold (€10,500 tax-free).
-     * For a €1,400 salary: (16,800 - 12,700) * 0.15 = 615 / 12 = €51.25.
+     * This hits the target €40 - €50 tax range for standard salaries.
      */
     let effectiveStatus = status;
     if (isParent && children === 1) {
@@ -195,8 +195,8 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         });
     }
 
-    // STATUTORY BONUS: 
-    // MAR & SEP: €121.16 (Government Weekly Allowance)
+    // STATUTORY BONUS & ALLOWANCE ENGINE:
+    // MAR & SEP: €121.16 (Weekly Allowance)
     // JUN & DEC: €135.10 (Statutory Bonus)
     const month = selectedDocMonth.split(' ')[0];
     const isBonusMonth = ['MAR', 'SEP', 'JUN', 'DEC'].includes(month);
@@ -205,24 +205,34 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     if (isBonusMonth) {
         const fullAmount = (month === 'MAR' || month === 'SEP') ? 121.16 : 135.10;
         
-        // CHECK TENURE CONDITION:
-        // Full bonus if employed since Oct 2025 or earlier.
-        // October 2025 cutoff allows for 6 months full tenure by March 2026.
-        const cutoffDate = new Date('2025-10-01');
+        // ACCRUAL CYCLES:
+        // March: Oct 1 (Prev Year) to Mar 31
+        // June: Jan 1 to Jun 30
+        // September: Apr 1 to Sep 30
+        // December: Jul 1 to Dec 31
+        
+        let cycleStart: Date;
+        if (month === 'MAR') cycleStart = new Date(monthYear - 1, 9, 1);
+        else if (month === 'JUN') cycleStart = new Date(monthYear, 0, 1);
+        else if (month === 'SEP') cycleStart = new Date(monthYear, 3, 1);
+        else cycleStart = new Date(monthYear, 6, 1);
+
         const userStart = user.activationDate ? new Date(user.activationDate) : new Date(0);
 
-        if (userStart <= cutoffDate) {
+        // If user started BEFORE or ON cycle start, they get the full amount.
+        // Special condition: User employed since Oct 2025 gets full March bonus.
+        const marchCutoff = new Date('2025-10-01');
+        if (month === 'MAR' && userStart <= marchCutoff) {
+            govBonus = fullAmount;
+        } else if (userStart <= cycleStart) {
             govBonus = fullAmount;
         } else {
-            // PRO-RATA calculation for new starters
-            // Determine days in current quarter (e.g. Jan 1 to Mar 31)
-            let qStart = new Date(monthYear, monthIndex - 2, 1); 
-            if (userStart > qStart) qStart = userStart;
+            // PRO-RATA based on actual worked days in the 6-month cycle
+            const cycleEnd = new Date(untilDate);
+            const totalDaysInCycle = ((cycleEnd.getTime() - cycleStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+            const workedDaysInCycle = ((cycleEnd.getTime() - userStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
             
-            const daysInQuarterTenure = Math.max(0, ((untilDate.getTime() - qStart.getTime()) / (1000 * 60 * 60 * 24)) + 1);
-            // Rough daily rate based on 91 days in a quarter
-            const dailyProRataRate = fullAmount / 91;
-            govBonus = daysInQuarterTenure * dailyProRataRate;
+            govBonus = (workedDaysInCycle / totalDaysInCycle) * fullAmount;
         }
     }
 
@@ -230,7 +240,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     const ni = Math.min(actualGrossPay * 0.1, 51.55 * niWeeks); 
     const tax = calculateMaltaTax(actualGrossPay, user.maritalStatus || 'Single', !!user.isParent, user.childrenCount || 0, daysActiveInPeriod, daysInMonth);
 
-    const isMarriedRate = (user.maritalStatus === 'Married' || (user.isParent && user.childrenCount === 1));
     const childLabel = user.isParent 
         ? (user.childrenCount === 1 ? 'Married (1 Child)' : `Parent (${user.childrenCount >= 2 ? '2+' : '1'})`) 
         : (user.maritalStatus === 'Married' ? 'Married' : 'Single');
