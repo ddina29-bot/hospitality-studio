@@ -19,39 +19,23 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
   const isCurrentUserAdmin = currentUserObj.role === 'admin';
   const isViewingSelf = currentUserObj.id === user.id;
   
-  // Restricted access for financial management
   const canManageFinancials = isCurrentUserAdmin;
   
   const [viewingDoc, setViewingDoc] = useState<'payslip' | 'worksheet' | 'fs3' | null>(initialDocView || null);
   const [activeHistoricalPayslip, setActiveHistoricalPayslip] = useState<SavedPayslip | null>(initialHistoricalPayslip || null);
-  const [activeModule, setActiveModule] = useState<'PAYROLL' | 'INVOICING' | 'RECORDS'>(isCurrentUserAdmin ? 'PAYROLL' : 'PAYROLL'); 
   const [activeSubTab, setActiveSubTab] = useState<'PENDING PAYOUTS' | 'PAYSLIP REGISTRY' | 'LEAVE REQUESTS'>(isCurrentUserAdmin ? 'PENDING PAYOUTS' : 'PAYSLIP REGISTRY');
   
-  // Leave Request Form States
   const [showLeaveForm, setShowLeaveForm] = useState(false);
   const [leaveType, setLeaveType] = useState<LeaveType>('Vacation Leave');
   const [leaveStart, setLeaveStart] = useState('');
   const [leaveEnd, setLeaveEnd] = useState('');
 
-  // 2026 COMPLIANCE STATES
   const [selectedDocMonth, setSelectedDocMonth] = useState<string>('JAN 2026'); 
   const [payPeriodFrom, setPayPeriodFrom] = useState('2026-01-01');
   const [payPeriodUntil, setPayPeriodUntil] = useState('2026-01-31');
   
-  // DYNAMIC WAGE STATE
-  const [contractualGross, setContractualGross] = useState<number | null>(user.payRate || 1333.33); 
   const [manualGrossPay, setManualGrossPay] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (user.payRate) setContractualGross(user.payRate);
-  }, [user.id, user.payRate]);
-  
-  useEffect(() => {
-    if (initialHistoricalPayslip) {
-      setActiveHistoricalPayslip(initialHistoricalPayslip);
-      setViewingDoc('payslip');
-    }
-  }, [initialHistoricalPayslip]);
+  const [isPreviewingCurrent, setIsPreviewingCurrent] = useState(false);
 
   const printContentRef = useRef<HTMLDivElement>(null);
 
@@ -86,15 +70,15 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
   }, [shifts, user.id, payPeriodFrom, payPeriodUntil]);
 
   const payrollData = useMemo(() => {
+    // If viewing a historical payslip, use that data
     if (activeHistoricalPayslip) {
       return {
         grossPay: activeHistoricalPayslip.grossPay,
         totalNet: activeHistoricalPayslip.netPay,
         tax: activeHistoricalPayslip.tax,
         ni: activeHistoricalPayslip.ni,
-        govBonus: activeHistoricalPayslip.govBonus,
-        performanceBonus: (activeHistoricalPayslip as any).performanceBonus || 0,
-        auditFees: (activeHistoricalPayslip as any).auditFees || 0
+        govBonus: activeHistoricalPayslip.govBonus || 0,
+        isHistorical: true
       };
     }
 
@@ -102,7 +86,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     let totalPerformanceBonus = 0;
     let totalAuditFees = 0;
 
-    // Handle Fixed Wage vs Hourly/Piece-rate
     if (user.paymentType === 'Fixed Wage') {
         totalBase = user.payRate || 0;
     } else {
@@ -133,27 +116,17 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     const tax = actualGrossPay * 0.15;
 
     return {
-      performanceBonus: totalPerformanceBonus,
-      auditFees: totalAuditFees,
       grossPay: actualGrossPay,
       ni,
       tax,
       govBonus: 0,
-      totalNet: Math.max(0, actualGrossPay - ni - tax)
+      totalNet: Math.max(0, actualGrossPay - ni - tax),
+      isHistorical: false
     };
   }, [filteredShifts, user, payPeriodFrom, payPeriodUntil, properties, activeHistoricalPayslip, manualGrossPay]);
 
-  const userLeaveRequests = useMemo(() => {
-    return leaveRequests.filter(l => l.userId === user.id).sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
-  }, [leaveRequests, user.id]);
-
-  const approvedLeaveCount = useMemo(() => {
-    return userLeaveRequests.filter(l => l.status === 'approved' && l.type === 'Vacation Leave').length;
-  }, [userLeaveRequests]);
-
   const handleCommitPayslip = () => {
     if (!onUpdateUser) return;
-    if (!window.confirm(`CONFIRM FINANCIAL COMMITMENT:\n\nGenerate permanent record for ${user.name}?`)) return;
 
     const newPayslip: SavedPayslip = {
       id: `ps-${Date.now()}`,
@@ -166,13 +139,14 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
       ni: payrollData.ni,
       niWeeks: 4,
       govBonus: payrollData.govBonus,
-      daysWorked: 20,
+      daysWorked: filteredShifts.length || 20,
       generatedAt: new Date().toISOString(),
       generatedBy: currentUserObj.name || 'Admin User'
     };
 
     onUpdateUser({ ...user, payslips: [...(user.payslips || []), newPayslip] });
-    alert("Record committed to registry.");
+    setIsPreviewingCurrent(false);
+    alert("Financial Record Successfully Committed to Registry.");
   };
 
   const handleSubmitLeave = (e: React.FormEvent) => {
@@ -193,11 +167,18 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     return tabs;
   }, [canManageFinancials]);
 
+  const userLeaveRequests = useMemo(() => {
+    return leaveRequests.filter(l => l.userId === user.id).sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+  }, [leaveRequests, user.id]);
+
+  const approvedLeaveCount = useMemo(() => {
+    return userLeaveRequests.filter(l => l.status === 'approved' && l.type === 'Vacation Leave').length;
+  }, [userLeaveRequests]);
+
   return (
     <div className="bg-[#F8FAFC] min-h-full text-left pb-24 font-brand animate-in fade-in duration-500">
       <div className="max-w-[1200px] mx-auto px-4 md:px-8 pt-6 space-y-8">
         
-        {/* HEADER SECTION - REFINED PROPORTIONS */}
         <section className="bg-white border border-slate-100 rounded-[1.5rem] p-6 flex flex-col md:flex-row items-center justify-between gap-6 shadow-sm">
            <div className="flex items-center gap-6 w-full md:w-auto">
               <div className="w-16 h-16 rounded-[1.2rem] bg-teal-50 flex items-center justify-center text-[#0D9488] font-bold text-2xl shadow-inner overflow-hidden border border-teal-100">
@@ -212,12 +193,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
            
            <div className="flex flex-wrap gap-3 w-full md:w-auto">
               {(isViewingSelf || isCurrentUserAdmin) && (
-                <button 
-                    onClick={() => setShowLeaveForm(true)}
-                    className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-[8px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all"
-                >
-                    REQUEST ABSENCE
-                </button>
+                <button onClick={() => setShowLeaveForm(true)} className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-[8px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all">REQUEST ABSENCE</button>
               )}
               <div className="bg-slate-50 px-5 py-2.5 rounded-xl border border-slate-100 min-w-[120px]">
                  <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-0.5 text-center">BASE RATE</p>
@@ -226,7 +202,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
            </div>
         </section>
 
-        {/* NAVIGATION & CONTENT AREA */}
         <div className="space-y-6">
            <div className="flex gap-8 border-b border-slate-200 w-full md:w-auto px-2 overflow-x-auto no-scrollbar">
               {visibleSubTabs.map(tab => (
@@ -266,11 +241,10 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                          <p className={subLabelStyle}>Estimated Net Payout</p>
                          <p className="text-5xl font-black text-emerald-700 tracking-tighter leading-none mb-1">€{payrollData.totalNet.toFixed(2)}</p>
                          <p className="text-[7px] font-bold text-emerald-600/60 uppercase tracking-widest">Gross: €{payrollData.grossPay.toFixed(2)}</p>
-                         <button onClick={handleCommitPayslip} className="mt-8 bg-slate-900 text-white font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-xl active:scale-95 transition-all">COMMIT TO REGISTRY</button>
+                         <button onClick={() => setIsPreviewingCurrent(true)} className="mt-8 bg-slate-900 text-white font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-xl active:scale-95 transition-all">PREVIEW PAYSLIP</button>
                       </div>
                    </div>
 
-                   {/* Activity Summary Table */}
                    {user.paymentType !== 'Fixed Wage' && (
                      <div className="pt-6 space-y-4">
                         <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Session Summary ({filteredShifts.length} units)</p>
@@ -365,12 +339,8 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                                  <tr><td colSpan={3} className="px-10 py-16 text-center opacity-20 text-[9px] font-black uppercase italic">No leave history found</td></tr>
                               ) : userLeaveRequests.map(l => (
                                  <tr key={l.id}>
-                                    <td className="px-8 py-4">
-                                       <span className="text-[9px] font-black text-slate-900 uppercase">{l.type}</span>
-                                    </td>
-                                    <td className="px-8 py-4">
-                                       <span className="text-[8px] font-bold text-slate-400 uppercase">{l.startDate} TO {l.endDate}</span>
-                                    </td>
+                                    <td className="px-8 py-4"><span className="text-[9px] font-black text-slate-900 uppercase">{l.type}</span></td>
+                                    <td className="px-8 py-4"><span className="text-[8px] font-bold text-slate-400 uppercase">{l.startDate} TO {l.endDate}</span></td>
                                     <td className="px-8 py-4 text-center">
                                        <span className={`px-4 py-1.5 rounded-full text-[7px] font-black uppercase tracking-widest shadow-sm ${
                                           l.status === 'approved' ? 'bg-emerald-600 text-white' :
@@ -392,45 +362,18 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         </div>
       </div>
 
-      {/* LEAVE REQUEST MODAL */}
-      {showLeaveForm && (
-        <div className="fixed inset-0 bg-slate-900/60 z-[1000] flex items-center justify-center p-4 backdrop-blur-md">
-           <div className="bg-white rounded-[2rem] w-full max-w-md p-8 md:p-10 space-y-6 shadow-2xl relative text-left animate-in zoom-in-95 border-2 border-slate-100">
-              <button onClick={() => setShowLeaveForm(false)} className="absolute top-6 right-6 text-slate-300 hover:text-slate-900 font-black text-xl">&times;</button>
-              <div className="space-y-1">
-                 <h2 className="text-xl font-bold uppercase text-slate-900 tracking-tight">Request Absence</h2>
-                 <p className="text-[8px] font-black text-indigo-600 uppercase tracking-[0.4em]">Official Leave Application</p>
-              </div>
-              <form onSubmit={handleSubmitLeave} className="space-y-5">
-                 <div>
-                    <label className={subLabelStyle}>Leave Category</label>
-                    <select className={inputStyle} value={leaveType} onChange={e => setLeaveType(e.target.value as LeaveType)}>
-                       <option value="Vacation Leave">Vacation Leave</option>
-                       <option value="Sick Leave">Sick Leave</option>
-                       <option value="Day Off">Standard Day Off</option>
-                    </select>
-                 </div>
-                 <div className="grid grid-cols-2 gap-4">
-                    <div>
-                       <label className={subLabelStyle}>Starting On</label>
-                       <input required type="date" className={inputStyle} value={leaveStart} onChange={e => setLeaveStart(e.target.value)} />
-                    </div>
-                    <div>
-                       <label className={subLabelStyle}>Ending On</label>
-                       <input required type="date" className={inputStyle} value={leaveEnd} onChange={e => setLeaveEnd(e.target.value)} />
-                    </div>
-                 </div>
-                 <button type="submit" className="w-full bg-indigo-600 text-white font-black py-4 rounded-xl uppercase tracking-widest text-[9px] shadow-xl active:scale-95 transition-all mt-4">SUBMIT APPLICATION</button>
-              </form>
-           </div>
-        </div>
-      )}
-
-      {/* DOCUMENT PREVIEW MODAL */}
-      {viewingDoc && (
+      {(viewingDoc || isPreviewingCurrent) && (
         <div className="fixed inset-0 bg-slate-900/80 z-[1000] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
            <div className="bg-white rounded-[2rem] w-full max-w-3xl p-8 md:p-12 space-y-10 shadow-2xl relative text-left my-auto animate-in zoom-in-95 border-2 border-slate-100">
-              <button onClick={() => { setViewingDoc(null); setActiveHistoricalPayslip(null); }} className="absolute top-8 right-8 text-slate-300 hover:text-slate-900 no-print font-black text-xl">&times;</button>
+              <button onClick={() => { setViewingDoc(null); setIsPreviewingCurrent(false); setActiveHistoricalPayslip(null); }} className="absolute top-8 right-8 text-slate-300 hover:text-slate-900 no-print font-black text-xl">&times;</button>
+              
+              {!payrollData.isHistorical && (
+                <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl mb-6 flex items-center gap-4 animate-pulse">
+                   <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white font-bold">!</div>
+                   <p className="text-[9px] font-black text-amber-900 uppercase tracking-widest">LIVE PREVIEW MODE — DOCUMENT NOT YET COMMITTED</p>
+                </div>
+              )}
+
               <div ref={printContentRef} className="space-y-10">
                  <header className="flex justify-between items-start border-b-2 border-slate-900 pb-8">
                     <div className="space-y-2">
@@ -440,7 +383,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                     <div className="text-right">
                        <h2 className="text-base font-black uppercase tracking-[0.2em] bg-slate-900 text-white px-4 py-1.5">PAYSLIP</h2>
                        <p className="text-xs font-black text-slate-900 uppercase mt-4">{user.name}</p>
-                       <p className="text-[8px] font-bold text-slate-400 uppercase">{psIdDisplay(activeHistoricalPayslip?.id)}</p>
+                       <p className="text-[8px] font-bold text-slate-400 uppercase">{activeHistoricalPayslip ? psIdDisplay(activeHistoricalPayslip.id) : 'PREVIEW_ID'}</p>
                     </div>
                  </header>
                  <div className="space-y-10">
@@ -450,8 +393,8 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                     </div>
                     <div className="space-y-4">
                        <div className="flex justify-between text-[11px] font-bold text-slate-500 uppercase"><span>Gross Earnings</span><span className="text-slate-900">€{payrollData.grossPay.toFixed(2)}</span></div>
-                       <div className="flex justify-between text-[11px] font-bold text-slate-500 uppercase"><span>Social Security (NI)</span><span className="text-rose-600">-€{payrollData.ni.toFixed(2)}</span></div>
-                       <div className="flex justify-between text-[11px] font-bold text-slate-500 uppercase"><span>FSS PAYE Tax</span><span className="text-rose-600">-€{payrollData.tax.toFixed(2)}</span></div>
+                       <div className="flex justify-between text-[11px] font-bold text-slate-500 uppercase"><span>Social Security (NI 10%)</span><span className="text-rose-600">-€{payrollData.ni.toFixed(2)}</span></div>
+                       <div className="flex justify-between text-[11px] font-bold text-slate-500 uppercase"><span>FSS PAYE Tax (15%)</span><span className="text-rose-600">-€{payrollData.tax.toFixed(2)}</span></div>
                     </div>
                  </div>
                  <div className="pt-10 border-t border-slate-100 flex justify-between items-center">
@@ -461,6 +404,13 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                     <p className="text-[7px] font-black uppercase text-slate-300 tracking-[0.3em]">RESET STUDIO OPS CORE VERIFIED</p>
                  </div>
               </div>
+
+              {!payrollData.isHistorical && (
+                <div className="flex gap-4 pt-6 no-print">
+                   <button onClick={handleCommitPayslip} className="flex-[2] bg-emerald-600 text-white font-black py-5 rounded-2xl uppercase tracking-[0.2em] text-[10px] shadow-xl hover:bg-emerald-700 active:scale-95 transition-all">CONFIRM & COMMIT TO REGISTRY</button>
+                   <button onClick={() => setIsPreviewingCurrent(false)} className="flex-1 bg-white border border-slate-200 text-slate-400 font-black py-5 rounded-2xl uppercase tracking-widest text-[10px]">Cancel</button>
+                </div>
+              )}
            </div>
         </div>
       )}
