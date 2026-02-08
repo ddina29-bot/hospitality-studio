@@ -23,9 +23,9 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
   const [activeHistoricalPayslip, setActiveHistoricalPayslip] = useState<SavedPayslip | null>(initialHistoricalPayslip || null);
   const [activeSubTab, setActiveSubTab] = useState<'PENDING PAYOUTS' | 'PAYSLIP REGISTRY' | 'LEAVE REQUESTS'>(isCurrentUserAdmin ? 'PENDING PAYOUTS' : 'PAYSLIP REGISTRY');
   
-  const [selectedDocMonth, setSelectedDocMonth] = useState<string>('JAN 2026'); 
-  const [payPeriodFrom, setPayPeriodFrom] = useState('2026-01-01');
-  const [payPeriodUntil, setPayPeriodUntil] = useState('2026-01-31');
+  const [selectedDocMonth, setSelectedDocMonth] = useState<string>('MAR 2026'); 
+  const [payPeriodFrom, setPayPeriodFrom] = useState('2026-03-01');
+  const [payPeriodUntil, setPayPeriodUntil] = useState('2026-03-31');
   const [manualGrossPay, setManualGrossPay] = useState<number | null>(null);
   const [isPreviewingCurrent, setIsPreviewingCurrent] = useState(false);
 
@@ -101,9 +101,16 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     const annualGross = projectedMonthly * 12;
     let annualTax = 0;
 
-    // RULE: For 1 kid families, the Married tax-free threshold (€12,700) is usually more beneficial 
-    // than the Parent threshold (€10,500). We default to Married for families with 1 child.
-    const effectiveStatus = (status === 'Married' || (isParent && children === 1)) ? 'Married' : status;
+    /**
+     * RULE: Per user requirement, force 'Married (1 Child)' logic.
+     * In Malta, 1-child families benefit more from the Married threshold (€12,700 tax-free)
+     * than the Parent threshold (€10,500 tax-free).
+     * For a €1,400 salary: (16,800 - 12,700) * 0.15 = 615 / 12 = €51.25.
+     */
+    let effectiveStatus = status;
+    if (isParent && children === 1) {
+        effectiveStatus = 'Married';
+    }
 
     if (isParent && children >= 2) {
       const isSingleParent = status === 'Single';
@@ -188,34 +195,44 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         });
     }
 
-    // STATUTORY BONUS: Quarterly Implementation
-    // Issued in MAR, JUN, SEP, DEC. 
-    // Pro-rated daily based on employment duration in that specific quarter.
+    // STATUTORY BONUS: 
+    // MAR & SEP: €121.16 (Government Weekly Allowance)
+    // JUN & DEC: €135.10 (Statutory Bonus)
     const month = selectedDocMonth.split(' ')[0];
-    const bonusMonths = ['MAR', 'JUN', 'SEP', 'DEC'];
+    const isBonusMonth = ['MAR', 'SEP', 'JUN', 'DEC'].includes(month);
     let govBonus = 0;
 
-    if (bonusMonths.includes(month)) {
-        const isFullTime = user.employmentType === 'Full-Time';
-        const dailyBonusRate = isFullTime ? 0.6657 : 0.3328;
+    if (isBonusMonth) {
+        const fullAmount = (month === 'MAR' || month === 'SEP') ? 121.16 : 135.10;
         
-        // Calculate days employed in the CURRENT quarter window
-        let qStart = new Date(monthYear, monthIndex - 2, 1); // 3 months back
-        if (user.activationDate) {
-            const startDate = new Date(user.activationDate);
-            if (startDate > qStart) qStart = startDate;
+        // CHECK TENURE CONDITION:
+        // Full bonus if employed since Oct 2025 or earlier.
+        // October 2025 cutoff allows for 6 months full tenure by March 2026.
+        const cutoffDate = new Date('2025-10-01');
+        const userStart = user.activationDate ? new Date(user.activationDate) : new Date(0);
+
+        if (userStart <= cutoffDate) {
+            govBonus = fullAmount;
+        } else {
+            // PRO-RATA calculation for new starters
+            // Determine days in current quarter (e.g. Jan 1 to Mar 31)
+            let qStart = new Date(monthYear, monthIndex - 2, 1); 
+            if (userStart > qStart) qStart = userStart;
+            
+            const daysInQuarterTenure = Math.max(0, ((untilDate.getTime() - qStart.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+            // Rough daily rate based on 91 days in a quarter
+            const dailyProRataRate = fullAmount / 91;
+            govBonus = daysInQuarterTenure * dailyProRataRate;
         }
-        const daysInQuarterTenure = Math.max(0, ((untilDate.getTime() - qStart.getTime()) / (1000 * 60 * 60 * 24)) + 1);
-        govBonus = daysInQuarterTenure * dailyBonusRate;
     }
 
     const actualGrossPay = manualGrossPay !== null ? manualGrossPay : (totalBase + totalPerformanceBonus + govBonus);
     const ni = Math.min(actualGrossPay * 0.1, 51.55 * niWeeks); 
     const tax = calculateMaltaTax(actualGrossPay, user.maritalStatus || 'Single', !!user.isParent, user.childrenCount || 0, daysActiveInPeriod, daysInMonth);
 
-    const isSingleParent = user.isParent && user.maritalStatus === 'Single';
+    const isMarriedRate = (user.maritalStatus === 'Married' || (user.isParent && user.childrenCount === 1));
     const childLabel = user.isParent 
-        ? (isSingleParent ? 'Single Parent' : `Parent (${user.childrenCount >= 2 ? '2+' : '1'})`) 
+        ? (user.childrenCount === 1 ? 'Married (1 Child)' : `Parent (${user.childrenCount >= 2 ? '2+' : '1'})`) 
         : (user.maritalStatus === 'Married' ? 'Married' : 'Single');
 
     return {
@@ -318,7 +335,10 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
              <section className="bg-white border border-slate-100 rounded-[2rem] p-6 md:p-8 shadow-sm space-y-8 text-left">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
                    <div className="space-y-6">
-                      <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest border-b border-slate-50 pb-2">Calculation Parameters</h3>
+                      <div className="flex items-center justify-between border-b border-slate-50 pb-2">
+                        <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest">Calculation Parameters</h3>
+                        <span className="text-[8px] font-black text-teal-600 uppercase bg-teal-50 px-2 py-0.5 rounded">2026 Engine</span>
+                      </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                          <div className="md:col-span-2">
                             <label className={subLabelStyle}>Issuance Month</label>
@@ -337,7 +357,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                    <div className="p-8 bg-emerald-50 border border-emerald-100 rounded-[1.5rem] flex flex-col justify-center text-center">
                       <p className={subLabelStyle}>Estimated Net Payout</p>
                       <p className="text-5xl font-black text-emerald-700 tracking-tighter leading-none mb-1">€{payrollData.totalNet.toFixed(2)}</p>
-                      <p className="text-[7px] font-bold text-emerald-600/60 uppercase tracking-widest">Applying {payrollData.taxBand} Rate (Malta 2026)</p>
+                      <p className="text-[7px] font-bold text-emerald-600/60 uppercase tracking-widest">Applying {payrollData.taxBand} Rate</p>
                       <button onClick={() => setIsPreviewingCurrent(true)} className="mt-8 bg-slate-900 text-white font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-xl active:scale-95 transition-all">PREVIEW PAYSLIP</button>
                    </div>
                 </div>
@@ -424,7 +444,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] border-b border-slate-50 pb-2">EARNINGS</p>
                           <div className="flex justify-between text-xs font-bold"><span>Gross Basic Salary</span><span className="font-mono">€{payrollData.totalBase.toFixed(2)}</span></div>
                           <div className="flex justify-between text-xs font-bold text-teal-600"><span>Performance Top-up</span><span className="font-mono">€{(payrollData.totalPerformanceBonus || 0).toFixed(2)}</span></div>
-                          <div className="flex justify-between text-xs font-bold text-indigo-600"><span>Statutory Bonus (€0.66/day)</span><span className="font-mono">€{(payrollData.govBonus || 0).toFixed(2)}</span></div>
+                          <div className="flex justify-between text-xs font-bold text-indigo-600"><span>Statutory Bonus</span><span className="font-mono">€{(payrollData.govBonus || 0).toFixed(2)}</span></div>
                        </div>
                        <div className="space-y-5">
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] border-b border-slate-50 pb-2">STATUTORY DEDUCTIONS</p>
