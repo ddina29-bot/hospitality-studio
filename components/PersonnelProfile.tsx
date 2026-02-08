@@ -57,7 +57,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
 
     if (isParent && status === 'Single') {
         category = kids >= 2 ? 'Parent (2+)' : 'Parent (1 Child)';
-        taxFreeThreshold = 18500; // Requirement: Single/Parent is Parent (2+) logic
+        taxFreeThreshold = 18500;
     } else if (status === 'Married') {
         if (kids > 0) {
             category = 'Married (1 Child)';
@@ -91,14 +91,14 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     if (activeHistoricalPayslip) {
       return {
         grossBasic: activeHistoricalPayslip.grossPay - (activeHistoricalPayslip.govBonus || 0),
-        performanceBonus: 0, // Simplified for archived
+        performanceBonus: 0, 
         govBonus: activeHistoricalPayslip.govBonus || 0,
         tax: activeHistoricalPayslip.tax,
         niEmployee: activeHistoricalPayslip.ni,
         niEmployer: activeHistoricalPayslip.ni,
         maternityFund: activeHistoricalPayslip.grossPay * 0.003,
         totalNet: activeHistoricalPayslip.netPay,
-        taxBandUsed: 'Archived Record',
+        taxBandUsed: 'Registry Record',
         totalGross: activeHistoricalPayslip.grossPay,
         isHistorical: true
       };
@@ -106,7 +106,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
 
     const month = selectedDocMonth.split(' ')[0];
 
-    // GOLDEN RULE 2: STATUTORY BONUS (Oct 1 - Mar 31)
+    // GOLDEN RULE 2: STATUTORY BONUS
     let govBonus = 0;
     let bonusLabel = "N/A";
     if (month === 'MAR') {
@@ -119,14 +119,13 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         
         if (daysEmployed >= totalBonusDays) {
             govBonus = 121.16;
-            bonusLabel = "Full Statutory Allowance";
+            bonusLabel = "Full";
         } else {
             govBonus = Number(((daysEmployed / totalBonusDays) * 121.16).toFixed(2));
-            bonusLabel = `Pro-Rata Allowance (${Math.round(daysEmployed)} days)`;
+            bonusLabel = `Pro-Rata (${Math.round(daysEmployed)} days)`;
         }
     }
 
-    // BASE CALCULATIONS
     let totalBasic = 0;
     let totalPerformance = 0;
 
@@ -153,12 +152,11 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     const currentGross = manualGrossPay !== null ? manualGrossPay : (totalBasic + totalPerformance);
     const totalGross = currentGross + govBonus;
     
-    // GOLDEN RULE 3: NI (10% of TOTAL)
+    // GOLDEN RULE 3: NI (10%)
     const niEmployee = totalGross * 0.10;
     const niEmployer = totalGross * 0.10;
     const maternityFund = currentGross * 0.003;
 
-    // GOLDEN RULE 1: TAX
     const projectedAnnual = currentGross * 12;
     const taxRes = getTaxEngineOutput(projectedAnnual, user.maritalStatus || 'Single', !!user.isParent, user.childrenCount || 0, spouseWorks);
     const periodTax = taxRes.tax / 12;
@@ -188,10 +186,15 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     let totalTax = relevantSaved.reduce((sum, ps) => sum + ps.tax, 0);
     let totalGross = relevantSaved.reduce((sum, ps) => sum + ps.grossPay, 0);
     
-    // Add current viewing data
-    totalNI += payrollData.niEmployee;
-    totalTax += payrollData.tax;
-    totalGross += payrollData.totalGross;
+    if (!activeHistoricalPayslip) {
+      totalNI += payrollData.niEmployee;
+      totalTax += payrollData.tax;
+      totalGross += payrollData.totalGross;
+    } else {
+      totalNI += activeHistoricalPayslip.ni;
+      totalTax += activeHistoricalPayslip.tax;
+      totalGross += activeHistoricalPayslip.grossPay;
+    }
     
     return { ni: totalNI, tax: totalTax, gross: totalGross, year: yearSuffix };
   }, [user.payslips, selectedDocMonth, activeHistoricalPayslip, payrollData]);
@@ -334,18 +337,18 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
 
       {(viewingDoc || isPreviewingCurrent) && (
         <div className="fixed inset-0 bg-slate-900/95 z-[1000] flex items-center justify-center p-4 backdrop-blur-xl overflow-y-auto">
-           <div className="bg-white rounded-[1rem] w-full max-w-4xl p-8 md:p-14 space-y-12 shadow-2xl relative text-left my-auto animate-in zoom-in-95 border border-slate-100">
+           <div className="bg-white rounded-[1rem] w-full max-w-4xl p-8 md:p-14 space-y-10 shadow-2xl relative text-left my-auto animate-in zoom-in-95 border border-slate-100">
               <button onClick={() => { setViewingDoc(null); setIsPreviewingCurrent(false); setActiveHistoricalPayslip(null); }} className="absolute top-8 right-8 text-slate-300 hover:text-slate-900 font-black text-2xl transition-colors no-print">&times;</button>
               
-              <div ref={printContentRef} className="space-y-12 text-slate-900">
+              <div ref={printContentRef} className="space-y-10 text-slate-900">
                  {/* OFFICIAL PAYSLIP HEADER */}
-                 <header className="flex justify-between items-start border-b-2 border-slate-900 pb-10">
+                 <header className="flex justify-between items-start border-b-2 border-slate-900 pb-8">
                     <div className="space-y-3">
                        <h1 className="text-3xl font-black uppercase tracking-tighter leading-none">{organization?.legalEntity || organization?.name || 'RESET HOSPITALITY STUDIO'}</h1>
                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.1em] space-y-1">
-                          <p>Business PE Number: <span className="text-slate-900">{organization?.peNumber || 'PE 000000'}</span></p>
+                          <p>PE Number: <span className="text-slate-900">{organization?.peNumber || 'PE 000000'}</span></p>
                           <p>VAT ID: <span className="text-slate-900">{organization?.taxId || 'MT 00000000'}</span></p>
-                          <p className="max-w-[280px] leading-relaxed italic">{organization?.address || 'ADDRESS_NOT_REGISTERED'}</p>
+                          <p className="max-w-[280px] leading-relaxed italic">{organization?.address || 'NO_ADDRESS_REGISTERED'}</p>
                        </div>
                     </div>
                     <div className="text-right">
@@ -356,77 +359,72 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                  </header>
 
                  {/* PERSONNEL DETAILS GRID */}
-                 <div className="grid grid-cols-2 gap-10 border-b border-slate-100 pb-10">
+                 <div className="grid grid-cols-2 gap-10 border-b border-slate-100 pb-8">
                     <div className="space-y-4">
                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.3em]">EMPLOYEE PROFILE</p>
-                       <div className="space-y-1.5">
+                       <div className="space-y-1.5 text-left">
                           <p className="text-base font-black uppercase text-slate-900">{user.name}</p>
                           <p className="text-[10px] font-bold text-slate-500 uppercase leading-relaxed max-w-[280px]">{user.homeAddress || 'NO_ADDRESS_FILED'}</p>
+                          <div className="pt-2">
+                             <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest">Pay Period</p>
+                             <p className="text-[10px] font-black text-slate-900">
+                                {activeHistoricalPayslip?.periodFrom || payPeriodFrom} TO {activeHistoricalPayslip?.periodUntil || payPeriodUntil}
+                             </p>
+                          </div>
                        </div>
                     </div>
                     <div className="space-y-4 text-right">
                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.3em]">STATUTORY IDENTITY</p>
                        <div className="text-[10px] font-bold text-slate-700 uppercase space-y-2">
-                          <p>ID Card / Passport: <span className="font-black text-slate-900">{user.idPassportNumber || '---'}</span></p>
+                          <p>ID / Passport: <span className="font-black text-slate-900">{user.idPassportNumber || '---'}</span></p>
                           <p>NI Number: <span className="font-black text-slate-900">{user.niNumber || '---'}</span></p>
                           <p>Tax Status: <span className="font-black text-teal-600 uppercase">{payrollData.taxBandUsed}</span></p>
                        </div>
                     </div>
                  </div>
 
-                 {/* 1. EMPLOYEE VIEW: EARNINGS VS DEDUCTIONS GRID */}
-                 <div className="space-y-8">
-                    <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                       <p className="text-[10px] font-black text-teal-600 uppercase tracking-[0.4em]">1. Employee Earnings Protocol</p>
-                       <div className="flex items-center gap-4 text-right">
-                          <p className="text-[8px] font-bold text-slate-400 uppercase">Period Range</p>
-                          <p className="text-[9px] font-black text-slate-900 uppercase">
-                             {activeHistoricalPayslip?.periodFrom || payPeriodFrom} TO {activeHistoricalPayslip?.periodUntil || payPeriodUntil}
-                          </p>
-                       </div>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-16">
-                       <div className="space-y-6">
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] border-b border-slate-50 pb-2">EARNINGS BREAKDOWN</p>
-                          <div className="space-y-3">
-                             <div className="flex justify-between text-xs font-bold uppercase">
-                                <span>Gross Basic Salary</span>
-                                <span className="font-mono">€{payrollData.grossBasic.toFixed(2)}</span>
-                             </div>
-                             {payrollData.performanceBonus > 0 && (
-                               <div className="flex justify-between text-xs font-bold uppercase text-teal-600">
-                                  <span>Performance Top-up</span>
-                                  <span className="font-mono">€{payrollData.performanceBonus.toFixed(2)}</span>
-                               </div>
-                             )}
-                             <div className="flex justify-between text-xs font-bold uppercase text-indigo-600">
-                                <span>{payrollData.bonusLabel || 'Statutory Bonus'}</span>
-                                <span className="font-mono">€{payrollData.govBonus.toFixed(2)}</span>
-                             </div>
-                             <div className="h-px bg-slate-100 my-4"></div>
-                             <div className="flex justify-between text-xs font-black uppercase text-slate-900">
-                                <span>Total Gross Earnings</span>
-                                <span className="font-mono">€{payrollData.totalGross.toFixed(2)}</span>
-                             </div>
+                 {/* EARNINGS VS DEDUCTIONS GRID */}
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-16">
+                    <div className="space-y-6">
+                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] border-b border-slate-50 pb-2">EARNINGS BREAKDOWN</p>
+                       <div className="space-y-3">
+                          <div className="flex justify-between text-xs font-bold uppercase">
+                             <span>Gross Basic Salary</span>
+                             <span className="font-mono">€{payrollData.grossBasic.toFixed(2)}</span>
+                          </div>
+                          {payrollData.performanceBonus > 0 && (
+                            <div className="flex justify-between text-xs font-bold uppercase text-teal-600">
+                               <span>Performance Top-up</span>
+                               <span className="font-mono">€{payrollData.performanceBonus.toFixed(2)}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between text-xs font-bold uppercase text-indigo-600">
+                             <span>{payrollData.govBonus > 0 ? `Statutory Bonus (${payrollData.bonusLabel})` : 'Statutory Bonus'}</span>
+                             <span className="font-mono">€{payrollData.govBonus.toFixed(2)}</span>
+                          </div>
+                          <div className="h-px bg-slate-100 my-4"></div>
+                          <div className="flex justify-between text-xs font-black uppercase text-slate-900">
+                             <span>Total Gross Earnings</span>
+                             <span className="font-mono">€{payrollData.totalGross.toFixed(2)}</span>
                           </div>
                        </div>
+                    </div>
 
-                       <div className="space-y-6">
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] border-b border-slate-50 pb-2">STATUTORY DEDUCTIONS</p>
-                          <div className="space-y-3">
-                             <div className="flex justify-between text-xs font-bold uppercase text-rose-600">
-                                <span>Income Tax (FSS)</span>
-                                <span className="font-mono">-€{payrollData.tax.toFixed(2)}</span>
-                             </div>
-                             <div className="flex justify-between text-xs font-bold uppercase text-rose-600">
-                                <span>Social Security (10% NI)</span>
-                                <span className="font-mono">-€{payrollData.niEmployee.toFixed(2)}</span>
-                             </div>
-                             <div className="h-px bg-slate-100 my-4"></div>
-                             <div className="flex justify-between text-xs font-black uppercase text-rose-800">
-                                <span>Total Deductions</span>
-                                <span className="font-mono">-€{(payrollData.tax + payrollData.niEmployee).toFixed(2)}</span>
-                             </div>
+                    <div className="space-y-6">
+                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] border-b border-slate-50 pb-2">STATUTORY DEDUCTIONS</p>
+                       <div className="space-y-3">
+                          <div className="flex justify-between text-xs font-bold uppercase text-rose-600">
+                             <span>Income Tax (FSS)</span>
+                             <span className="font-mono">-€{payrollData.tax.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between text-xs font-bold uppercase text-rose-600">
+                             <span>Social Security (10% NI)</span>
+                             <span className="font-mono">-€{payrollData.niEmployee.toFixed(2)}</span>
+                          </div>
+                          <div className="h-px bg-slate-100 my-4"></div>
+                          <div className="flex justify-between text-xs font-black uppercase text-rose-800">
+                             <span>Total Deductions</span>
+                             <span className="font-mono">-€{(payrollData.tax + payrollData.niEmployee).toFixed(2)}</span>
                           </div>
                        </div>
                     </div>
@@ -443,58 +441,35 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                     </div>
                  </div>
 
-                 {/* YTD AND HIDDEN COSTS GRID */}
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
-                    {/* STAKEHOLDER 2: EMPLOYER HIDDEN COSTS */}
-                    <div className="bg-slate-50 p-8 rounded-[1.5rem] border border-slate-200 space-y-4">
-                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.4em] border-b border-slate-100 pb-2">2. Employer Cost Ledger</p>
-                       <div className="space-y-3">
-                          <div className="flex justify-between text-[10px] font-bold text-slate-600 uppercase">
-                             <span>Employer NI Contribution (10%)</span>
-                             <span className="font-mono">€{payrollData.niEmployer.toFixed(2)}</span>
-                          </div>
-                          <div className="flex justify-between text-[10px] font-bold text-slate-600 uppercase">
-                             <span>Maternity Fund Contribution (0.3%)</span>
-                             <span className="font-mono">€{payrollData.maternityFund.toFixed(2)}</span>
-                          </div>
-                          <div className="h-px bg-slate-200 my-2"></div>
-                          <div className="flex justify-between text-[10px] font-black text-indigo-700 uppercase">
-                             <span>Total Operational Cost</span>
-                             <span className="font-mono">€{(payrollData.totalGross + payrollData.niEmployer + payrollData.maternityFund).toFixed(2)}</span>
-                          </div>
-                       </div>
+                 {/* YTD FISCAL SUMMARY SECTION */}
+                 <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-6 opacity-[0.03] pointer-events-none">
+                       <svg width="100" height="100" viewBox="0 0 24 24" fill="black"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                     </div>
-
-                    {/* YTD FISCAL SECTION */}
-                    <div className="bg-slate-900 p-8 rounded-[1.5rem] text-white space-y-6 shadow-xl relative overflow-hidden">
-                       <div className="absolute top-0 right-0 p-8 opacity-[0.05] pointer-events-none">
-                          <svg width="120" height="120" viewBox="0 0 24 24" fill="white"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                    <div className="relative z-10 space-y-6">
+                       <div className="flex justify-between items-center border-b border-slate-200 pb-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-400">YTD FISCAL SUMMARY</p>
+                          <p className="text-[9px] font-black uppercase text-slate-400">JAN — DEC {annualAccumulation.year}</p>
                        </div>
-                       <div className="relative z-10 space-y-6">
-                          <div className="flex justify-between items-center border-b border-white/10 pb-3">
-                             <p className="text-[10px] font-black uppercase tracking-[0.4em] text-teal-400">YTD FISCAL SUMMARY</p>
-                             <p className="text-[9px] font-black uppercase text-white/40">JAN — DEC {annualAccumulation.year}</p>
+                       <div className="grid grid-cols-2 md:grid-cols-3 gap-8">
+                          <div className="space-y-1">
+                             <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Total Gross (YTD)</p>
+                             <p className="text-xl font-black text-slate-900">€{annualAccumulation.gross.toFixed(2)}</p>
                           </div>
-                          <div className="grid grid-cols-2 gap-x-8 gap-y-6">
-                             <div className="space-y-1">
-                                <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Total Gross (YTD)</p>
-                                <p className="text-xl font-black text-white">€{annualAccumulation.gross.toFixed(2)}</p>
-                             </div>
-                             <div className="space-y-1 text-right">
-                                <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Total NI (YTD)</p>
-                                <p className="text-xl font-black text-white">€{annualAccumulation.ni.toFixed(2)}</p>
-                             </div>
-                             <div className="space-y-1">
-                                <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Total FSS Tax (YTD)</p>
-                                <p className="text-xl font-black text-teal-400">€{annualAccumulation.tax.toFixed(2)}</p>
-                             </div>
+                          <div className="space-y-1">
+                             <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Total NI (YTD)</p>
+                             <p className="text-xl font-black text-slate-900">€{annualAccumulation.ni.toFixed(2)}</p>
+                          </div>
+                          <div className="space-y-1">
+                             <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Total FSS Tax (YTD)</p>
+                             <p className="text-xl font-black text-teal-600">€{annualAccumulation.tax.toFixed(2)}</p>
                           </div>
                        </div>
                     </div>
                  </div>
 
                  {/* FOOTER */}
-                 <div className="pt-10 border-t border-slate-100 flex justify-between items-center">
+                 <div className="pt-8 border-t border-slate-100 flex justify-between items-center">
                     <p className="text-[8px] font-black uppercase text-slate-300 tracking-[0.5em]">CERTIFIED 2026 MALTA EMPLOYMENT COMPLIANCE</p>
                     {activeHistoricalPayslip && (
                         <div className="text-right">
