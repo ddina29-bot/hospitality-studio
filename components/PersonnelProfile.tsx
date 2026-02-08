@@ -127,11 +127,14 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
             // Piece Rate Logic mapping specifically to Property Prices
             let targetPieceRate = 0;
             const sType = s.serviceType.toLowerCase();
+            let isIndividualTask = false;
 
             if (sType.includes('check apartment')) {
                 targetPieceRate = prop?.cleanerAuditPrice || 0;
+                isIndividualTask = true; // Audits are solo supervisor tasks
             } else if (sType.includes('to fix')) {
                 targetPieceRate = s.fixWorkPayment || 0;
+                isIndividualTask = true; // Fixes are manual payouts
             } else if (sType.includes('beds only')) {
                 targetPieceRate = prop?.cleanerBedsOnlyPrice || 0;
             } else if (sType.includes('common area')) {
@@ -143,19 +146,19 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
             } else if (sType.includes('check out')) {
                 targetPieceRate = prop?.cleanerPrice || 0;
             } else {
-                // Fallback to custom serviceRates map or standard price
                 targetPieceRate = prop?.serviceRates?.[s.serviceType] || prop?.cleanerPrice || 0;
             }
 
-            // Piece rates (except specific custom Fixes) are typically shared by team
+            // Piece rates are shared by team unless it's a specific individual fix or audit
             const teamCount = s.userIds?.length || 1;
-            const pieceRatePerPerson = (sType.includes('to fix') && s.fixWorkPayment) ? targetPieceRate : (targetPieceRate / teamCount);
+            const pieceRatePerPerson = isIndividualTask ? targetPieceRate : (targetPieceRate / teamCount);
 
             // Always pay at least the hourly equivalent
             totalBase += hourlyEquivalent;
 
-            // Add top-up bonus if approved and piece rate exceeds hourly pay
-            if (s.approvalStatus === 'approved' && pieceRatePerPerson > hourlyEquivalent) {
+            // BONUS LOGIC: Include COMPLETED shifts for accurate preview (not just approved)
+            // But block shifts explicitly marked as 'rejected'
+            if (s.approvalStatus !== 'rejected' && pieceRatePerPerson > hourlyEquivalent) {
                 totalPerformanceBonus += (pieceRatePerPerson - hourlyEquivalent);
             }
         });
