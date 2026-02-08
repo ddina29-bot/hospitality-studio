@@ -261,6 +261,10 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
                         <label className={labelStyle}>Date of Birth</label>
                         <input type="date" className={inputStyle} value={editingUser.dateOfBirth} onChange={e => setEditingUser({...editingUser, dateOfBirth: e.target.value})} />
                       </div>
+                      <div>
+                        <label className={labelStyle}>Employment Start Date</label>
+                        <input type="date" className={inputStyle} value={editingUser.activationDate} onChange={e => setEditingUser({...editingUser, activationDate: e.target.value})} />
+                      </div>
                       <div className="md:col-span-2">
                         <label className={labelStyle}>Permanent Home Address</label>
                         <input className={inputStyle} value={editingUser.homeAddress} onChange={e => setEditingUser({...editingUser, homeAddress: e.target.value})} placeholder="STREET, TOWN, POSTCODE" />
@@ -383,10 +387,10 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, showToast, shouldO
                      </div>
                   </div>
                   <div className="flex flex-row gap-3">
-                    <button type="submit" className="flex-1 bg-[#0D9488] text-white py-3.5 rounded-xl shadow-xl shadow-teal-900/10 text-[9px] uppercase tracking-[0.2em] font-black active:scale-95 transition-transform">
+                    <button type="submit" className="flex-1 bg-[#0D9488] text-white py-3.5 rounded-xl shadow-xl shadow-teal-900/10 text-[9px] uppercase tracking-[0.2em] font-black active:scale-98 transition-transform">
                        Verify and save
                     </button>
-                    <button type="button" onClick={() => setShowEditModal(false)} className="flex-1 bg-slate-100 text-slate-400 font-black py-3.5 rounded-xl text-[9px] uppercase tracking-widest hover:bg-slate-200 transition-all border border-slate-200 active:scale-95">
+                    <button type="button" onClick={() => setShowEditModal(false)} className="flex-1 bg-slate-100 text-slate-400 font-black py-3.5 rounded-xl text-[9px] uppercase tracking-widest hover:bg-slate-200 transition-all border border-slate-200 active:scale-98">
                        Abort
                     </button>
                   </div>

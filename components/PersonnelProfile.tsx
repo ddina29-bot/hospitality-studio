@@ -31,7 +31,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
 
   const printContentRef = useRef<HTMLDivElement>(null);
 
-  // Helper: Count Mondays in a period for Maltese NI (Class 1)
   const countMondays = (startStr: string, endStr: string) => {
     let count = 0;
     const start = new Date(startStr);
@@ -41,7 +40,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
       if (curr.getDay() === 1) count++;
       curr.setDate(curr.getDate() + 1);
     }
-    return count || 4; // Floor at 4 for a typical full month
+    return Math.max(1, count);
   };
 
   useEffect(() => {
@@ -67,8 +66,17 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
 
   const filteredShifts = useMemo(() => {
     if (!payPeriodFrom || !payPeriodUntil) return [];
+    
+    // Pro-rata tenure check
     const fromParts = payPeriodFrom.split('-').map(Number);
-    const fromTime = new Date(fromParts[0], fromParts[1] - 1, fromParts[2], 0, 0, 0).getTime();
+    let fromTime = new Date(fromParts[0], fromParts[1] - 1, fromParts[2], 0, 0, 0).getTime();
+    
+    if (user.activationDate) {
+        const startParts = user.activationDate.split('-').map(Number);
+        const startTime = new Date(startParts[0], startParts[1] - 1, startParts[2], 0, 0, 0).getTime();
+        fromTime = Math.max(fromTime, startTime);
+    }
+
     const untilParts = payPeriodUntil.split('-').map(Number);
     const untilTime = new Date(untilParts[0], untilParts[1] - 1, untilParts[2], 23, 59, 59).getTime();
     const contextYear = selectedDocMonth.split(' ').pop() || '2026';
@@ -85,15 +93,15 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
       const shiftTime = shiftDateObj.getTime();
       return shiftTime >= fromTime && shiftTime <= untilTime;
     });
-  }, [shifts, user.id, payPeriodFrom, payPeriodUntil, selectedDocMonth]);
+  }, [shifts, user.id, user.activationDate, payPeriodFrom, payPeriodUntil, selectedDocMonth]);
 
-  // MALTA 2026 TAX ENGINE (Period Pro-Rated)
+  // PRECISION MALTA 2026 TAX ENGINE
   const calculateMaltaTax = (periodGross: number, status: string, isParent: boolean, children: number, daysInPeriod: number, daysInMonth: number) => {
-    // Project annual based on this period's rate to find correct bracket
     const projectedMonthly = (periodGross / daysInPeriod) * daysInMonth;
     const annualGross = projectedMonthly * 12;
     let annualTax = 0;
 
+    // Budget 2026 refined thresholds
     if (isParent) {
       const isSingleParent = status === 'Single';
       const taxFreeLimit = isSingleParent ? 18500 : (children >= 2 ? 12500 : 10500);
@@ -104,7 +112,8 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         else annualTax = (5000 * 0.15) + (10000 * 0.25) + (taxable - 15000) * 0.35;
       }
     } else if (status === 'Married') {
-      const taxFreeLimit = 12700;
+      // 2026 Married Threshold: 12,700 tax-free. Standard for 1 kid families where Parent rate isn't beneficial.
+      const taxFreeLimit = 12700; 
       if (annualGross > taxFreeLimit) {
         if (annualGross <= 21200) annualTax = (annualGross - taxFreeLimit) * 0.15;
         else if (annualGross <= 28700) annualTax = (21200 - taxFreeLimit) * 0.15 + (annualGross - 21200) * 0.25;
@@ -119,7 +128,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
       }
     }
     
-    // Pro-rate back to period
     const monthlyTax = annualTax / 12;
     return (monthlyTax / daysInMonth) * daysInPeriod;
   };
@@ -142,17 +150,31 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
 
     const fromDate = new Date(payPeriodFrom);
     const untilDate = new Date(payPeriodUntil);
-    const daysInPeriod = ((untilDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-    const daysInMonth = new Date(fromDate.getFullYear(), fromDate.getMonth() + 1, 0).getDate();
-    const niWeeks = countMondays(payPeriodFrom, payPeriodUntil);
+    const monthYear = fromDate.getFullYear();
+    const monthIndex = fromDate.getMonth();
+    const daysInMonth = new Date(monthYear, monthIndex + 1, 0).getDate();
+
+    // PRO-RATA TENURE WINDOW
+    let effectiveStart = fromDate;
+    if (user.activationDate) {
+        const startDate = new Date(user.activationDate);
+        if (startDate > fromDate && startDate.getMonth() === monthIndex && startDate.getFullYear() === monthYear) {
+            effectiveStart = startDate;
+        } else if (startDate > untilDate) {
+            // Not started yet
+            return { grossPay: 0, ni: 0, tax: 0, govBonus: 0, totalNet: 0, isHistorical: false, taxBand: 'N/A', totalPerformanceBonus: 0, totalBase: 0, niWeeks: 0 };
+        }
+    }
+
+    const daysInTenureWindow = ((untilDate.getTime() - effectiveStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const niWeeks = countMondays(effectiveStart.toISOString().split('T')[0], payPeriodUntil);
 
     let totalBase = 0;
     let totalPerformanceBonus = 0;
 
-    // 1. CALCULATE BASE EARNINGS
     if (user.paymentType === 'Fixed Wage') {
-        // Pro-rata based on period vs full month
-        totalBase = (user.payRate || 0) * (daysInPeriod / daysInMonth);
+        // Only pay for the days in the selected window that overlap with tenure
+        totalBase = (user.payRate || 0) * (daysInTenureWindow / daysInMonth);
     } else {
         filteredShifts.forEach(s => {
             const prop = properties?.find(p => p.id === s.propertyId);
@@ -181,25 +203,24 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         });
     }
 
-    // 2. STATUTORY BONUS (Pro-rated for period)
     let govBonus = 0;
     const month = selectedDocMonth.split(' ')[0];
     const isFullTime = user.employmentType === 'Full-Time';
     let baseBonus = 0;
     if (['MAR', 'SEP'].includes(month)) baseBonus = isFullTime ? 121.16 : 60.58;
     if (['JUN', 'DEC'].includes(month)) baseBonus = isFullTime ? 135.10 : 67.55;
-    govBonus = baseBonus * (daysInPeriod / daysInMonth);
+    govBonus = baseBonus * (daysInTenureWindow / daysInMonth);
 
     const actualGrossPay = manualGrossPay !== null ? manualGrossPay : (totalBase + totalPerformanceBonus + govBonus);
     
-    // NI: 10% capped at €51.55/week for 2026
+    // 2026 NI Rate: 10% capped at €51.55/week
     const ni = Math.min(actualGrossPay * 0.1, 51.55 * niWeeks); 
-    const tax = calculateMaltaTax(actualGrossPay, user.maritalStatus || 'Single', !!user.isParent, user.childrenCount || 0, daysInPeriod, daysInMonth);
+    const tax = calculateMaltaTax(actualGrossPay, user.maritalStatus || 'Single', !!user.isParent, user.childrenCount || 0, daysInTenureWindow, daysInMonth);
 
     const isSingleParent = user.isParent && user.maritalStatus === 'Single';
     const childLabel = user.isParent 
-        ? (isSingleParent ? 'Single Parent Rate' : `Parent (${user.childrenCount >= 2 ? '2+' : '1'})`) 
-        : (user.maritalStatus === 'Married' ? 'Married Rate' : 'Single Rate');
+        ? (isSingleParent ? 'Single Parent' : `Parent (${user.childrenCount >= 2 ? '2+' : '1'})`) 
+        : (user.maritalStatus === 'Married' ? 'Married' : 'Single');
 
     return {
       grossPay: actualGrossPay,
@@ -265,7 +286,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
               <div className="text-left">
                  <h2 className="text-xl font-bold text-slate-900 uppercase tracking-tight">{user.name}</h2>
                  <p className="text-[9px] font-black text-[#0D9488] uppercase tracking-widest mt-0.5">{user.role}</p>
-                 <p className="text-[8px] font-bold text-slate-400 uppercase mt-0.5">NI: {user.niNumber || 'CODE_PENDING'} • {user.email}</p>
+                 <p className="text-[8px] font-bold text-slate-400 uppercase mt-0.5">Start: {user.activationDate || 'N/A'} • NI: {user.niNumber || 'PENDING'}</p>
               </div>
            </div>
            <div className="flex flex-wrap gap-3 w-full md:w-auto">
@@ -276,7 +297,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
               <div className="bg-slate-50 px-5 py-2.5 rounded-xl border border-slate-100 min-w-[120px]">
                  <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-0.5 text-center">TAX STATUS</p>
                  <p className="text-[10px] font-black text-teal-600 text-center uppercase">
-                  {user.isParent ? (user.maritalStatus === 'Single' ? 'SINGLE PARENT' : `PARENT (${user.childrenCount >= 2 ? '2+' : '1'})`) : (user.maritalStatus || 'SINGLE')}
+                  {payrollData.taxBand} (2026)
                  </p>
               </div>
            </div>
@@ -320,7 +341,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                    <div className="p-8 bg-emerald-50 border border-emerald-100 rounded-[1.5rem] flex flex-col justify-center text-center">
                       <p className={subLabelStyle}>Estimated Net Payout</p>
                       <p className="text-5xl font-black text-emerald-700 tracking-tighter leading-none mb-1">€{payrollData.totalNet.toFixed(2)}</p>
-                      <p className="text-[7px] font-bold text-emerald-600/60 uppercase tracking-widest">Applying {payrollData.taxBand} (Malta 2026)</p>
+                      <p className="text-[7px] font-bold text-emerald-600/60 uppercase tracking-widest">Applying {payrollData.taxBand} Rate (Malta 2026)</p>
                       <button onClick={() => setIsPreviewingCurrent(true)} className="mt-8 bg-slate-900 text-white font-black py-4 rounded-xl uppercase text-[9px] tracking-widest shadow-xl active:scale-95 transition-all">PREVIEW PAYSLIP</button>
                    </div>
                 </div>
