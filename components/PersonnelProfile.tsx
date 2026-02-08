@@ -33,6 +33,11 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
 
   const printContentRef = useRef<HTMLDivElement>(null);
 
+  // Clear manual overrides when changing months to prevent "sticky" data
+  useEffect(() => {
+    setManualGrossPay(null);
+  }, [selectedDocMonth]);
+
   useEffect(() => {
     const d = new Date(Date.parse(`1 ${selectedDocMonth}`));
     if (!isNaN(d.getTime())) {
@@ -40,6 +45,8 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
       const m = d.getMonth();
       const first = new Date(y, m, 1);
       const last = new Date(y, m + 1, 0);
+      
+      // Set boundary dates as strings
       setPayPeriodFrom(first.toISOString().split('T')[0]);
       setPayPeriodUntil(last.toISOString().split('T')[0]);
     }
@@ -52,19 +59,29 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
 
   const filteredShifts = useMemo(() => {
     if (!payPeriodFrom || !payPeriodUntil) return [];
-    const from = new Date(payPeriodFrom);
-    const until = new Date(payPeriodUntil);
-    until.setHours(23, 59, 59);
+    
+    // We use a helper to ensure we compare dates in local time, not UTC ISO strings
+    const fromParts = payPeriodFrom.split('-').map(Number);
+    const fromTime = new Date(fromParts[0], fromParts[1] - 1, fromParts[2], 0, 0, 0).getTime();
+    
+    const untilParts = payPeriodUntil.split('-').map(Number);
+    const untilTime = new Date(untilParts[0], untilParts[1] - 1, untilParts[2], 23, 59, 59).getTime();
 
-    // CRITICAL: Extract the year from the selected month to avoid current-year mismatch
     const contextYear = selectedDocMonth.split(' ').pop() || '2026';
 
     return (shifts || []).filter(s => {
       if (!s.userIds?.includes(user.id) || s.status !== 'completed') return false;
       
-      // Parse shift date with the correct year context
-      const d = s.date.includes('-') ? new Date(s.date) : new Date(`${s.date} ${contextYear}`);
-      return d >= from && d <= until;
+      let shiftDateObj: Date;
+      if (s.date.includes('-')) {
+        const p = s.date.split('-').map(Number);
+        shiftDateObj = new Date(p[0], p[1] - 1, p[2]);
+      } else {
+        shiftDateObj = new Date(`${s.date} ${contextYear}`);
+      }
+      
+      const shiftTime = shiftDateObj.getTime();
+      return shiftTime >= fromTime && shiftTime <= untilTime;
     });
   }, [shifts, user.id, payPeriodFrom, payPeriodUntil, selectedDocMonth]);
 
@@ -125,10 +142,10 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         filteredShifts.forEach(s => {
             const prop = properties?.find(p => p.id === s.propertyId);
             const durationMs = (s.actualEndTime || 0) - (s.actualStartTime || 0);
-            const hours = Math.max(0.5, durationMs / (1000 * 60 * 60)); // Minimum floor of 30 mins
+            const hours = Math.max(0.5, durationMs / (1000 * 60 * 60)); 
             const hourlyEquivalent = hours * (user.payRate || 5.00);
 
-            // Piece Rate Logic - Hardened for Supervisors and Cleaners
+            // Piece Rate Logic - mapped to specific price fields
             let targetPieceRate = prop?.cleanerPrice || 0;
             const serviceTag = s.serviceType.toUpperCase();
 
@@ -144,17 +161,19 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                 targetPieceRate = prop?.cleanerCommonAreaPrice || 0;
             } else if (serviceTag.includes('TO FIX')) {
                 targetPieceRate = s.fixWorkPayment || 0;
+            } else if (serviceTag.includes('CHECK OUT') || serviceTag.includes('CHECK IN')) {
+                targetPieceRate = prop?.cleanerPrice || 0;
             }
 
-            // Piece rates are shared by team unless it's an individual Supervisor task
+            // Piece rates are shared by team unless it's an individual task (Audit or Fix)
             const teamCount = s.userIds?.length || 1;
             const isIndividualTask = serviceTag.includes('CHECK APARTMENT') || serviceTag.includes('TO FIX');
             const pieceRatePerPerson = isIndividualTask ? targetPieceRate : (targetPieceRate / teamCount);
 
-            // Always pay base hourly
+            // Pay base hourly floor
             totalBase += hourlyEquivalent;
 
-            // PERFORMANCE BONUS: Top-up if piece rate exceeds hourly floor
+            // BONUS: Top-up if piece rate exceeds hourly floor
             if (s.approvalStatus === 'approved' && pieceRatePerPerson > hourlyEquivalent) {
                 totalPerformanceBonus += (pieceRatePerPerson - hourlyEquivalent);
             }
