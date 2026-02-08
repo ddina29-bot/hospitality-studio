@@ -69,23 +69,27 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     });
   }, [shifts, user.id, payPeriodFrom, payPeriodUntil]);
 
-  // MALTA 2026 TAX ENGINE (Simulated Progressive Bands)
-  const calculateMaltaTax = (annualGross: number, status: string, isParent: boolean) => {
-    // Basic simplified logic for 2026 projections
+  // MALTA 2026 REFINED TAX ENGINE
+  const calculateMaltaTax = (monthlyGross: number, status: string, isParent: boolean, children: number) => {
     let tax = 0;
-    const monthlyGross = annualGross / 12;
+    const annualGross = monthlyGross * 12;
 
     if (isParent) {
-      // Parent Rate (Projected 0% up to €10,500)
-      if (monthlyGross > 875) tax = (monthlyGross - 875) * 0.12;
+      if (children >= 2) {
+        // Parent Rate (2+ children): 2026 Projected Tax Free up to €12,500
+        if (annualGross > 12500) tax = (annualGross - 12500) * 0.10;
+      } else {
+        // Parent Rate (1 child): 2026 Projected Tax Free up to €10,500
+        if (annualGross > 10500) tax = (annualGross - 10500) * 0.12;
+      }
     } else if (status === 'Married') {
-      // Married Rate (Projected 0% up to €9,300)
-      if (monthlyGross > 775) tax = (monthlyGross - 775) * 0.15;
+      // Married Rate: 2026 Projected Tax Free up to €9,300
+      if (annualGross > 9300) tax = (annualGross - 9300) * 0.15;
     } else {
-      // Single Rate (Projected 0% up to €8,500)
-      if (monthlyGross > 708) tax = (monthlyGross - 708) * 0.15;
+      // Single Rate: 2026 Projected Tax Free up to €8,500
+      if (annualGross > 8500) tax = (annualGross - 8500) * 0.15;
     }
-    return Math.max(0, tax);
+    return Math.max(0, tax / 12);
   };
 
   const payrollData = useMemo(() => {
@@ -131,12 +135,10 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     }
 
     const actualGrossPay = manualGrossPay !== null ? manualGrossPay : (totalBase + totalPerformanceBonus + totalAuditFees);
-    
-    // Malta NI 2026: 10% capped at roughly €50/week for employees
     const ni = Math.min(actualGrossPay * 0.1, 200); 
-    
-    // Malta Tax 2026
-    const tax = calculateMaltaTax(actualGrossPay * 12, user.maritalStatus || 'Single', !!user.isParent);
+    const tax = calculateMaltaTax(actualGrossPay, user.maritalStatus || 'Single', !!user.isParent, user.childrenCount || 0);
+
+    const childLabel = user.isParent ? (user.childrenCount && user.childrenCount >= 2 ? 'Parent 2+' : 'Parent 1') : null;
 
     return {
       grossPay: actualGrossPay,
@@ -145,7 +147,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
       govBonus: 0,
       totalNet: Math.max(0, actualGrossPay - ni - tax),
       isHistorical: false,
-      taxBand: user.isParent ? 'Parent' : (user.maritalStatus === 'Married' ? 'Married' : 'Single')
+      taxBand: childLabel || (user.maritalStatus === 'Married' ? 'Married' : 'Single')
     };
   }, [filteredShifts, user, payPeriodFrom, payPeriodUntil, properties, activeHistoricalPayslip, manualGrossPay]);
 
@@ -170,10 +172,10 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
 
     onUpdateUser({ ...user, payslips: [...(user.payslips || []), newPayslip] });
     setIsPreviewingCurrent(false);
-    alert("Official Record Successfully Registered.");
+    alert("Official Record Successfully Registered in Studio Ledger.");
   };
 
-  const psIdDisplay = (id?: string) => id ? `Ref: ${id.split('-').pop()}` : 'PREVIEW_MODE';
+  const psIdDisplay = (id?: string) => id ? `Ref: ${id.split('-').pop()}` : 'PREVIEW_UNCOMMITTED';
 
   const subLabelStyle = "text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5";
   const inputStyle = "w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-[10px] font-black uppercase tracking-widest outline-none focus:border-teal-500 transition-all shadow-inner";
@@ -201,7 +203,9 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
               </div>
               <div className="bg-slate-50 px-5 py-2.5 rounded-xl border border-slate-100 min-w-[120px]">
                  <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-0.5 text-center">TAX STATUS</p>
-                 <p className="text-[10px] font-black text-teal-600 text-center uppercase">{user.maritalStatus || 'SINGLE'} {user.isParent ? '(PARENT)' : ''}</p>
+                 <p className="text-[10px] font-black text-teal-600 text-center uppercase">
+                  {user.maritalStatus || 'SINGLE'} {user.isParent ? `(PARENT ${user.childrenCount || 1})` : ''}
+                 </p>
               </div>
            </div>
         </section>
@@ -238,7 +242,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                       </div>
                       <div className="pt-2">
                          <label className={subLabelStyle}>Manual Adjustment Override (€)</label>
-                         <input type="number" step="0.01" className={inputStyle} value={manualGrossPay || ''} onChange={e => setManualGrossPay(parseFloat(e.target.value) || null)} placeholder="Custom gross override" />
+                         <input type="number" step="0.01" className={inputStyle} value={manualGrossPay || ''} onChange={e => setManualGrossPay(parseFloat(e.target.value) || null)} placeholder="Enter custom gross" />
                       </div>
                    </div>
                    <div className="p-8 bg-emerald-50 border border-emerald-100 rounded-[1.5rem] flex flex-col justify-center text-center">
@@ -284,9 +288,9 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                     <div className="space-y-2">
                        <h1 className="text-2xl font-black uppercase tracking-tighter leading-none">{organization?.legalEntity || organization?.name || 'RESET STUDIO'}</h1>
                        <div className="text-[9px] font-bold text-slate-500 uppercase tracking-widest space-y-0.5">
-                          <p>PE Number: {organization?.peNumber || 'PE 000000'}</p>
-                          <p>VAT: {organization?.taxId || 'MT 00000000'}</p>
-                          <p className="max-w-[240px] leading-relaxed">{organization?.address}</p>
+                          <p>PE Number: {organization?.peNumber || 'PE 12345'}</p>
+                          <p>VAT: {organization?.taxId || 'MT 10002000'}</p>
+                          <p className="max-w-[240px] leading-relaxed">{organization?.address || 'MALTA HQ'}</p>
                        </div>
                     </div>
                     <div className="text-right">
@@ -301,7 +305,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.3em]">EMPLOYEE DETAILS</p>
                        <div className="space-y-1">
                           <p className="text-sm font-black uppercase">{user.name}</p>
-                          <p className="text-[9px] font-bold text-slate-500 uppercase leading-relaxed">{user.homeAddress || 'ADDRESS NOT SET'}</p>
+                          <p className="text-[9px] font-bold text-slate-500 uppercase leading-relaxed">{user.homeAddress || 'ADDRESS NOT RECORDED'}</p>
                        </div>
                     </div>
                     <div className="space-y-4 text-right">
@@ -315,7 +319,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
 
                  {/* PERIOD STRIP */}
                  <div className="bg-slate-50 p-4 border-y border-slate-200 flex justify-between items-center">
-                    <p className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-400">Payment Period</p>
+                    <p className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-400">Payment Cycle Period</p>
                     <p className="text-[10px] font-black text-slate-900 uppercase">
                        {activeHistoricalPayslip?.periodFrom || payPeriodFrom} TO {activeHistoricalPayslip?.periodUntil || payPeriodUntil}
                     </p>
@@ -330,8 +334,8 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
                        <div className="space-y-4">
                           <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.3em]">EARNINGS</p>
-                          <div className="flex justify-between text-[11px] font-bold"><span>Gross Monthly Salary</span><span>€{payrollData.grossPay.toFixed(2)}</span></div>
-                          <div className="flex justify-between text-[11px] font-bold text-slate-300"><span>Bonus (Included)</span><span>€0.00</span></div>
+                          <div className="flex justify-between text-[11px] font-bold"><span>Gross Basic Salary</span><span>€{payrollData.grossPay.toFixed(2)}</span></div>
+                          <div className="flex justify-between text-[11px] font-bold text-slate-300"><span>Govt. Bonuses</span><span>€0.00</span></div>
                        </div>
                        <div className="space-y-4">
                           <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.3em]">STATUTORY DEDUCTIONS</p>
