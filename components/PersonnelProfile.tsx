@@ -97,12 +97,12 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
 
   // PRECISION MALTA 2026 TAX ENGINE
   const calculateMaltaTax = (periodGross: number, status: string, isParent: boolean, children: number, daysInPeriod: number, daysInMonth: number) => {
-    // Project annual to find correct bracket
     const projectedMonthly = (periodGross / daysInPeriod) * daysInMonth;
     const annualGross = projectedMonthly * 12;
     let annualTax = 0;
 
-    // Use Married rate for 1 kid families as it is often more beneficial in mid-range (€12,700 tax free)
+    // RULE: For 1 kid families, the Married tax-free threshold (€12,700) is usually more beneficial 
+    // than the Parent threshold (€10,500). We default to Married for families with 1 child.
     const effectiveStatus = (status === 'Married' || (isParent && children === 1)) ? 'Married' : status;
 
     if (isParent && children >= 2) {
@@ -130,7 +130,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
       }
     }
     
-    // Pro-rate annual tax back to this specific period
     const monthlyTax = annualTax / 12;
     return (monthlyTax / daysInMonth) * daysInPeriod;
   };
@@ -157,7 +156,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     const monthIndex = fromDate.getMonth();
     const daysInMonth = new Date(monthYear, monthIndex + 1, 0).getDate();
 
-    // PRO-RATA TENURE WINDOW: Determine exactly which days the user was employed
+    // PRO-RATA TENURE WINDOW
     let tenureStart = fromDate;
     if (user.activationDate) {
         const startDate = new Date(user.activationDate);
@@ -165,7 +164,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         if (startDate > untilDate) return { grossPay: 0, ni: 0, tax: 0, govBonus: 0, totalNet: 0, isHistorical: false, taxBand: 'N/A', totalPerformanceBonus: 0, totalBase: 0, niWeeks: 0 };
     }
 
-    // Days the user was actually active within the SELECTED period
     const daysActiveInPeriod = Math.max(0, ((untilDate.getTime() - tenureStart.getTime()) / (1000 * 60 * 60 * 24)) + 1);
     const niWeeks = countMondays(tenureStart.toISOString().split('T')[0], payPeriodUntil);
 
@@ -173,7 +171,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     let totalPerformanceBonus = 0;
 
     if (user.paymentType === 'Fixed Wage') {
-        // Fixed Wage is pro-rated based on days employed in that specific selected range
         totalBase = (user.payRate || 0) * (daysActiveInPeriod / daysInMonth);
     } else {
         filteredShifts.forEach(s => {
@@ -181,20 +178,9 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
             const durationMs = (s.actualEndTime || 0) - (s.actualStartTime || 0);
             const hours = Math.max(0.5, durationMs / (1000 * 60 * 60)); 
             const hourlyEquivalent = hours * (user.payRate || 5.00);
-
             let targetPieceRate = prop?.cleanerPrice || 0;
-            const serviceTag = s.serviceType.toUpperCase();
-            if (serviceTag.includes('REFRESH')) targetPieceRate = prop?.cleanerRefreshPrice || targetPieceRate;
-            else if (serviceTag.includes('MID STAY')) targetPieceRate = prop?.cleanerMidStayPrice || targetPieceRate;
-            else if (serviceTag.includes('CHECK APARTMENT')) targetPieceRate = prop?.cleanerAuditPrice || 0;
-            else if (serviceTag.includes('BEDS ONLY')) targetPieceRate = prop?.cleanerBedsOnlyPrice || 0;
-            else if (serviceTag.includes('COMMON AREA')) targetPieceRate = prop?.cleanerCommonAreaPrice || 0;
-            else if (serviceTag.includes('TO FIX')) targetPieceRate = s.fixWorkPayment || 0;
-            else if (serviceTag.includes('CHECK OUT') || serviceTag.includes('CHECK IN')) targetPieceRate = prop?.cleanerPrice || 0;
-
             const teamCount = s.userIds?.length || 1;
             const pieceRatePerPerson = (targetPieceRate / teamCount);
-
             totalBase += hourlyEquivalent;
             if (s.approvalStatus === 'approved' && pieceRatePerPerson > hourlyEquivalent) {
                 totalPerformanceBonus += (pieceRatePerPerson - hourlyEquivalent);
@@ -202,15 +188,28 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         });
     }
 
-    // STATUTORY BONUS: Maltese Daily Rate (€0.6657 per day)
-    // Full-time employees accrue ~€4.66 per week.
-    const isFullTime = user.employmentType === 'Full-Time';
-    const dailyBonusRate = isFullTime ? 0.6657 : 0.3328;
-    const govBonus = daysActiveInPeriod * dailyBonusRate;
+    // STATUTORY BONUS: Quarterly Implementation
+    // Issued in MAR, JUN, SEP, DEC. 
+    // Pro-rated daily based on employment duration in that specific quarter.
+    const month = selectedDocMonth.split(' ')[0];
+    const bonusMonths = ['MAR', 'JUN', 'SEP', 'DEC'];
+    let govBonus = 0;
+
+    if (bonusMonths.includes(month)) {
+        const isFullTime = user.employmentType === 'Full-Time';
+        const dailyBonusRate = isFullTime ? 0.6657 : 0.3328;
+        
+        // Calculate days employed in the CURRENT quarter window
+        let qStart = new Date(monthYear, monthIndex - 2, 1); // 3 months back
+        if (user.activationDate) {
+            const startDate = new Date(user.activationDate);
+            if (startDate > qStart) qStart = startDate;
+        }
+        const daysInQuarterTenure = Math.max(0, ((untilDate.getTime() - qStart.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+        govBonus = daysInQuarterTenure * dailyBonusRate;
+    }
 
     const actualGrossPay = manualGrossPay !== null ? manualGrossPay : (totalBase + totalPerformanceBonus + govBonus);
-    
-    // 2026 NI Rate: 10% capped at €51.55/week
     const ni = Math.min(actualGrossPay * 0.1, 51.55 * niWeeks); 
     const tax = calculateMaltaTax(actualGrossPay, user.maritalStatus || 'Single', !!user.isParent, user.childrenCount || 0, daysActiveInPeriod, daysInMonth);
 
