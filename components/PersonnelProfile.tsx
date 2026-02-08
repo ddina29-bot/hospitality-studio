@@ -181,6 +181,27 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     };
   }, [filteredShifts, user, payPeriodFrom, payPeriodUntil, properties, activeHistoricalPayslip, manualGrossPay]);
 
+  const annualAccumulation = useMemo(() => {
+    // Current viewed year
+    const yearSuffix = (activeHistoricalPayslip?.month || selectedDocMonth).split(' ').pop();
+    if (!yearSuffix) return { ni: 0, tax: 0, gross: 0 };
+
+    const relevantSaved = (user.payslips || []).filter(ps => 
+      ps.month.endsWith(yearSuffix) && ps.id !== activeHistoricalPayslip?.id
+    );
+
+    let totalNI = relevantSaved.reduce((sum, ps) => sum + ps.ni, 0);
+    let totalTax = relevantSaved.reduce((sum, ps) => sum + ps.tax, 0);
+    let totalGross = relevantSaved.reduce((sum, ps) => sum + ps.grossPay, 0);
+
+    // Include the one we are currently looking at (whether saved or preview)
+    totalNI += payrollData.ni;
+    totalTax += payrollData.tax;
+    totalGross += payrollData.grossPay;
+
+    return { ni: totalNI, tax: totalTax, gross: totalGross, year: yearSuffix };
+  }, [user.payslips, selectedDocMonth, activeHistoricalPayslip, payrollData]);
+
   const handleCommitPayslip = () => {
     if (!onUpdateUser) return;
 
@@ -358,7 +379,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                     </div>
                     <div className="text-right">
                         <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Statement Date</p>
-                        <p className="text-xs font-black text-slate-900 uppercase">{selectedDocMonth}</p>
+                        <p className="text-xs font-black text-slate-900 uppercase">{activeHistoricalPayslip?.month || selectedDocMonth}</p>
                     </div>
                  </div>
 
@@ -378,6 +399,28 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] border-b border-slate-50 pb-2">STATUTORY DEDUCTIONS</p>
                           <div className="flex justify-between text-xs font-bold text-rose-600"><span>Social Security (NI 10%)</span><span className="font-mono">-€{payrollData.ni.toFixed(2)}</span></div>
                           <div className="flex justify-between text-xs font-bold text-rose-600"><span>Income Tax ({payrollData.taxBand})</span><span className="font-mono">-€{payrollData.tax.toFixed(2)}</span></div>
+                       </div>
+                    </div>
+                 </div>
+
+                 {/* YEAR TO DATE ACCUMULATION SECTION */}
+                 <div className="bg-slate-900 p-8 rounded-[1.5rem] text-white space-y-6 shadow-xl">
+                    <div className="flex justify-between items-center border-b border-white/10 pb-4">
+                       <p className="text-[10px] font-black uppercase tracking-[0.4em] text-teal-400">Statement of Annual Contributions</p>
+                       <p className="text-[10px] font-black uppercase text-white/40">{annualAccumulation.year} FISCAL PERIOD</p>
+                    </div>
+                    <div className="grid grid-cols-3 gap-8">
+                       <div className="space-y-1">
+                          <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Total NI (YTD)</p>
+                          <p className="text-xl font-black tracking-tight">€{annualAccumulation.ni.toFixed(2)}</p>
+                       </div>
+                       <div className="space-y-1 text-center">
+                          <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Total Tax (YTD)</p>
+                          <p className="text-xl font-black tracking-tight">€{annualAccumulation.tax.toFixed(2)}</p>
+                       </div>
+                       <div className="space-y-1 text-right">
+                          <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Total Gross (YTD)</p>
+                          <p className="text-xl font-black tracking-tight text-teal-400">€{annualAccumulation.gross.toFixed(2)}</p>
                        </div>
                     </div>
                  </div>
