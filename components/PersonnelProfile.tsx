@@ -46,9 +46,11 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
       const first = new Date(y, m, 1);
       const last = new Date(y, m + 1, 0);
       
-      // Set boundary dates as strings
-      setPayPeriodFrom(first.toISOString().split('T')[0]);
-      setPayPeriodUntil(last.toISOString().split('T')[0]);
+      const fromStr = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+      const untilStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`;
+      
+      setPayPeriodFrom(fromStr);
+      setPayPeriodUntil(untilStr);
     }
   }, [selectedDocMonth]);
 
@@ -60,7 +62,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
   const filteredShifts = useMemo(() => {
     if (!payPeriodFrom || !payPeriodUntil) return [];
     
-    // We use a helper to ensure we compare dates in local time, not UTC ISO strings
     const fromParts = payPeriodFrom.split('-').map(Number);
     const fromTime = new Date(fromParts[0], fromParts[1] - 1, fromParts[2], 0, 0, 0).getTime();
     
@@ -85,12 +86,13 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     });
   }, [shifts, user.id, payPeriodFrom, payPeriodUntil, selectedDocMonth]);
 
-  // MALTA 2026 TAX ENGINE
+  // MALTA 2026 COMPREHENSIVE TAX ENGINE
   const calculateMaltaTax = (monthlyGross: number, status: string, isParent: boolean, children: number) => {
     const annualGross = monthlyGross * 12;
     let tax = 0;
 
     if (isParent) {
+      // Parent Brackets
       const isSingleParent = status === 'Single';
       const taxFreeLimit = isSingleParent ? 18500 : (children >= 2 ? 12500 : 10500);
       
@@ -101,6 +103,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         else tax = (5000 * 0.15) + (10000 * 0.25) + (taxable - 15000) * 0.35;
       }
     } else if (status === 'Married') {
+      // Married Brackets
       const taxFreeLimit = 12700;
       if (annualGross > taxFreeLimit) {
         if (annualGross <= 21200) tax = (annualGross - taxFreeLimit) * 0.15;
@@ -108,6 +111,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         else tax = (21200 - taxFreeLimit) * 0.15 + (28700 - 21200) * 0.25 + (annualGross - 28700) * 0.35;
       }
     } else {
+      // Single Brackets
       const taxFreeLimit = 9100;
       if (annualGross > taxFreeLimit) {
         if (annualGross <= 14500) tax = (annualGross - taxFreeLimit) * 0.15;
@@ -128,7 +132,8 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         govBonus: activeHistoricalPayslip.govBonus || 0,
         totalPerformanceBonus: 0,
         isHistorical: true,
-        taxBand: 'Registry archived'
+        taxBand: 'Registry archived',
+        totalBase: 0
       };
     }
 
@@ -145,7 +150,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
             const hours = Math.max(0.5, durationMs / (1000 * 60 * 60)); 
             const hourlyEquivalent = hours * (user.payRate || 5.00);
 
-            // Piece Rate Logic - mapped to specific price fields
             let targetPieceRate = prop?.cleanerPrice || 0;
             const serviceTag = s.serviceType.toUpperCase();
 
@@ -165,12 +169,10 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                 targetPieceRate = prop?.cleanerPrice || 0;
             }
 
-            // Piece rates are shared by team unless it's an individual task (Audit or Fix)
             const teamCount = s.userIds?.length || 1;
             const isIndividualTask = serviceTag.includes('CHECK APARTMENT') || serviceTag.includes('TO FIX');
             const pieceRatePerPerson = isIndividualTask ? targetPieceRate : (targetPieceRate / teamCount);
 
-            // Pay base hourly floor
             totalBase += hourlyEquivalent;
 
             // BONUS: Top-up if piece rate exceeds hourly floor
@@ -180,17 +182,20 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         });
     }
 
-    // 2. AUTOMATIC STATUTORY BONUS (Malta Standard: Mar/Jun/Sep/Dec)
+    // 2. AUTOMATIC STATUTORY BONUS (Malta 2026)
+    // Mar/Sep: Weekly Allowance €121.16
+    // Jun/Dec: Gov Bonus €135.10
     let govBonus = 0;
     const month = selectedDocMonth.split(' ')[0];
     const isFullTime = user.employmentType === 'Full-Time';
     
     if (isFullTime) {
-        if (['MAR', 'SEP'].includes(month)) govBonus = 135.10;
-        if (['JUN', 'DEC'].includes(month)) govBonus = 121.12;
+        if (['MAR', 'SEP'].includes(month)) govBonus = 121.16;
+        if (['JUN', 'DEC'].includes(month)) govBonus = 135.10;
     } else if (user.employmentType === 'Part-Time' || user.employmentType === 'Casual') {
-        if (['MAR', 'SEP'].includes(month)) govBonus = 67.55;
-        if (['JUN', 'DEC'].includes(month)) govBonus = 60.56;
+        // Pro-rata estimation (roughly half)
+        if (['MAR', 'SEP'].includes(month)) govBonus = 60.58;
+        if (['JUN', 'DEC'].includes(month)) govBonus = 67.55;
     }
 
     const actualGrossPay = manualGrossPay !== null ? manualGrossPay : (totalBase + totalPerformanceBonus + govBonus);
