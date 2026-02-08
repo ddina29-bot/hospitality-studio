@@ -105,7 +105,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         tax: activeHistoricalPayslip.tax,
         ni: activeHistoricalPayslip.ni,
         govBonus: activeHistoricalPayslip.govBonus || 0,
-        totalPerformanceBonus: 0, // Itemized separately in historical if we had it, fallback to 0
+        totalPerformanceBonus: 0,
         isHistorical: true,
         taxBand: 'Registry archived'
       };
@@ -124,28 +124,44 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
             const hours = durationMs / (1000 * 60 * 60);
             const hourlyEquivalent = hours * (user.payRate || 5.00);
 
+            // Piece Rate Logic mapping specifically to Property Prices
             let targetPieceRate = 0;
-            if (s.serviceType === 'TO CHECK APARTMENT') {
+            const sType = s.serviceType.toLowerCase();
+
+            if (sType.includes('check apartment')) {
                 targetPieceRate = prop?.cleanerAuditPrice || 0;
-            } else if (s.serviceType === 'TO FIX') {
+            } else if (sType.includes('to fix')) {
                 targetPieceRate = s.fixWorkPayment || 0;
+            } else if (sType.includes('beds only')) {
+                targetPieceRate = prop?.cleanerBedsOnlyPrice || 0;
+            } else if (sType.includes('common area')) {
+                targetPieceRate = prop?.cleanerCommonAreaPrice || 0;
+            } else if (sType.includes('refresh')) {
+                targetPieceRate = prop?.cleanerRefreshPrice || 0;
+            } else if (sType.includes('mid stay')) {
+                targetPieceRate = prop?.cleanerMidStayPrice || 0;
+            } else if (sType.includes('check out')) {
+                targetPieceRate = prop?.cleanerPrice || 0;
             } else {
-                const teamCount = s.userIds?.length || 1;
-                targetPieceRate = (prop?.serviceRates?.[s.serviceType] || prop?.cleanerPrice || 0) / teamCount;
+                // Fallback to custom serviceRates map or standard price
+                targetPieceRate = prop?.serviceRates?.[s.serviceType] || prop?.cleanerPrice || 0;
             }
+
+            // Piece rates (except specific custom Fixes) are typically shared by team
+            const teamCount = s.userIds?.length || 1;
+            const pieceRatePerPerson = (sType.includes('to fix') && s.fixWorkPayment) ? targetPieceRate : (targetPieceRate / teamCount);
 
             // Always pay at least the hourly equivalent
             totalBase += hourlyEquivalent;
 
             // Add top-up bonus if approved and piece rate exceeds hourly pay
-            if (s.approvalStatus === 'approved' && targetPieceRate > hourlyEquivalent) {
-                totalPerformanceBonus += (targetPieceRate - hourlyEquivalent);
+            if (s.approvalStatus === 'approved' && pieceRatePerPerson > hourlyEquivalent) {
+                totalPerformanceBonus += (pieceRatePerPerson - hourlyEquivalent);
             }
         });
     }
 
     // 2. STATUTORY BONUS LOGIC (Malta 2026)
-    // Full-time: Mar/Sep (€135.10), Jun/Dec (€121.12)
     let govBonus = 0;
     const month = selectedDocMonth.split(' ')[0];
     const isFullTime = user.employmentType === 'Full-Time';
@@ -394,7 +410,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                     </div>
                  </div>
 
-                 {/* MONTHLY TOTALS */}
+                 {/* MONTHLY TOTALS - Styled like Name, before contributions */}
                  <div className="flex justify-between items-center py-6 border-y border-slate-100">
                     <span className="text-base font-black uppercase tracking-tight text-slate-900">Net Payable</span>
                     <span className="text-base font-black text-emerald-600 font-mono tracking-tighter">€{payrollData.totalNet.toFixed(2)}</span>
