@@ -25,11 +25,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
   const [activeHistoricalPayslip, setActiveHistoricalPayslip] = useState<SavedPayslip | null>(initialHistoricalPayslip || null);
   const [activeSubTab, setActiveSubTab] = useState<'PENDING PAYOUTS' | 'PAYSLIP REGISTRY' | 'LEAVE REQUESTS'>(isCurrentUserAdmin ? 'PENDING PAYOUTS' : 'PAYSLIP REGISTRY');
   
-  const [showLeaveForm, setShowLeaveForm] = useState(false);
-  const [leaveType, setLeaveType] = useState<LeaveType>('Vacation Leave');
-  const [leaveStart, setLeaveStart] = useState('');
-  const [leaveEnd, setLeaveEnd] = useState('');
-
   const [selectedDocMonth, setSelectedDocMonth] = useState<string>('JAN 2026'); 
   const [payPeriodFrom, setPayPeriodFrom] = useState('2026-01-01');
   const [payPeriodUntil, setPayPeriodUntil] = useState('2026-01-31');
@@ -69,51 +64,34 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     });
   }, [shifts, user.id, payPeriodFrom, payPeriodUntil]);
 
-  // MALTA 2026 REFINED TAX ENGINE (Single, Married, Parent Bands)
+  // MALTA 2026 REFINED TAX ENGINE
   const calculateMaltaTax = (monthlyGross: number, status: string, isParent: boolean, children: number) => {
     const annualGross = monthlyGross * 12;
     let tax = 0;
 
     if (isParent) {
-      // PARENT BAND 2026
-      // Special Adjustment: Single parents threshold increased to €18,500 tax-free
       const isSingleParent = status === 'Single';
       const taxFreeLimit = isSingleParent ? 18500 : (children >= 2 ? 12500 : 10500);
       
       if (annualGross > taxFreeLimit) {
-        // Standard progressive tiers starting AFTER the selected tax-free threshold
         const taxable = annualGross - taxFreeLimit;
-        if (taxable <= 5000) {
-          tax = taxable * 0.15;
-        } else if (taxable <= 15000) {
-          tax = (5000 * 0.15) + (taxable - 5000) * 0.25;
-        } else {
-          tax = (5000 * 0.15) + (10000 * 0.25) + (taxable - 15000) * 0.35;
-        }
+        if (taxable <= 5000) tax = taxable * 0.15;
+        else if (taxable <= 15000) tax = (5000 * 0.15) + (taxable - 5000) * 0.25;
+        else tax = (5000 * 0.15) + (10000 * 0.25) + (taxable - 15000) * 0.35;
       }
     } else if (status === 'Married') {
-      // MARRIED BAND
       const taxFreeLimit = 12700;
       if (annualGross > taxFreeLimit) {
-        if (annualGross <= 21200) {
-          tax = (annualGross - taxFreeLimit) * 0.15;
-        } else if (annualGross <= 28700) {
-          tax = (21200 - taxFreeLimit) * 0.15 + (annualGross - 21200) * 0.25;
-        } else {
-          tax = (21200 - taxFreeLimit) * 0.15 + (28700 - 21200) * 0.25 + (annualGross - 28700) * 0.35;
-        }
+        if (annualGross <= 21200) tax = (annualGross - taxFreeLimit) * 0.15;
+        else if (annualGross <= 28700) tax = (21200 - taxFreeLimit) * 0.15 + (annualGross - 21200) * 0.25;
+        else tax = (21200 - taxFreeLimit) * 0.15 + (28700 - 21200) * 0.25 + (annualGross - 28700) * 0.35;
       }
     } else {
-      // SINGLE BAND (Standard)
       const taxFreeLimit = 9100;
       if (annualGross > taxFreeLimit) {
-        if (annualGross <= 14500) {
-          tax = (annualGross - taxFreeLimit) * 0.15;
-        } else if (annualGross <= 19500) {
-          tax = (14500 - taxFreeLimit) * 0.15 + (annualGross - 14500) * 0.25;
-        } else {
-          tax = (14500 - taxFreeLimit) * 0.15 + (19500 - 14500) * 0.25 + (annualGross - 19500) * 0.35;
-        }
+        if (annualGross <= 14500) tax = (annualGross - taxFreeLimit) * 0.15;
+        else if (annualGross <= 19500) tax = (14500 - taxFreeLimit) * 0.15 + (annualGross - 14500) * 0.25;
+        else tax = (14500 - taxFreeLimit) * 0.15 + (19500 - 14500) * 0.25 + (annualGross - 19500) * 0.35;
       }
     }
     return Math.max(0, tax / 12);
@@ -127,6 +105,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         tax: activeHistoricalPayslip.tax,
         ni: activeHistoricalPayslip.ni,
         govBonus: activeHistoricalPayslip.govBonus || 0,
+        totalPerformanceBonus: 0, // Itemized separately in historical if we had it, fallback to 0
         isHistorical: true,
         taxBand: 'Registry archived'
       };
@@ -135,6 +114,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     let totalBase = 0;
     let totalPerformanceBonus = 0;
 
+    // 1. CALCULATE SHIFT BASED EARNINGS
     if (user.paymentType === 'Fixed Wage') {
         totalBase = user.payRate || 0;
     } else {
@@ -149,28 +129,33 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                 targetPieceRate = prop?.cleanerAuditPrice || 0;
             } else if (s.serviceType === 'TO FIX') {
                 targetPieceRate = s.fixWorkPayment || 0;
-            } else if (s.serviceType === 'SUPPLY DELIVERY') {
-                targetPieceRate = hourlyEquivalent; 
             } else {
-                // Standard cleaning types
                 const teamCount = s.userIds?.length || 1;
                 targetPieceRate = (prop?.serviceRates?.[s.serviceType] || prop?.cleanerPrice || 0) / teamCount;
             }
 
-            if (user.paymentType === 'Per Hour') {
-                totalBase += hourlyEquivalent;
-                // Add top-up bonus if approved and piece rate exceeds hourly pay
-                if (s.approvalStatus === 'approved' && targetPieceRate > hourlyEquivalent) {
-                    totalPerformanceBonus += (targetPieceRate - hourlyEquivalent);
-                }
-            } else if (user.paymentType === 'Per Clean') {
-                // For piece-rate users, we pay the higher of hourly or piece rate as base
-                totalBase += Math.max(hourlyEquivalent, s.approvalStatus === 'approved' ? targetPieceRate : 0);
+            // Always pay at least the hourly equivalent
+            totalBase += hourlyEquivalent;
+
+            // Add top-up bonus if approved and piece rate exceeds hourly pay
+            if (s.approvalStatus === 'approved' && targetPieceRate > hourlyEquivalent) {
+                totalPerformanceBonus += (targetPieceRate - hourlyEquivalent);
             }
         });
     }
 
-    const actualGrossPay = manualGrossPay !== null ? manualGrossPay : (totalBase + totalPerformanceBonus);
+    // 2. STATUTORY BONUS LOGIC (Malta 2026)
+    // Full-time: Mar/Sep (€135.10), Jun/Dec (€121.12)
+    let govBonus = 0;
+    const month = selectedDocMonth.split(' ')[0];
+    const isFullTime = user.employmentType === 'Full-Time';
+    
+    if (isFullTime) {
+        if (['MAR', 'SEP'].includes(month)) govBonus = 135.10;
+        if (['JUN', 'DEC'].includes(month)) govBonus = 121.12;
+    }
+
+    const actualGrossPay = manualGrossPay !== null ? manualGrossPay : (totalBase + totalPerformanceBonus + govBonus);
     const ni = Math.min(actualGrossPay * 0.1, 200); 
     const tax = calculateMaltaTax(actualGrossPay, user.maritalStatus || 'Single', !!user.isParent, user.childrenCount || 0);
 
@@ -183,16 +168,16 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
       grossPay: actualGrossPay,
       ni,
       tax,
-      govBonus: 0,
+      govBonus,
       totalNet: Math.max(0, actualGrossPay - ni - tax),
       isHistorical: false,
       taxBand: childLabel,
-      totalPerformanceBonus // Added for payslip detail
+      totalPerformanceBonus,
+      totalBase
     };
-  }, [filteredShifts, user, payPeriodFrom, payPeriodUntil, properties, activeHistoricalPayslip, manualGrossPay]);
+  }, [filteredShifts, user, payPeriodFrom, payPeriodUntil, properties, activeHistoricalPayslip, manualGrossPay, selectedDocMonth]);
 
   const annualAccumulation = useMemo(() => {
-    // Current viewed year
     const yearSuffix = (activeHistoricalPayslip?.month || selectedDocMonth).split(' ').pop();
     if (!yearSuffix) return { ni: 0, tax: 0, gross: 0 };
 
@@ -204,7 +189,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     let totalTax = relevantSaved.reduce((sum, ps) => sum + ps.tax, 0);
     let totalGross = relevantSaved.reduce((sum, ps) => sum + ps.grossPay, 0);
 
-    // Include the one we are currently looking at (whether saved or preview)
     totalNI += payrollData.ni;
     totalTax += payrollData.tax;
     totalGross += payrollData.grossPay;
@@ -398,8 +382,9 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-16">
                        <div className="space-y-5">
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] border-b border-slate-50 pb-2">EARNINGS</p>
-                          <div className="flex justify-between text-xs font-bold"><span>Gross Basic Salary</span><span className="font-mono">€{(payrollData.grossPay - (payrollData.totalPerformanceBonus || 0)).toFixed(2)}</span></div>
+                          <div className="flex justify-between text-xs font-bold"><span>Gross Basic Salary</span><span className="font-mono">€{(payrollData.totalBase || payrollData.grossPay - (payrollData.totalPerformanceBonus || 0) - (payrollData.govBonus || 0)).toFixed(2)}</span></div>
                           <div className="flex justify-between text-xs font-bold text-teal-600"><span>Performance Top-up</span><span className="font-mono">€{(payrollData.totalPerformanceBonus || 0).toFixed(2)}</span></div>
+                          <div className="flex justify-between text-xs font-bold text-indigo-600"><span>Statutory Bonus</span><span className="font-mono">€{(payrollData.govBonus || 0).toFixed(2)}</span></div>
                        </div>
                        <div className="space-y-5">
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] border-b border-slate-50 pb-2">STATUTORY DEDUCTIONS</p>
@@ -409,7 +394,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                     </div>
                  </div>
 
-                 {/* MONTHLY TOTALS - REPOSITIONED & RESIZED */}
+                 {/* MONTHLY TOTALS */}
                  <div className="flex justify-between items-center py-6 border-y border-slate-100">
                     <span className="text-base font-black uppercase tracking-tight text-slate-900">Net Payable</span>
                     <span className="text-base font-black text-emerald-600 font-mono tracking-tighter">€{payrollData.totalNet.toFixed(2)}</span>
