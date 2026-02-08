@@ -17,7 +17,6 @@ interface PersonnelProfileProps {
 const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests = [], onRequestLeave, shifts = [], properties = [], onUpdateUser, organization, initialDocView, initialHistoricalPayslip }) => {
   const currentUserObj = JSON.parse(localStorage.getItem('current_user_obj') || '{}');
   const isCurrentUserAdmin = currentUserObj.role === 'admin';
-  const isViewingSelf = currentUserObj.id === user.id;
   
   const canManageFinancials = isCurrentUserAdmin;
   
@@ -57,14 +56,19 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
     const until = new Date(payPeriodUntil);
     until.setHours(23, 59, 59);
 
+    // CRITICAL: Extract the year from the selected month to avoid current-year mismatch
+    const contextYear = selectedDocMonth.split(' ').pop() || '2026';
+
     return (shifts || []).filter(s => {
       if (!s.userIds?.includes(user.id) || s.status !== 'completed') return false;
-      const d = s.date.includes('-') ? new Date(s.date) : new Date(`${s.date} ${new Date().getFullYear()}`);
+      
+      // Parse shift date with the correct year context
+      const d = s.date.includes('-') ? new Date(s.date) : new Date(`${s.date} ${contextYear}`);
       return d >= from && d <= until;
     });
-  }, [shifts, user.id, payPeriodFrom, payPeriodUntil]);
+  }, [shifts, user.id, payPeriodFrom, payPeriodUntil, selectedDocMonth]);
 
-  // MALTA 2026 REFINED TAX ENGINE
+  // MALTA 2026 TAX ENGINE
   const calculateMaltaTax = (monthlyGross: number, status: string, isParent: boolean, children: number) => {
     const annualGross = monthlyGross * 12;
     let tax = 0;
@@ -121,34 +125,43 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         filteredShifts.forEach(s => {
             const prop = properties?.find(p => p.id === s.propertyId);
             const durationMs = (s.actualEndTime || 0) - (s.actualStartTime || 0);
-            const hours = durationMs / (1000 * 60 * 60);
+            const hours = Math.max(0.5, durationMs / (1000 * 60 * 60)); // Minimum floor of 30 mins
             const hourlyEquivalent = hours * (user.payRate || 5.00);
 
-            // Piece Rate Logic mapping specifically to all price fields
+            // Piece Rate Logic - Hardened for Supervisors and Cleaners
             let targetPieceRate = prop?.cleanerPrice || 0;
-            if (s.serviceType === 'REFRESH') targetPieceRate = prop?.cleanerRefreshPrice || targetPieceRate;
-            if (s.serviceType === 'MID STAY CLEANING') targetPieceRate = prop?.cleanerMidStayPrice || targetPieceRate;
-            if (s.serviceType === 'TO CHECK APARTMENT') targetPieceRate = prop?.cleanerAuditPrice || 0;
-            if (s.serviceType === 'BEDS ONLY') targetPieceRate = prop?.cleanerBedsOnlyPrice || 0;
-            if (s.serviceType === 'Common Area') targetPieceRate = prop?.cleanerCommonAreaPrice || 0;
+            const serviceTag = s.serviceType.toUpperCase();
 
-            // Piece rates are shared by team
+            if (serviceTag.includes('REFRESH')) {
+                targetPieceRate = prop?.cleanerRefreshPrice || targetPieceRate;
+            } else if (serviceTag.includes('MID STAY')) {
+                targetPieceRate = prop?.cleanerMidStayPrice || targetPieceRate;
+            } else if (serviceTag.includes('CHECK APARTMENT')) {
+                targetPieceRate = prop?.cleanerAuditPrice || 0;
+            } else if (serviceTag.includes('BEDS ONLY')) {
+                targetPieceRate = prop?.cleanerBedsOnlyPrice || 0;
+            } else if (serviceTag.includes('COMMON AREA')) {
+                targetPieceRate = prop?.cleanerCommonAreaPrice || 0;
+            } else if (serviceTag.includes('TO FIX')) {
+                targetPieceRate = s.fixWorkPayment || 0;
+            }
+
+            // Piece rates are shared by team unless it's an individual Supervisor task
             const teamCount = s.userIds?.length || 1;
-            const pieceRatePerPerson = (s.serviceType === 'TO FIX' && s.fixWorkPayment) ? s.fixWorkPayment : (targetPieceRate / teamCount);
+            const isIndividualTask = serviceTag.includes('CHECK APARTMENT') || serviceTag.includes('TO FIX');
+            const pieceRatePerPerson = isIndividualTask ? targetPieceRate : (targetPieceRate / teamCount);
 
-            // Always pay at least the hourly equivalent
+            // Always pay base hourly
             totalBase += hourlyEquivalent;
 
-            // Add top-up bonus if approved and piece rate exceeds hourly pay
+            // PERFORMANCE BONUS: Top-up if piece rate exceeds hourly floor
             if (s.approvalStatus === 'approved' && pieceRatePerPerson > hourlyEquivalent) {
                 totalPerformanceBonus += (pieceRatePerPerson - hourlyEquivalent);
             }
         });
     }
 
-    // 2. STATUTORY BONUS LOGIC (Malta 2026)
-    // March/September: €135.10 Bonus
-    // June/December: €121.12 Bonus
+    // 2. AUTOMATIC STATUTORY BONUS (Malta Standard: Mar/Jun/Sep/Dec)
     let govBonus = 0;
     const month = selectedDocMonth.split(' ')[0];
     const isFullTime = user.employmentType === 'Full-Time';
@@ -157,13 +170,12 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
         if (['MAR', 'SEP'].includes(month)) govBonus = 135.10;
         if (['JUN', 'DEC'].includes(month)) govBonus = 121.12;
     } else if (user.employmentType === 'Part-Time' || user.employmentType === 'Casual') {
-        // Pro-rata estimation (roughly half for casuals)
         if (['MAR', 'SEP'].includes(month)) govBonus = 67.55;
         if (['JUN', 'DEC'].includes(month)) govBonus = 60.56;
     }
 
     const actualGrossPay = manualGrossPay !== null ? manualGrossPay : (totalBase + totalPerformanceBonus + govBonus);
-    const ni = Math.min(actualGrossPay * 0.1, 200); // 10% capped at roughly €50/week equivalent
+    const ni = Math.min(actualGrossPay * 0.1, 200); 
     const tax = calculateMaltaTax(actualGrossPay, user.maritalStatus || 'Single', !!user.isParent, user.childrenCount || 0);
 
     const isSingleParent = user.isParent && user.maritalStatus === 'Single';
@@ -219,7 +231,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
       govBonus: payrollData.govBonus,
       daysWorked: filteredShifts.length || 20,
       generatedAt: new Date().toISOString(),
-      generatedBy: currentUserObj.name || 'Admin User'
+      generatedBy: currentUserObj.name || 'System'
     };
 
     onUpdateUser({ ...user, payslips: [...(user.payslips || []), newPayslip] });
