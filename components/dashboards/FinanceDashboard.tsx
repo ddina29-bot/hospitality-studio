@@ -55,6 +55,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
     return users.filter(u => {
       const matchesSearch = u.name.toLowerCase().includes(recordsSearch.toLowerCase()) || 
                             u.role.toLowerCase().includes(recordsSearch.toLowerCase());
+      // Explicitly include housekeeping in records
       const isEmployee = ['cleaner', 'supervisor', 'driver', 'housekeeping', 'maintenance', 'laundry'].includes(u.role);
       return matchesSearch && isEmployee;
     }).sort((a, b) => {
@@ -106,13 +107,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
       const basePay = hours * hourlyRate;
       const isApproved = s.approvalStatus === 'approved';
 
-      if (s.serviceType === 'TO FIX') {
-          if (s.fixWorkPayment && s.fixWorkPayment > 0) totalBonus += s.fixWorkPayment;
-          else totalBase += basePay;
-          return;
-      }
-
-      if (s.serviceType === 'Common Area') {
+      if (s.serviceType === 'TO FIX' || s.serviceType === 'Common Area') {
           if (s.fixWorkPayment && s.fixWorkPayment > 0) totalBonus += s.fixWorkPayment;
           else totalBase += basePay;
           return;
@@ -120,7 +115,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
 
       totalBase += basePay;
       
-      if (isApproved && prop && staff.role === 'cleaner' && staff.paymentType === 'Per Clean') {
+      if (isApproved && prop && (staff.role === 'cleaner' || staff.role === 'housekeeping') && staff.paymentType === 'Per Clean') {
         const teamCount = s.userIds?.length || 1;
         const targetFee = prop.serviceRates?.[s.serviceType] !== undefined ? prop.serviceRates[s.serviceType] : prop.cleanerPrice;
         totalBonus += Math.max(0, (targetFee / teamCount) - basePay);
@@ -302,7 +297,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                                     <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">NET PAYABLE</p>
                                     <p className="text-2xl font-bold text-emerald-600">€{totals.totalNet.toFixed(2)}</p>
                                 </div>
-                                <button onClick={() => setSelectedPayslipId(entry.user.id)} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">DETAILS</button>
+                                <button onClick={() => { setViewingRecordsUser(entry.user); setInitialDocMode(null); }} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">PROCESS</button>
                               </div>
                           </div>
                           );
@@ -650,15 +645,16 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
       )}
 
       {viewingRecordsUser && (
-        <div className="fixed inset-0 bg-slate-900/60 z-[700] flex items-center justify-center p-0 md:p-6 backdrop-blur-md overflow-hidden">
-           <div className="bg-white w-full h-full md:rounded-[3rem] overflow-hidden flex flex-col relative animate-in zoom-in-95">
-              <div className="flex justify-between items-center px-8 py-4 bg-white border-b border-slate-100 shrink-0">
+        <div className="fixed inset-0 bg-slate-900/40 z-[700] flex items-center justify-center p-4 md:p-10 backdrop-blur-sm overflow-hidden">
+           <div className="bg-white w-full max-w-6xl max-h-[92vh] md:rounded-[3rem] overflow-hidden flex flex-col relative animate-in zoom-in-95 border-2 border-slate-100 shadow-2xl">
+              <div className="flex justify-between items-center px-8 py-6 bg-white border-b border-slate-100 shrink-0">
                  <div>
-                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-widest">Personnel Review: {viewingRecordsUser.name}</h3>
+                    <h3 className="text-base font-bold text-slate-900 uppercase tracking-tight">Personnel File: {viewingRecordsUser.name}</h3>
+                    <p className="text-[8px] font-black text-teal-600 uppercase tracking-[0.3em] mt-1">Operational Financial Record</p>
                  </div>
                  <button 
                    onClick={() => { setViewingRecordsUser(null); setInitialDocMode(null); setSelectedHistoricalPayslip(null); }}
-                   className="w-10 h-10 rounded-full bg-slate-50 text-slate-400 hover:text-slate-900 flex items-center justify-center transition-all"
+                   className="w-10 h-10 rounded-full bg-slate-50 text-slate-400 hover:text-slate-900 flex items-center justify-center transition-all border border-slate-200"
                  >
                    &times;
                  </button>
