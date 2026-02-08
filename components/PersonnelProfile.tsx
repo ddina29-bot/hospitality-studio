@@ -134,7 +134,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
 
     let totalBase = 0;
     let totalPerformanceBonus = 0;
-    let totalAuditFees = 0;
 
     if (user.paymentType === 'Fixed Wage') {
         totalBase = user.payRate || 0;
@@ -143,25 +142,35 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
             const prop = properties?.find(p => p.id === s.propertyId);
             const durationMs = (s.actualEndTime || 0) - (s.actualStartTime || 0);
             const hours = durationMs / (1000 * 60 * 60);
-            const shiftBase = hours * (user.payRate || 5.00);
+            const hourlyEquivalent = hours * (user.payRate || 5.00);
 
-            if (user.paymentType === 'Per Hour') totalBase += shiftBase;
+            let targetPieceRate = 0;
+            if (s.serviceType === 'TO CHECK APARTMENT') {
+                targetPieceRate = prop?.cleanerAuditPrice || 0;
+            } else if (s.serviceType === 'TO FIX') {
+                targetPieceRate = s.fixWorkPayment || 0;
+            } else if (s.serviceType === 'SUPPLY DELIVERY') {
+                targetPieceRate = hourlyEquivalent; 
+            } else {
+                // Standard cleaning types
+                const teamCount = s.userIds?.length || 1;
+                targetPieceRate = (prop?.serviceRates?.[s.serviceType] || prop?.cleanerPrice || 0) / teamCount;
+            }
 
-            if (s.approvalStatus === 'approved' && prop) {
-                const isCleaningShift = !['TO CHECK APARTMENT', 'SUPPLY DELIVERY', 'TO FIX'].includes(s.serviceType);
-                if (isCleaningShift) {
-                    const teamCount = s.userIds?.length || 1;
-                    const targetPieceRate = (prop.serviceRates?.[s.serviceType] || prop.cleanerPrice) / teamCount;
-                    if (targetPieceRate > shiftBase) totalPerformanceBonus += (targetPieceRate - shiftBase);
-                    else if (user.paymentType === 'Per Clean') totalBase += targetPieceRate; 
+            if (user.paymentType === 'Per Hour') {
+                totalBase += hourlyEquivalent;
+                // Add top-up bonus if approved and piece rate exceeds hourly pay
+                if (s.approvalStatus === 'approved' && targetPieceRate > hourlyEquivalent) {
+                    totalPerformanceBonus += (targetPieceRate - hourlyEquivalent);
                 }
-                if (s.serviceType === 'TO CHECK APARTMENT' && (user.role === 'supervisor' || user.role === 'housekeeping')) totalAuditFees += (prop.cleanerAuditPrice || 0);
-                if (s.serviceType === 'TO FIX' && s.fixWorkPayment) totalPerformanceBonus += s.fixWorkPayment;
+            } else if (user.paymentType === 'Per Clean') {
+                // For piece-rate users, we pay the higher of hourly or piece rate as base
+                totalBase += Math.max(hourlyEquivalent, s.approvalStatus === 'approved' ? targetPieceRate : 0);
             }
         });
     }
 
-    const actualGrossPay = manualGrossPay !== null ? manualGrossPay : (totalBase + totalPerformanceBonus + totalAuditFees);
+    const actualGrossPay = manualGrossPay !== null ? manualGrossPay : (totalBase + totalPerformanceBonus);
     const ni = Math.min(actualGrossPay * 0.1, 200); 
     const tax = calculateMaltaTax(actualGrossPay, user.maritalStatus || 'Single', !!user.isParent, user.childrenCount || 0);
 
@@ -177,7 +186,8 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
       govBonus: 0,
       totalNet: Math.max(0, actualGrossPay - ni - tax),
       isHistorical: false,
-      taxBand: childLabel
+      taxBand: childLabel,
+      totalPerformanceBonus // Added for payslip detail
     };
   }, [filteredShifts, user, payPeriodFrom, payPeriodUntil, properties, activeHistoricalPayslip, manualGrossPay]);
 
@@ -388,8 +398,8 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({ user, leaveRequests
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-16">
                        <div className="space-y-5">
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] border-b border-slate-50 pb-2">EARNINGS</p>
-                          <div className="flex justify-between text-xs font-bold"><span>Gross Basic Salary</span><span className="font-mono">€{payrollData.grossPay.toFixed(2)}</span></div>
-                          <div className="flex justify-between text-xs font-bold text-slate-300"><span>Statutory Bonuses</span><span className="font-mono">€0.00</span></div>
+                          <div className="flex justify-between text-xs font-bold"><span>Gross Basic Salary</span><span className="font-mono">€{(payrollData.grossPay - (payrollData.totalPerformanceBonus || 0)).toFixed(2)}</span></div>
+                          <div className="flex justify-between text-xs font-bold text-teal-600"><span>Performance Top-up</span><span className="font-mono">€{(payrollData.totalPerformanceBonus || 0).toFixed(2)}</span></div>
                        </div>
                        <div className="space-y-5">
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] border-b border-slate-50 pb-2">STATUTORY DEDUCTIONS</p>
