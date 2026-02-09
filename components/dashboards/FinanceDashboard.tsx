@@ -56,7 +56,6 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
     return users.filter(u => {
       const matchesSearch = u.name.toLowerCase().includes(recordsSearch.toLowerCase()) || 
                             u.role.toLowerCase().includes(recordsSearch.toLowerCase());
-      // Explicitly include housekeeping in records
       const isEmployee = ['cleaner', 'supervisor', 'driver', 'housekeeping', 'maintenance', 'laundry'].includes(u.role);
       return matchesSearch && isEmployee;
     }).sort((a, b) => {
@@ -102,7 +101,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
       if (!prop && s.serviceType !== 'TO FIX') return;
       
       const durationMs = (s.actualEndTime || 0) - (s.actualStartTime || 0);
-      const hours = durationMs / (1000 * 60 * 60);
+      const hours = Math.max(0, durationMs / (1000 * 60 * 60));
       totalHours += hours;
       const hourlyRate = staff.payRate || 5.00;
       const basePay = hours * hourlyRate;
@@ -119,11 +118,17 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
       if (isApproved && prop && (staff.role === 'cleaner' || staff.role === 'housekeeping') && staff.paymentType === 'Per Clean') {
         const teamCount = s.userIds?.length || 1;
         const targetFee = prop.serviceRates?.[s.serviceType] !== undefined ? prop.serviceRates[s.serviceType] : prop.cleanerPrice;
-        totalBonus += Math.max(0, (targetFee / teamCount) - basePay);
+        const myShare = targetFee / teamCount;
+        totalBonus += Math.max(0, myShare - basePay);
       }
     });
 
-    return { totalBase, totalBonus, totalHours, totalNet: totalBase + totalBonus };
+    const totalGross = totalBase + totalBonus;
+    const ni = totalGross * 0.10; // Simple 10% NI for demo
+    const tax = totalGross > 1000 ? (totalGross - 1000) * 0.15 : 0; // Simple tax mock
+    const totalNet = totalGross - ni - tax;
+
+    return { totalBase, totalBonus, totalHours, totalGross, totalNet, ni, tax };
   };
 
   const activePayslip = useMemo(() => {
@@ -286,17 +291,23 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                                 <div className="w-14 h-14 rounded-2xl bg-white border border-slate-200 text-teal-600 flex items-center justify-center font-bold text-2xl shadow-sm">
                                     {entry.user.name.charAt(0)}
                                 </div>
-                                <div>
+                                <div className="text-left">
                                     <h4 className="text-lg font-bold text-slate-900 uppercase tracking-tight">{entry.user.name}</h4>
                                     <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">
                                       {entry.shifts.length} Deployments • {totals.totalHours.toFixed(1)} Hours Logged
                                     </p>
+                                    {/* ADDED: Calculation breakdown for transparency */}
+                                    <div className="mt-2 flex gap-3">
+                                       <span className="text-[8px] bg-white px-2 py-0.5 rounded border border-slate-200 font-bold text-slate-500 uppercase">BASE: €{totals.totalBase.toFixed(2)}</span>
+                                       <span className="text-[8px] bg-white px-2 py-0.5 rounded border border-teal-200 font-bold text-teal-600 uppercase">PIECE-RATE BONUS: €{totals.totalBonus.toFixed(2)}</span>
+                                    </div>
                                 </div>
                               </div>
                               <div className="flex items-center gap-8 w-full md:w-auto justify-between md:justify-end">
                                 <div className="text-right">
-                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">NET PAYABLE</p>
-                                    <p className="text-2xl font-bold text-emerald-600">€{totals.totalNet.toFixed(2)}</p>
+                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">GROSS PAYABLE</p>
+                                    <p className="text-xl font-bold text-slate-900 leading-none">€{totals.totalGross.toFixed(2)}</p>
+                                    <p className="text-[8px] font-black text-emerald-600 uppercase tracking-widest mt-1">NET ESTIMATE: €{totals.totalNet.toFixed(2)}</p>
                                 </div>
                                 <button onClick={() => { setViewingRecordsUser(entry.user); setInitialDocMode(null); }} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">PROCESS</button>
                               </div>
