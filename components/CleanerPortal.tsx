@@ -47,14 +47,12 @@ interface CleanerPortalProps {
   inventoryItems?: SupplyItem[];
   onAddSupplyRequest?: (batch: Record<string, number>) => void;
   onUpdateUser?: (u: User) => void;
-  isBuildMode?: boolean;
 }
 
 const CleanerPortal: React.FC<CleanerPortalProps> = ({ 
   user, shifts, setShifts, properties, users, initialSelectedShiftId, onConsumedDeepLink, authorizedInspectorIds = [], onClosePortal,
-  inventoryItems = [], onAddSupplyRequest, onUpdateUser, isBuildMode = false
+  inventoryItems = [], onAddSupplyRequest, onUpdateUser
 }) => {
-  // PERSISTENCE: Check for stored shift ID on mount
   const [selectedShiftId, setSelectedShiftId] = useState<string | null>(() => {
     return initialSelectedShiftId || localStorage.getItem('cleaner_active_shift_id') || null;
   });
@@ -83,7 +81,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   const [missingCategory, setMissingCategory] = useState<'laundry' | 'apartment'>('apartment');
   
   const [showSupplyModal, setShowSupplyModal] = useState(false);
-  const [supplyBatch, setSupplyBatch] = useState<Record<string, number>>({});
   
   const [notification, setNotification] = useState<{message: string, type: 'error' | 'success'} | null>(null);
 
@@ -94,17 +91,15 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [checkoutTarget, setCheckoutTarget] = useState<'keyInBox' | 'boxClosed' | null>(null);
-  const hasTriggeredBreach = useRef(false);
-  const lastDistanceCheckTime = useRef(0);
 
-  const simulationActive = useMemo(() => isBuildMode || user.email === 'build@reset.studio', [isBuildMode, user.email]);
+  // Simulation strictly restricted to testing accounts
+  const simulationActive = useMemo(() => user.email === 'build@reset.studio', [user.email]);
   const realTodayISO = useMemo(() => getLocalISO(new Date()), []);
   const [viewedDateISO, setViewedDateISO] = useState(realTodayISO);
 
   const activeShift = useMemo(() => (shifts || []).find(s => s && s.id === selectedShiftId), [shifts, selectedShiftId]);
   const activeProperty = useMemo(() => activeShift ? properties.find(p => p.id === activeShift.propertyId) : null, [activeShift, properties]);
 
-  // AUTO-STEP RECOVERY: If a shift is selected and it's active, jump to 'active' step
   useEffect(() => {
     if (selectedShiftId) {
       localStorage.setItem('cleaner_active_shift_id', selectedShiftId);
@@ -114,8 +109,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
           setCurrentStep('active');
           setIsLocationVerified(true);
         } else if (shift.status === 'completed' && currentStep !== 'list') {
-          // If it's completed but we were still looking at it, maybe they finished.
-          // Fall back to list if not in review.
           if (currentStep !== 'review') {
             setCurrentStep('list');
             setSelectedShiftId(null);
@@ -385,7 +378,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
 
     const dynamicTasks: CleaningTask[] = [];
     dynamicTasks.push({ id: 'kitchen-task', label: 'KITCHEN: Surfaces & Appliances sanitized', isMandatory: true, minPhotos: 1, photos: createPlaceholder('kitchen') });
-    dynamicTasks.push({ id: 'fridge-task', label: 'FRIDGE AND FREEZER IMPORTANT: Cleaned & Odor-free', isMandatory: true, minPhotos: 1, photos: createPlaceholder('fridge') });
+    dynamicTasks.push({ id: 'fridge-task', label: 'FRIDGE AND FREEZER IMPORTANT: Cleaned & Odor-free', isMandatory: true, minPhotos: 1, photos: createPlaceholder('kitchen') });
     const roomCount = property.rooms || 0;
     for (let i = 1; i <= roomCount; i++) {
       dynamicTasks.push({ id: `room-task-${i}`, label: `BEDROOM ${i}: Bed linens changed & styled`, isMandatory: true, minPhotos: 1, photos: createPlaceholder('beds') });

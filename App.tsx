@@ -13,7 +13,6 @@ import InventoryAdmin from './components/management/InventoryAdmin';
 import LaundryDashboard from './components/dashboards/LaundryDashboard';
 import PersonnelProfile from './components/PersonnelProfile';
 import EmployeeWorksheet from './components/EmployeeWorksheet';
-import BuildModeOverlay from './components/BuildModeOverlay';
 import Login from './components/Login';
 import Signup from './components/Signup';
 import UserActivation from './components/UserActivation';
@@ -48,7 +47,6 @@ const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [hasHydrated, setHasHydrated] = useState(false);
-  const [isBuildMode, setIsBuildMode] = useState(() => load('studio_build_mode', true));
   const [showActivityCenter, setShowActivityCenter] = useState(false);
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
 
@@ -170,25 +168,6 @@ const App: React.FC = () => {
     setActiveTab('dashboard');
   };
 
-  const toggleBuildMode = useCallback(() => {
-    setIsBuildMode(prev => {
-      const newVal = !prev;
-      safeSave('studio_build_mode', newVal);
-      return newVal;
-    });
-  }, []);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
-        e.preventDefault();
-        toggleBuildMode();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [toggleBuildMode]);
-
   const handleRequestLeave = (type: LeaveType, start: string, end: string) => {
     if (!user) return;
     const newRequest: LeaveRequest = {
@@ -218,7 +197,7 @@ const App: React.FC = () => {
     return <UserActivation token={activationToken} onActivationComplete={handleLogin} onCancel={() => setActivationToken(null)} />;
   }
 
-  if (!user && !isBuildMode) {
+  if (!user) {
     return <Login onLogin={handleLogin} />;
   }
 
@@ -227,11 +206,8 @@ const App: React.FC = () => {
     switch (activeTab) {
       case 'dashboard': return <Dashboard user={user!} users={users} setActiveTab={setActiveTab} shifts={shifts} setShifts={setShifts} properties={properties} invoices={invoices} supplyRequests={supplyRequests} setSupplyRequests={setSupplyRequests} manualTasks={manualTasks} setManualTasks={setManualTasks} leaveRequests={leaveRequests} onUpdateLeaveStatus={handleUpdateLeaveStatus} onUpdateUser={setUser} />;
       case 'shifts': 
-        // PRIVACY LOCK: Admin, HR, and Housekeeping can see the global scheduling grid.
-        // Housekeeping needs this to manage team assignments.
-        // Everyone else sees their own personal shift list via CleanerPortal.
         if (['admin', 'hr', 'housekeeping'].includes(user!.role)) return <AdminPortal user={user!} view="scheduling" shifts={shifts} setShifts={setShifts} properties={properties} users={users} setActiveTab={setActiveTab} setSelectedClientIdFilter={() => {}} leaveRequests={leaveRequests} />;
-        return <CleanerPortal user={user!} shifts={shifts} setShifts={setShifts} properties={properties} users={users} inventoryItems={inventoryItems} onAddSupplyRequest={() => {}} onUpdateUser={setUser} isBuildMode={isBuildMode} />;
+        return <CleanerPortal user={user!} shifts={shifts} setShifts={setShifts} properties={properties} users={users} inventoryItems={inventoryItems} onAddSupplyRequest={() => {}} onUpdateUser={setUser} />;
       case 'logistics': return <DriverPortal user={user!} shifts={shifts} setShifts={setShifts} properties={properties} users={users} timeEntries={timeEntries} setTimeEntries={setTimeEntries} />;
       case 'laundry': return <LaundryDashboard user={user!} setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} users={users} properties={properties} onTogglePrepared={() => {}} timeEntries={timeEntries} setTimeEntries={setTimeEntries} organization={organization} />;
       case 'properties': return <AdminPortal user={user!} view="properties" properties={properties} setProperties={setProperties} clients={clients} setClients={setClients} setActiveTab={setActiveTab} setSelectedClientIdFilter={() => {}} />;
@@ -239,7 +215,6 @@ const App: React.FC = () => {
       case 'finance': return <FinanceDashboard setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} users={users} properties={properties} invoices={invoices} setInvoices={setInvoices} clients={clients} organization={organization} manualTasks={manualTasks} onUpdateUser={setUser} leaveRequests={leaveRequests} />;
       case 'users': return <AdminPortal user={user!} view="users" users={users} setUsers={setUsers} setActiveTab={setActiveTab} setSelectedClientIdFilter={() => {}} orgId={orgId} leaveRequests={leaveRequests} />;
       case 'settings': 
-        // My Profile tab: strictly defaults to current user
         return <PersonnelProfile user={user} leaveRequests={leaveRequests} onRequestLeave={handleRequestLeave} shifts={shifts} properties={properties} organization={organization} onUpdateUser={setUser} />;
       case 'worksheet': return <EmployeeWorksheet user={user!} shifts={shifts} properties={properties} />;
       default: return <div className="p-20 text-center opacity-20 uppercase font-black tracking-widest">Module Under Construction</div>;
@@ -299,14 +274,6 @@ const App: React.FC = () => {
         </nav>
 
         <div className="p-4 border-t border-slate-700/50 space-y-2">
-          <button 
-            onClick={toggleBuildMode} 
-            className={`w-full flex items-center gap-4 px-5 py-3 rounded-2xl text-xs font-black uppercase transition-all border ${isBuildMode ? 'bg-amber-500 text-black border-amber-400 shadow-lg shadow-amber-500/20' : 'bg-slate-800/50 text-amber-500/60 border-slate-700 hover:bg-slate-800 hover:text-amber-500'}`}
-          >
-             <span>🛠️</span>
-             <span>Build Console</span>
-          </button>
-          
           <button onClick={handleLogout} className="w-full flex items-center gap-4 px-5 py-3 text-slate-400 text-xs font-bold uppercase hover:bg-white/5 rounded-2xl transition-colors hover:text-white">
              <span>🚪</span>
              <span>Log out</span>
@@ -356,16 +323,6 @@ const App: React.FC = () => {
             {toast.message}
           </div>
         </div>
-      )}
-
-      {isBuildMode && (
-        <BuildModeOverlay 
-          currentUser={user} 
-          onSwitchUser={(role) => handleLogin({ ...user || {id: 'dev', name: 'Developer', email: 'dev@dev.com', role: 'admin', status: 'active'}, role } as User)} 
-          onToggleTab={setActiveTab} 
-          stats={{ users: users.length, properties: properties.length, shifts: shifts.length }} 
-          onClose={toggleBuildMode} 
-        />
       )}
     </div>
   );

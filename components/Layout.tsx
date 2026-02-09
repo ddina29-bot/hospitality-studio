@@ -12,14 +12,12 @@ interface LayoutProps {
   onOpenNotifications?: () => void;
   isSyncing?: boolean;
   organization?: OrganizationSettings;
-  onToggleBuildMode?: () => void;
-  isBuildMode?: boolean;
 }
 
 const Layout: React.FC<LayoutProps> = ({ 
   children, activeTab, setActiveTab, role, onLogout, 
   notificationCount = 0, onOpenNotifications, isSyncing = false,
-  organization, onToggleBuildMode, isBuildMode = false
+  organization
 }) => {
   const [showMenu, setShowMenu] = useState(false);
 
@@ -93,14 +91,6 @@ const Layout: React.FC<LayoutProps> = ({
         </nav>
 
         <div className="p-4 border-t border-slate-700/50 space-y-2">
-          <button 
-            onClick={onToggleBuildMode} 
-            className={`w-full flex items-center gap-4 px-5 py-3 rounded-2xl text-xs font-black uppercase transition-all border ${isBuildMode ? 'bg-amber-500 text-black border-amber-400 shadow-lg shadow-amber-500/20' : 'bg-slate-800/50 text-amber-500/60 border-slate-700 hover:bg-slate-800 hover:text-amber-500'}`}
-          >
-             <span>🛠️</span>
-             <span>Build Console</span>
-          </button>
-          
           <button onClick={onLogout} className="w-full flex items-center gap-4 px-5 py-3 text-slate-400 text-xs font-bold uppercase hover:bg-white/5 rounded-2xl transition-colors hover:text-white">
              <span>🚪</span>
              <span>Log out</span>
@@ -171,12 +161,6 @@ const Layout: React.FC<LayoutProps> = ({
                </div>
 
                <div className="mt-auto space-y-3">
-                  <button 
-                    onClick={() => { onToggleBuildMode?.(); setShowMenu(false); }} 
-                    className={`w-full py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest border transition-all ${isBuildMode ? 'bg-amber-500 text-black border-amber-400' : 'bg-slate-50 text-amber-600 border-slate-100'}`}
-                  >
-                    🛠️ Build Console
-                  </button>
                   <button onClick={onLogout} className="w-full py-4 bg-rose-50 text-rose-600 font-black uppercase text-[10px] tracking-widest rounded-2xl border border-rose-100">Terminate Session</button>
                </div>
             </div>
