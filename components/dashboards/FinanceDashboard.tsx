@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { TabType, Shift, User, Property, Invoice, Client, InvoiceItem, OrganizationSettings, ManualTask, SavedPayslip } from '../../types';
+import { TabType, Shift, User, Property, Invoice, Client, InvoiceItem, OrganizationSettings, ManualTask, SavedPayslip, LeaveRequest } from '../../types';
 import PersonnelProfile from '../PersonnelProfile';
 
 interface FinanceDashboardProps {
@@ -16,10 +16,11 @@ interface FinanceDashboardProps {
   organization?: OrganizationSettings;
   manualTasks?: ManualTask[];
   onUpdateUser?: (user: User) => void;
+  leaveRequests?: LeaveRequest[];
 }
 
 const FinanceDashboard: React.FC<FinanceDashboardProps> = ({ 
-  setActiveTab, onLogout, shifts = [], setShifts, users = [], properties = [], invoices = [], setInvoices, clients = [], organization, manualTasks = [], onUpdateUser
+  setActiveTab, onLogout, shifts = [], setShifts, users = [], properties = [], invoices = [], setInvoices, clients = [], organization, manualTasks = [], onUpdateUser, leaveRequests = []
 }) => {
   const [activeModule, setActiveModule] = useState<'payroll' | 'invoicing' | 'records'>('payroll');
   const [payrollSubView, setPayrollSubView] = useState<'pending' | 'registry'>('pending');
@@ -534,8 +535,8 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                                      <div className="flex flex-col gap-0.5">
                                         <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">VAT: {activePreviewClient.vatNumber || '---'}</p>
                                         <p className="text-[9px] text-slate-400 font-bold">{activePreviewClient.contactEmail}</p>
-                                     </div>
                                   </div>
+                               </div>
                                )}
                             </div>
                          </div>
@@ -668,6 +669,7 @@ const FinanceDashboard: React.FC<FinanceDashboardProps> = ({
                    initialDocView={initialDocMode}
                    initialHistoricalPayslip={selectedHistoricalPayslip}
                    onUpdateUser={onUpdateUser}
+                   leaveRequests={leaveRequests}
                  />
               </div>
            </div>

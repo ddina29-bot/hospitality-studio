@@ -214,6 +214,9 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
   setActiveTab 
 }) => {
   const currentUser = JSON.parse(localStorage.getItem('current_user_obj') || '{}');
+  // Housekeeping role now considered a manager for scheduling and leave oversight.
+  const isManager = ['admin', 'hr', 'housekeeping'].includes(currentUser.role);
+
   const [showShiftModal, setShowShiftModal] = useState(false);
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
   const [reviewShift, setReviewShift] = useState<Shift | null>(null);
@@ -312,7 +315,6 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
 
   const [currentWeekStart, setCurrentWeekStart] = useState(() => {
     const d = new Date();
-    // Use Midnight relative to Local Time to ensure rollover is consistent
     d.setHours(0,0,0,0);
     const day = d.getDay();
     const diff = d.getDate() - day + (day === 0 ? -6 : 1);
@@ -857,7 +859,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
                                         {userLeave.status === 'approved' ? 'UNAVAILABLE' : 'REQUESTING'}
                                      </p>
                                      <p className={`text-[7px] font-bold uppercase tracking-widest px-2 py-0.5 rounded ${userLeave.status === 'approved' ? 'text-red-400 bg-white/80 border border-red-100' : 'text-orange-400 bg-white/80 border border-orange-100'}`}>
-                                        {userLeave.type}
+                                        {isManager ? userLeave.type : 'ABSENCE'}
                                      </p>
                                   </div>
                                 ) : (

@@ -56,7 +56,9 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({
     }, {} as Record<string, SupplyRequest[]>);
   }, [pendingSupplies]);
 
-  const pendingLeaves = useMemo(() => (leaveRequests || []).filter(l => l.status === 'pending'), [leaveRequests]);
+  // STRICT PRIVACY: Only true Admin role can see global leave/requisition queues.
+  const isGlobalAdmin = user.role === 'admin';
+  const pendingLeaves = useMemo(() => (isGlobalAdmin ? (leaveRequests || []).filter(l => l.status === 'pending') : []), [leaveRequests, isGlobalAdmin]);
 
   // UNITS FINISHED BUT UNMADE (Needs Linen/Packs)
   const supplyDebtUnits = useMemo(() => {
@@ -204,7 +206,7 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({
               {supplyDebtUnits.map(s => (
                 <div key={s.id} className="bg-amber-50 border border-amber-200 p-6 rounded-[2rem] flex flex-col justify-between shadow-sm group hover:bg-white hover:border-amber-400 transition-all">
                   <div className="space-y-4">
-                      <p className="text-[11px] font-black uppercase text-amber-900 leading-tight">{s.propertyName}</p>
+                      <p className="text-11px font-black uppercase text-amber-900 leading-tight">{s.propertyName}</p>
                       <div className="bg-white/60 p-3 rounded-xl">
                         <p className="text-[8px] font-bold text-amber-600 uppercase tracking-widest leading-relaxed">Cleaner has departed. Unit requires linens and welcome packs to be finalized.</p>
                       </div>
@@ -212,7 +214,6 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({
                   <div className="flex flex-col gap-2 mt-6">
                     <button 
                         onClick={() => {
-                            // Deep link to scheduling for a "BEDS ONLY" shift
                             setActiveTab('shifts');
                         }}
                         className="w-full bg-amber-600 text-white py-3 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all"
@@ -232,8 +233,8 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({
         </section>
       )}
 
-      {/* PRIMARY ACTION: SUPPLY REQUISITIONS */}
-      {pendingSupplies.length > 0 && (
+      {/* PRIMARY ACTION: SUPPLY REQUISITIONS - Only shown to Global Admins */}
+      {pendingSupplies.length > 0 && isGlobalAdmin && (
         <section className="bg-white border-2 border-indigo-200 p-5 md:p-8 rounded-3xl md:rounded-[40px] shadow-2xl space-y-4 md:space-y-6 animate-in slide-in-from-top-3">
            <div className="flex justify-between items-center px-1">
               <div className="flex items-center gap-3 md:gap-4">
@@ -252,7 +253,7 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({
                        <p className="text-[10px] md:text-xs font-black uppercase text-slate-900 tracking-tight border-b border-indigo-100 pb-1.5 md:pb-2">{batch[0].userName}</p>
                        <div className="mt-2.5 md:mt-3 space-y-1.5 md:space-y-2">
                           {batch.map(b => (
-                             <p key={b.id} className="text-[9px] md:text-[11px] text-indigo-900 font-bold uppercase flex justify-between items-center">
+                             <p key={b.id} className="text-[9px] md:text-11px text-indigo-900 font-bold uppercase flex justify-between items-center">
                                 <span className="opacity-70 truncate pr-2">{b.itemName}</span>
                                 <span className="bg-white px-1.5 md:px-2 py-0.5 rounded-lg border border-indigo-50 text-[8px] md:text-[9px] font-black shrink-0">x{b.quantity}</span>
                              </p>
@@ -269,8 +270,8 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({
         </section>
       )}
 
-      {/* LEAVE APPROVAL STRIP - RESTYLED */}
-      {pendingLeaves.length > 0 && (
+      {/* LEAVE APPROVAL STRIP - Privacy Update: ONLY Admin role sees this global queue */}
+      {pendingLeaves.length > 0 && isGlobalAdmin && (
         <section className="bg-[#FDF8EE] border border-slate-200 p-5 md:p-8 rounded-[2rem] md:rounded-[3rem] shadow-sm space-y-6 animate-in slide-in-from-right-4">
            <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-3">

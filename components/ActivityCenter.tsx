@@ -1,14 +1,47 @@
 
-import React from 'react';
-import { AppNotification, TabType } from '../types';
+import React, { useMemo } from 'react';
+import { AppNotification, TabType, UserRole } from '../types';
 
 interface ActivityCenterProps {
   notifications: AppNotification[];
   onClose: () => void;
   onNavigate: (tab: TabType, id?: string) => void;
+  userRole: UserRole;
+  currentUserId: string;
 }
 
-const ActivityCenter: React.FC<ActivityCenterProps> = ({ notifications, onClose, onNavigate }) => {
+const ActivityCenter: React.FC<ActivityCenterProps> = ({ notifications, onClose, onNavigate, userRole, currentUserId }) => {
+  // PRIVACY FIREWALL: Filter notifications strictly based on ownership and role targets
+  const filteredNotifications = useMemo(() => {
+    return notifications.filter(n => {
+      // 1. Admins and HR have full visibility over the operational log
+      if (['admin', 'hr'].includes(userRole)) return true;
+      
+      // 2. Global broadcast/success messages are visible to all (system-wide announcements)
+      if (n.type === 'success' && !n.linkTab) return true;
+
+      // 3. User-Specific Lock: For any notification linked to a specific entity
+      // If it's a personnel-related alert (leave, profile, payslip), it MUST match currentUserId.
+      if (n.linkTab === 'settings' || n.linkTab === 'worksheet') {
+         return String(n.linkId) === String(currentUserId);
+      }
+
+      // 4. Role-based visibility for housekeeping managers (operational focus, NO private HR data)
+      if (userRole === 'housekeeping') {
+        // Only allow operational alerts about properties or generic items, block private alerts about others.
+        const isPrivateAlertAboutOthers = n.type === 'alert' && n.linkTab === 'settings' && String(n.linkId) !== String(currentUserId);
+        return !isPrivateAlertAboutOthers;
+      }
+
+      // 5. Strict owner-only lock for all other staff roles (Cleaners, Drivers, etc.)
+      // They ONLY see notifications explicitly linked to their own ID or safe global info types.
+      const isMyOwnData = String(n.linkId) === String(currentUserId);
+      const isSafeGlobalType = (n.type === 'info' || n.type === 'success') && !n.linkTab;
+      
+      return isMyOwnData || isSafeGlobalType;
+    });
+  }, [notifications, userRole, currentUserId]);
+
   return (
     <div className="fixed inset-0 bg-black/50 z-[2000] flex justify-end backdrop-blur-sm animate-in fade-in">
       <div className="w-full max-w-sm bg-[#FDF8EE] h-full shadow-2xl border-l border-[#C5A059]/30 flex flex-col animate-in slide-in-from-right duration-300">
@@ -23,7 +56,7 @@ const ActivityCenter: React.FC<ActivityCenterProps> = ({ notifications, onClose,
         </div>
         
         <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3">
-           {notifications.length === 0 ? (
+           {filteredNotifications.length === 0 ? (
              <div className="h-full flex flex-col items-center justify-center text-center opacity-30 space-y-4">
                 <div className="w-16 h-16 rounded-full bg-black/5 flex items-center justify-center">
                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3zm-8.27 4a2 2 0 0 1-3.46 0"/></svg>
@@ -31,7 +64,7 @@ const ActivityCenter: React.FC<ActivityCenterProps> = ({ notifications, onClose,
                 <p className="text-[10px] font-black uppercase tracking-widest text-black">All caught up</p>
              </div>
            ) : (
-             notifications.map((notif) => (
+             filteredNotifications.map((notif) => (
                 <div 
                   key={notif.id} 
                   onClick={() => { if(notif.linkTab) onNavigate(notif.linkTab, notif.linkId); onClose(); }}
