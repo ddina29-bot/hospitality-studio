@@ -34,10 +34,16 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({
   const currentUserObj = JSON.parse(localStorage.getItem('current_user_obj') || '{}');
   const isCurrentUserAdmin = currentUserObj.role === 'admin';
   const canManageFinancials = isCurrentUserAdmin;
+
+  // Roles excluded from training and performance tracking (logistics/mgmt roles)
+  const isRoadmapIrrelevant = ['admin', 'housekeeping', 'driver', 'laundry'].includes(user.role);
   
   const [viewingDoc, setViewingDoc] = useState<'payslip' | 'worksheet' | 'fs3' | null>(initialDocView || null);
   const [activeHistoricalPayslip, setActiveHistoricalPayslip] = useState<SavedPayslip | null>(initialHistoricalPayslip || null);
-  const [activeSubTab, setActiveSubTab] = useState<'ONBOARDING' | 'PERFORMANCE' | 'PENDING PAYOUTS' | 'PAYSLIP REGISTRY' | 'LEAVE REQUESTS'>('ONBOARDING');
+  
+  const [activeSubTab, setActiveSubTab] = useState<'ONBOARDING' | 'PERFORMANCE' | 'PENDING PAYOUTS' | 'PAYSLIP REGISTRY' | 'LEAVE REQUESTS'>(
+    isRoadmapIrrelevant ? 'PAYSLIP REGISTRY' : 'ONBOARDING'
+  );
   
   const [selectedDocMonth, setSelectedDocMonth] = useState<string>('MAR 2026'); 
   const [payPeriodFrom, setPayPeriodFrom] = useState('2026-03-01');
@@ -254,6 +260,16 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({
     return leaveRequests.filter(l => String(l.userId) === viewedUserId);
   }, [leaveRequests, user.id]);
 
+  const visibleSubTabs = useMemo(() => {
+    return [
+      !isRoadmapIrrelevant && 'ONBOARDING',
+      !isRoadmapIrrelevant && 'PERFORMANCE',
+      canManageFinancials && 'PENDING PAYOUTS',
+      'PAYSLIP REGISTRY',
+      'LEAVE REQUESTS'
+    ].filter(Boolean) as any[];
+  }, [isRoadmapIrrelevant, canManageFinancials]);
+
   return (
     <div className="bg-[#F8FAFC] min-h-full text-left pb-24 font-brand animate-in fade-in duration-500">
       <div className="max-w-[1200px] mx-auto px-4 md:px-8 pt-6 space-y-8">
@@ -281,8 +297,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({
 
         <div className="space-y-6">
            <div className="flex gap-8 border-b border-slate-200 w-full md:w-auto px-2 overflow-x-auto no-scrollbar">
-              {['ONBOARDING', 'PERFORMANCE', 'PENDING PAYOUTS', 'PAYSLIP REGISTRY', 'LEAVE REQUESTS'].map(tab => (
-                 (tab === 'PENDING PAYOUTS' && !canManageFinancials) ? null :
+              {visibleSubTabs.map(tab => (
                  <button 
                    key={tab}
                    onClick={() => setActiveSubTab(tab as any)}
@@ -294,11 +309,11 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({
               ))}
            </div>
 
-           {activeSubTab === 'ONBOARDING' && (
+           {activeSubTab === 'ONBOARDING' && !isRoadmapIrrelevant && (
              <OnboardingPathView user={user} tutorials={tutorials} onNavigateToTutorials={() => setActiveTab?.('tutorials')} />
            )}
 
-           {activeSubTab === 'PERFORMANCE' && (
+           {activeSubTab === 'PERFORMANCE' && !isRoadmapIrrelevant && (
              <ScorecardView user={user} shifts={shifts} />
            )}
 

@@ -470,14 +470,14 @@ const App: React.FC = () => {
   const navItems = [
     { id: 'dashboard', label: 'Home', icon: '📊', roles: ['admin', 'driver', 'housekeeping', 'hr', 'finance', 'client', 'supervisor', 'cleaner'] },
     { id: 'shifts', label: 'Schedule', icon: '🗓️', roles: ['admin', 'cleaner', 'housekeeping', 'supervisor'] },
-    { id: 'worksheet', label: 'Worksheet', icon: '📄', roles: ['cleaner', 'supervisor', 'driver', 'laundry'] },
+    { id: 'worksheet', label: 'Worksheet', icon: '📄', roles: ['cleaner', 'supervisor', 'laundry'] },
     { id: 'logistics', label: 'Deliveries', icon: '🚚', roles: ['admin', 'driver', 'housekeeping'] },
     { id: 'laundry', label: 'Laundry', icon: '🧺', roles: ['admin', 'laundry', 'housekeeping'] },
     { id: 'properties', label: 'Portfolio', icon: '🏠', roles: ['admin', 'housekeeping', 'driver'] },
     { id: 'clients', label: 'Partners', icon: '🏢', roles: ['admin'] },
     { id: 'users', label: 'Team', icon: '👥', roles: ['admin', 'hr'] },
     { id: 'finance', label: 'Finance', icon: '💳', roles: ['admin', 'finance'] },
-    { id: 'tutorials', label: 'Academy', icon: '🎓', roles: ['admin', 'housekeeping', 'supervisor', 'cleaner', 'driver'] },
+    { id: 'tutorials', label: 'Academy', icon: '🎓', roles: ['admin', 'housekeeping', 'supervisor', 'cleaner'] },
     { id: 'pulse', label: 'Pulse', icon: '📡', roles: ['admin', 'housekeeping', 'supervisor', 'cleaner', 'driver'] },
     { id: 'settings', label: user?.role === 'admin' ? 'Studio' : 'My Profile', icon: user?.role === 'admin' ? '⚙️' : '👤', roles: ['admin', 'cleaner', 'driver', 'housekeeping', 'supervisor', 'laundry', 'maintenance'] },
   ];

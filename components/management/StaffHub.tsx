@@ -8,6 +8,7 @@ interface StaffHubProps {
   users: User[];
   setUsers: React.Dispatch<React.SetStateAction<User[]>>;
   shifts?: Shift[];
+  setShifts?: React.Dispatch<React.SetStateAction<Shift[]>>;
   onPreviewActivation?: (user: User) => void;
   showToast?: (message: string, type: 'success' | 'error' | 'info') => void;
   shouldOpenAddModal?: boolean;
@@ -16,7 +17,7 @@ interface StaffHubProps {
   tutorials?: Tutorial[];
 }
 
-const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, shifts = [], showToast, shouldOpenAddModal, setShouldOpenAddModal, orgId, tutorials = [] }) => {
+const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, shifts = [], setShifts, showToast, shouldOpenAddModal, setShouldOpenAddModal, orgId, tutorials = [] }) => {
   const [search, setSearch] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -140,12 +141,28 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, shifts = [], showT
 
   const toggleStatus = () => {
     if (!editingUser) return;
-    const newStatus: 'active' | 'inactive' = editingUser.status === 'inactive' ? 'active' : 'inactive';
+    const isSuspending = editingUser.status !== 'inactive';
+    const newStatus: 'active' | 'inactive' = isSuspending ? 'inactive' : 'active';
     const updatedUser = { ...editingUser, status: newStatus };
+    
     setUsers(prev => prev.map(u => u.id === editingUser.id ? updatedUser : u));
+    
+    // CRITICAL: If suspending, remove from all future/current shifts automatically
+    if (isSuspending && setShifts) {
+      setShifts(prev => prev.map(s => ({
+        ...s,
+        userIds: s.userIds.filter(id => id !== editingUser.id)
+      })));
+    }
+
     setEditingUser(updatedUser);
     if (showToast) {
-        showToast(newStatus === 'inactive' ? 'ACCOUNT SUSPENDED' : 'ACCOUNT REACTIVATED', 'info');
+        showToast(
+            isSuspending 
+              ? 'ACCOUNT SUSPENDED & REMOVED FROM ALL SHIFTS' 
+              : 'ACCOUNT REACTIVATED', 
+            'info'
+        );
     }
   };
 
@@ -170,6 +187,11 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, shifts = [], showT
     navigator.clipboard.writeText(link);
     if (showToast) showToast('LINK COPIED TO CLIPBOARD', 'success');
   };
+
+  const isRoadmapIrrelevant = useMemo(() => {
+    if (!editingUser) return true;
+    return ['admin', 'housekeeping', 'driver', 'laundry'].includes(editingUser.role);
+  }, [editingUser]);
 
   return (
     <div className="space-y-12 animate-in fade-in duration-700 text-left pb-24 max-w-6xl mx-auto relative px-4">
@@ -259,7 +281,9 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, shifts = [], showT
               <div className="flex items-center gap-4">
                  <div className="flex bg-slate-100 p-1 rounded-2xl">
                     <button onClick={() => setEditModalMode('details')} className={`px-6 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${editModalMode === 'details' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-400'}`}>DATA REGISTRY</button>
-                    <button onClick={() => setEditModalMode('onboarding')} className={`px-6 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${editModalMode === 'onboarding' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-400'}`}>ONBOARDING ROADMAP</button>
+                    {!isRoadmapIrrelevant && (
+                      <button onClick={() => setEditModalMode('onboarding')} className={`px-6 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${editModalMode === 'onboarding' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-400'}`}>ONBOARDING ROADMAP</button>
+                    )}
                  </div>
                  <button 
                   type="button"
@@ -299,7 +323,7 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, shifts = [], showT
                         </div>
                         <div>
                           <label className={labelStyle}>ID Card / Passport Number</label>
-                          <input className={inputStyle} value={editingUser.idPassportNumber} onChange={e => setEditingUser({...editingUser, idPassportNumber: e.target.value})} />
+                          <input className={inputStyle} value={editingUser.idPassportNumber} onChange={e => setEditingUser({...editingUser, idPassportNumber: e.target.value})} placeholder="E.G. 123456M" />
                         </div>
                         <div>
                           <label className={labelStyle}>Maltese NI Number</label>
@@ -342,14 +366,14 @@ const StaffHub: React.FC<StaffHubProps> = ({ users, setUsers, shifts = [], showT
                                   <button type="button" onClick={() => contractInputRef.current?.click()} className={`text-[8px] font-black uppercase tracking-widest px-4 py-2 rounded-xl transition-all ${editingUser.hasContract ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-500 border border-red-100'}`}>
                                       {editingUser.hasContract ? 'FILED' : 'UPLOAD'}
                                   </button>
-                                  <input type="file" ref={contractInputRef} className="hidden" onChange={e => handleFileUpload(e, 'contract')} />
+                                  <input type="file" id="contractInput" ref={contractInputRef} className="hidden" onChange={e => handleFileUpload(e, 'contract')} />
                               </div>
                               <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
                                   <div><p className="text-[9px] font-bold text-slate-900 uppercase">ID Scan</p></div>
                                   <button type="button" onClick={() => idInputRef.current?.click()} className={`text-[8px] font-black uppercase tracking-widest px-4 py-2 rounded-xl transition-all ${editingUser.hasID ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-500 border border-red-100'}`}>
                                       {editingUser.hasID ? 'VERIFIED' : 'UPLOAD'}
                                   </button>
-                                  <input type="file" ref={idInputRef} className="hidden" onChange={e => handleFileUpload(e, 'id')} />
+                                  <input type="file" id="idInput" ref={idInputRef} className="hidden" onChange={e => handleFileUpload(e, 'id')} />
                               </div>
                           </div>
                       </div>

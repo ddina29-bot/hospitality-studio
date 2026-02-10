@@ -61,7 +61,16 @@ const AdminPortal: React.FC<AdminPortalProps> = ({
       onSelectPropertyToEdit={onSelectPropertyToEdit}
     />
   );
-  if (view === 'users' && setUsers) return <StaffHub users={users} setUsers={setUsers} orgId={orgId} tutorials={tutorials} shifts={shifts} />;
+  if (view === 'users' && setUsers) return (
+    <StaffHub 
+      users={users} 
+      setUsers={setUsers} 
+      orgId={orgId} 
+      tutorials={tutorials} 
+      shifts={shifts} 
+      setShifts={setShifts} 
+    />
+  );
   
   if (view === 'scheduling' && setShifts) return (
     <SchedulingCenter 

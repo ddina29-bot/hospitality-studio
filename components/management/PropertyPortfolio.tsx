@@ -48,7 +48,6 @@ const PropertyPortfolio: React.FC<PropertyPortfolioProps> = ({
   const [form, setForm] = useState<Partial<Property>>(initialForm);
   const [newClientForm, setNewClientForm] = useState({ name: '', email: '' });
 
-  // Filter properties based on search
   const filteredProperties = useMemo(() => {
     const query = searchQuery.toLowerCase();
     return properties.filter(p => 
@@ -57,7 +56,6 @@ const PropertyPortfolio: React.FC<PropertyPortfolioProps> = ({
     );
   }, [properties, searchQuery]);
 
-  // Get unique package types for the searchable datalist
   const existingPackTypes = useMemo(() => {
     const packs = properties.map(p => p.packType).filter(Boolean) as string[];
     const standardPacks = ['Basic Essentials Pack', 'Full Hospitality Suite', 'Child-Friendly Setup', 'Eco-Friendly Protocol'];
@@ -83,7 +81,6 @@ const PropertyPortfolio: React.FC<PropertyPortfolioProps> = ({
       setProperties(prev => prev.map(p => {
         if (p.id === editingId) {
           if (isDriver) {
-            // Driver ONLY saves GPS coordinates
             return { 
               ...p, 
               lat: form.lat,
@@ -91,7 +88,6 @@ const PropertyPortfolio: React.FC<PropertyPortfolioProps> = ({
             };
           }
           if (isHousekeeping) {
-            // Housekeeping only saves codes
             return { 
               ...p, 
               mainEntranceCode: form.mainEntranceCode,
@@ -100,7 +96,6 @@ const PropertyPortfolio: React.FC<PropertyPortfolioProps> = ({
               accessNotes: form.accessNotes
             };
           }
-          // Admin saves everything
           return { ...p, ...form };
         }
         return p;
@@ -147,7 +142,19 @@ const PropertyPortfolio: React.FC<PropertyPortfolioProps> = ({
   };
 
   const captureCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by this browser.");
+      return;
+    }
+
     setIsLocating(true);
+    
+    const options: PositionOptions = {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 0
+    };
+
     navigator.geolocation.getCurrentPosition(
       (position) => {
         setForm(prev => ({
@@ -156,14 +163,28 @@ const PropertyPortfolio: React.FC<PropertyPortfolioProps> = ({
           lng: parseFloat(position.coords.longitude.toFixed(6))
         }));
         setIsLocating(false);
-        alert("GPS Coordinates Captured from Device.");
+        alert("GPS Coordinates Captured Successfully.");
       },
       (error) => {
-        console.error(error);
+        console.error("Geolocation Error:", error);
         setIsLocating(false);
-        alert("Geolocation failed. Please check permissions.");
+        
+        switch(error.code) {
+          case error.PERMISSION_DENIED:
+            alert("Permission Denied. Please enable Location Services in your browser settings and try again.");
+            break;
+          case error.POSITION_UNAVAILABLE:
+            alert("Location Information Unavailable. Ensure your GPS is turned on.");
+            break;
+          case error.TIMEOUT:
+            alert("Location Request Timed Out. Please check your signal strength and retry.");
+            break;
+          default:
+            alert("An unknown error occurred during GPS capture.");
+            break;
+        }
       },
-      { enableHighAccuracy: true }
+      options
     );
   };
 
@@ -265,7 +286,7 @@ const PropertyPortfolio: React.FC<PropertyPortfolioProps> = ({
                   </div>
                </div>
             </div>
-            {isDriver && <p className="text-[10px] text-teal-600 font-bold uppercase tracking-widest px-1">* Personnel: Drivers are authorized to sync GPS pins while on-site.</p>}
+            {isDriver && <p className="text-[10px] text-teal-600 font-bold uppercase tracking-widest px-1">* PERSONNEL: DRIVERS ARE AUTHORIZED TO SYNC GPS PINS WHILE ON-SITE.</p>}
           </div>
 
           <div className="bg-teal-50/50 p-6 rounded-[2rem] border border-teal-100 grid grid-cols-2 md:grid-cols-4 gap-4 shadow-inner">
@@ -515,7 +536,6 @@ const PropertyPortfolio: React.FC<PropertyPortfolioProps> = ({
         </div>
       </header>
 
-      {/* Main List View */}
       <div className="space-y-4 px-4">
         {filteredProperties.length === 0 ? (
           <div className="py-32 text-center bg-white border border-dashed border-slate-200 rounded-[3rem] animate-in fade-in">
@@ -527,13 +547,11 @@ const PropertyPortfolio: React.FC<PropertyPortfolioProps> = ({
         ) : (
           filteredProperties.map(p => (
             <div key={p.id} className="group bg-white border border-slate-100 rounded-[2.5rem] p-5 flex flex-col md:flex-row items-center gap-6 shadow-sm hover:shadow-xl transition-all duration-300">
-               {/* Thumbnail */}
                <div className="w-full md:w-32 h-32 rounded-[1.5rem] overflow-hidden shrink-0 shadow-inner bg-slate-50">
                   <img src={p.entrancePhoto || 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=300&q=80'} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
                </div>
                
-               {/* Info */}
-               <div className="flex-1 min-w-0 text-center md:text-left space-y-1.5">
+               <div className="flex-1 min-0 text-center md:text-left space-y-1.5">
                   <div className="flex items-center justify-center md:justify-start gap-3">
                     <h3 className="text-xl font-bold text-[#1E293B] uppercase tracking-tight truncate">{p.name}</h3>
                     <span className="bg-teal-50 text-teal-600 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border border-teal-100">{p.type}</span>
@@ -550,7 +568,6 @@ const PropertyPortfolio: React.FC<PropertyPortfolioProps> = ({
                   </div>
                </div>
 
-               {/* Action */}
                <div className="w-full md:w-auto">
                  <button 
                   onClick={() => { setForm(p); setEditingId(p.id); setShowModal(true); setActiveTab(isDriver ? 'access' : 'general'); }} 
@@ -568,7 +585,6 @@ const PropertyPortfolio: React.FC<PropertyPortfolioProps> = ({
         <div className="fixed inset-0 bg-slate-900/70 z-[400] flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
           <div className="bg-white rounded-[2.5rem] w-full max-w-4xl h-fit min-h-[50vh] shadow-2xl relative my-auto animate-in zoom-in-95 flex flex-col overflow-hidden border border-slate-100">
              
-             {/* Modal Top Nav */}
              <div className="px-10 pt-8 border-b border-slate-100 flex flex-col gap-6 bg-slate-50/50">
                 <div className="flex justify-between items-start">
                    <div className="space-y-1">
@@ -598,7 +614,6 @@ const PropertyPortfolio: React.FC<PropertyPortfolioProps> = ({
                 </nav>
              </div>
 
-             {/* Modal Content Area */}
              <div className="flex-1 flex flex-col min-h-0 bg-white">
                 <form onSubmit={handleSave} className="flex-1 flex flex-col p-8 md:p-10">
                    <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">{renderTabContent()}</div>
@@ -612,7 +627,6 @@ const PropertyPortfolio: React.FC<PropertyPortfolioProps> = ({
         </div>
       )}
 
-      {/* QUICK ADD CLIENT MODAL */}
       {showNewClientModal && (
         <div className="fixed inset-0 bg-black/90 z-[600] flex items-center justify-center p-4 backdrop-blur-xl animate-in fade-in">
            <div className="bg-white rounded-[2.5rem] w-full max-w-lg p-10 space-y-8 shadow-2xl relative text-left border border-teal-100">
