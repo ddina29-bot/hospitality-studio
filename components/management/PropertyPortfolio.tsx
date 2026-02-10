@@ -536,9 +536,9 @@ const PropertyPortfolio: React.FC<PropertyPortfolioProps> = ({
         </div>
       </header>
 
-      <div className="space-y-4 px-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 px-4">
         {filteredProperties.length === 0 ? (
-          <div className="py-32 text-center bg-white border border-dashed border-slate-200 rounded-[3rem] animate-in fade-in">
+          <div className="col-span-full py-32 text-center bg-white border border-dashed border-slate-200 rounded-[3rem] animate-in fade-in">
              <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-200 shadow-inner">
                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y2="16.65"/></svg>
              </div>
@@ -546,32 +546,32 @@ const PropertyPortfolio: React.FC<PropertyPortfolioProps> = ({
           </div>
         ) : (
           filteredProperties.map(p => (
-            <div key={p.id} className="group bg-white border border-slate-100 rounded-[2.5rem] p-5 flex flex-col md:flex-row items-center gap-6 shadow-sm hover:shadow-xl transition-all duration-300">
-               <div className="w-full md:w-32 h-32 rounded-[1.5rem] overflow-hidden shrink-0 shadow-inner bg-slate-50">
-                  <img src={p.entrancePhoto || 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=300&q=80'} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+            <div key={p.id} className="group bg-white border border-slate-100 rounded-[2.5rem] p-5 flex flex-col gap-6 shadow-sm hover:shadow-xl transition-all duration-300 h-full">
+               <div className="w-full h-48 rounded-[1.5rem] overflow-hidden shrink-0 shadow-inner bg-slate-50">
+                  <img src={p.entrancePhoto || 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=600&q=80'} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
                </div>
                
-               <div className="flex-1 min-0 text-center md:text-left space-y-1.5">
-                  <div className="flex items-center justify-center md:justify-start gap-3">
-                    <h3 className="text-xl font-bold text-[#1E293B] uppercase tracking-tight truncate">{p.name}</h3>
+               <div className="flex-1 min-0 text-left space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-xl font-bold text-[#1E293B] uppercase tracking-tight truncate flex-1">{p.name}</h3>
                     <span className="bg-teal-50 text-teal-600 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border border-teal-100">{p.type}</span>
                     {p.status === 'disabled' && <span className="bg-rose-50 text-rose-600 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border border-rose-100">Inactive</span>}
                   </div>
-                  <p className="text-[11px] text-slate-500 font-bold uppercase truncate tracking-widest flex items-center justify-center md:justify-start gap-2">
+                  <p className="text-[11px] text-slate-500 font-bold uppercase truncate tracking-widest flex items-center gap-2">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
                     {p.address}
                   </p>
-                  <div className="flex justify-center md:justify-start gap-6 pt-2">
-                    <div className="text-center md:text-left"><p className="text-[7px] font-black text-slate-300 uppercase tracking-widest leading-none mb-1">Rooms</p><p className="text-xs font-black text-[#1E293B]">{p.rooms}</p></div>
-                    <div className="text-center md:text-left"><p className="text-[7px] font-black text-slate-300 uppercase tracking-widest leading-none mb-1">Beds</p><p className="text-xs font-black text-[#1E293B]">{p.doubleBeds + p.singleBeds}</p></div>
-                    <div className="text-center md:text-left"><p className="text-[7px] font-black text-slate-300 uppercase tracking-widest leading-none mb-1">Cap.</p><p className="text-xs font-black text-[#1E293B]">{p.capacity}</p></div>
+                  <div className="flex gap-6 pt-2 border-t border-slate-50">
+                    <div className="text-left"><p className="text-[7px] font-black text-slate-300 uppercase tracking-widest leading-none mb-1">Rooms</p><p className="text-xs font-black text-[#1E293B]">{p.rooms}</p></div>
+                    <div className="text-left"><p className="text-[7px] font-black text-slate-300 uppercase tracking-widest leading-none mb-1">Beds</p><p className="text-xs font-black text-[#1E293B]">{p.doubleBeds + p.singleBeds}</p></div>
+                    <div className="text-left"><p className="text-[7px] font-black text-slate-300 uppercase tracking-widest leading-none mb-1">Cap.</p><p className="text-xs font-black text-[#1E293B]">{p.capacity}</p></div>
                   </div>
                </div>
 
-               <div className="w-full md:w-auto">
+               <div className="w-full">
                  <button 
                   onClick={() => { setForm(p); setEditingId(p.id); setShowModal(true); setActiveTab(isDriver ? 'access' : 'general'); }} 
-                  className="w-full md:px-10 py-4 bg-[#F0FDFA] border border-teal-100 text-[#0D9488] font-black text-[10px] uppercase tracking-[0.3em] rounded-[1.2rem] hover:bg-[#0D9488] hover:text-white transition-all shadow-sm active:scale-95"
+                  className="w-full py-4 bg-[#F0FDFA] border border-teal-100 text-[#0D9488] font-black text-[10px] uppercase tracking-[0.3em] rounded-[1.2rem] hover:bg-[#0D9488] hover:text-white transition-all shadow-sm active:scale-95"
                  >
                    {isDriver ? 'Sync GPS' : 'Configuration'}
                  </button>

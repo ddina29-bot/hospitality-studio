@@ -712,6 +712,7 @@ const SchedulingCenter: React.FC<SchedulingCenterProps> = ({
     const query = search.toLowerCase();
     const filtered = users.filter(u => {
       if (!['cleaner', 'supervisor'].includes(u.role)) return false;
+      if (u.status !== 'active') return false; // FIXED: Prevent suspended users from cluttering schedule
       const matchesSearch = u.name.toLowerCase().includes(query);
       if (!matchesSearch) return false;
       return true;
