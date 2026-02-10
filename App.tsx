@@ -48,6 +48,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [hasHydrated, setHasHydrated] = useState(false);
   const [showActivityCenter, setShowActivityCenter] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
 
   const [users, setUsers] = useState<User[]>(() => load('studio_users', []));
@@ -166,6 +167,7 @@ const App: React.FC = () => {
     setOrgId(null);
     setHasHydrated(false);
     setActiveTab('dashboard');
+    setShowMenu(false);
   };
 
   const handleRequestLeave = (type: LeaveType, start: string, end: string) => {
@@ -200,6 +202,21 @@ const App: React.FC = () => {
   if (!user) {
     return <Login onLogin={handleLogin} />;
   }
+
+  const navItems = [
+    { id: 'dashboard', label: 'Home', icon: '📊', roles: ['admin', 'driver', 'housekeeping', 'hr', 'finance', 'client', 'supervisor', 'cleaner'] },
+    { id: 'shifts', label: 'Schedule', icon: '🗓️', roles: ['admin', 'cleaner', 'housekeeping', 'supervisor'] },
+    { id: 'worksheet', label: 'Worksheet', icon: '📄', roles: ['cleaner', 'supervisor', 'driver', 'laundry'] },
+    { id: 'logistics', label: 'Deliveries', icon: '🚚', roles: ['admin', 'driver', 'housekeeping'] },
+    { id: 'laundry', label: 'Laundry', icon: '🧺', roles: ['admin', 'laundry', 'housekeeping'] },
+    { id: 'properties', label: 'Portfolio', icon: '🏠', roles: ['admin', 'housekeeping', 'driver'] },
+    { id: 'clients', label: 'Partners', icon: '🏢', roles: ['admin'] },
+    { id: 'users', label: 'Team', icon: '👥', roles: ['admin', 'hr'] },
+    { id: 'finance', label: 'Finance', icon: '💳', roles: ['admin', 'finance'] },
+    { id: 'settings', label: user?.role === 'admin' ? 'Studio' : 'My Profile', icon: user?.role === 'admin' ? '⚙️' : '👤', roles: ['admin', 'cleaner', 'driver', 'housekeeping', 'supervisor', 'laundry', 'maintenance'] },
+  ];
+
+  const visibleItems = navItems.filter(item => item.roles.includes(user?.role || 'admin'));
 
   const renderTab = () => {
     if (!user) return <Login onLogin={handleLogin} />;
@@ -248,18 +265,7 @@ const App: React.FC = () => {
         </div>
 
         <nav className="flex-1 overflow-y-auto px-4 space-y-1.5 custom-scrollbar mt-4">
-          {[
-            { id: 'dashboard', label: 'Home', icon: '📊', roles: ['admin', 'driver', 'housekeeping', 'hr', 'finance', 'client', 'supervisor', 'cleaner'] },
-            { id: 'shifts', label: 'Schedule', icon: '🗓️', roles: ['admin', 'cleaner', 'housekeeping', 'supervisor'] },
-            { id: 'worksheet', label: 'Worksheet', icon: '📄', roles: ['cleaner', 'supervisor', 'driver', 'laundry'] },
-            { id: 'logistics', label: 'Deliveries', icon: '🚚', roles: ['admin', 'driver', 'housekeeping'] },
-            { id: 'laundry', label: 'Laundry', icon: '🧺', roles: ['admin', 'laundry', 'housekeeping'] },
-            { id: 'properties', label: 'Portfolio', icon: '🏠', roles: ['admin', 'housekeeping', 'driver'] },
-            { id: 'clients', label: 'Partners', icon: '🏢', roles: ['admin'] },
-            { id: 'users', label: 'Team', icon: '👥', roles: ['admin', 'hr'] },
-            { id: 'finance', label: 'Finance', icon: '💳', roles: ['admin', 'finance'] },
-            { id: 'settings', label: user?.role === 'admin' ? 'Studio' : 'My Profile', icon: user?.role === 'admin' ? '⚙️' : '👤', roles: ['admin', 'cleaner', 'driver', 'housekeeping', 'supervisor', 'laundry', 'maintenance'] },
-          ].filter(item => item.roles.includes(user?.role || 'admin')).map(item => (
+          {visibleItems.map(item => (
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id as TabType)}
@@ -297,6 +303,9 @@ const App: React.FC = () => {
                <span className="text-lg">🔔</span>
                {notifications.length > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center text-[8px] font-black">{notifications.length}</span>}
              </button>
+             <button onClick={() => setShowMenu(true)} className="w-10 h-10 flex items-center justify-center rounded-xl bg-teal-50 text-teal-600 border border-teal-100">
+               <span className="text-xl">☰</span>
+             </button>
            </div>
         </header>
 
@@ -305,6 +314,40 @@ const App: React.FC = () => {
             {renderTab()}
           </div>
         </div>
+
+        {showMenu && (
+          <div className="fixed inset-0 bg-black/40 z-[200] md:hidden animate-in fade-in" onClick={() => setShowMenu(false)}>
+            <div className="absolute top-0 right-0 bottom-0 w-4/5 bg-white shadow-2xl p-8 space-y-8 animate-in slide-in-from-right duration-300 flex flex-col" onClick={e => e.stopPropagation()}>
+               <div className="flex justify-between items-center">
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest leading-none">Navigation</h3>
+                    <p className="text-[8px] font-bold text-teal-600 uppercase tracking-[0.3em]">Studio Terminal</p>
+                  </div>
+                  <button onClick={() => setShowMenu(false)} className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-50 text-slate-300 text-2xl">&times;</button>
+               </div>
+               
+               <div className="flex-1 overflow-y-auto custom-scrollbar -mx-2 px-2 space-y-3">
+                  {visibleItems.map(item => (
+                    <button 
+                      key={item.id} 
+                      onClick={() => { setActiveTab(item.id as TabType); setShowMenu(false); }}
+                      className={`w-full flex items-center gap-4 p-4 rounded-2xl text-xs font-bold uppercase tracking-widest border transition-all ${activeTab === item.id ? 'bg-[#0D9488] border-[#0D9488] text-white shadow-lg' : 'bg-slate-50 border-slate-100 text-slate-500'}`}
+                    >
+                      <span className="text-xl">{item.icon}</span>
+                      {item.label}
+                    </button>
+                  ))}
+               </div>
+
+               <div className="pt-6 border-t border-slate-100">
+                  <button onClick={handleLogout} className="w-full py-4 bg-rose-50 text-rose-600 font-black uppercase text-[10px] tracking-widest rounded-2xl border border-rose-100 flex items-center justify-center gap-3 active:scale-95 transition-all">
+                    <span>🚪</span>
+                    <span>Exit Session</span>
+                  </button>
+               </div>
+            </div>
+          </div>
+        )}
       </main>
 
       {showActivityCenter && (
