@@ -1,7 +1,8 @@
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { TabType, Shift, User, SupplyRequest, LeaveRequest, ManualTask, SpecialReport, Property } from '../../types';
 import { uploadFile } from '../../services/storageService';
+import { getOperationalBriefing } from '../../services/geminiService';
 import AddTaskModal from '../management/AddTaskModal';
 
 interface HousekeeperDashboardProps {
@@ -43,6 +44,9 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({
   const [showAddTaskModal, setShowAddTaskModal] = useState(false);
   const [savedTaskNames, setSavedTaskNames] = useState<string[]>(['Buy Batteries', 'Replace Lightbulb', 'Check Balcony Drain', 'Linen Inventory Count']);
 
+  const [aiBriefing, setAiBriefing] = useState<string>('Synthesizing operational telemetry...');
+  const [isAiLoading, setIsAiLoading] = useState(true);
+
   const reviewQueue = useMemo(() => shifts.filter(s => s.status === 'completed' && s.approvalStatus === 'pending'), [shifts]);
   const messQueue = useMemo(() => shifts.filter(s => s.messReport && s.messReport.status === 'pending'), [shifts]);
   const activeOps = useMemo(() => shifts.filter(s => s.status === 'active'), [shifts]);
@@ -56,11 +60,6 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({
     }, {} as Record<string, SupplyRequest[]>);
   }, [pendingSupplies]);
 
-  // STRICT PRIVACY: Only true Admin role can see global leave/requisition queues.
-  const isGlobalAdmin = user.role === 'admin';
-  const pendingLeaves = useMemo(() => (isGlobalAdmin ? (leaveRequests || []).filter(l => l.status === 'pending') : []), [leaveRequests, isGlobalAdmin]);
-
-  // UNITS FINISHED BUT UNMADE (Needs Linen/Packs)
   const supplyDebtUnits = useMemo(() => {
     return shifts.filter(s => 
       s.status === 'completed' && 
@@ -69,26 +68,43 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({
     );
   }, [shifts]);
 
+  const refreshBriefing = useCallback(async () => {
+    setIsAiLoading(true);
+    setAiBriefing('Refreshing strategic telemetry...');
+    try {
+      const brief = await getOperationalBriefing({
+        activeShifts: activeOps,
+        pendingAudits: reviewQueue,
+        supplyDebtCount: supplyDebtUnits.length,
+        anomalies: messQueue
+      });
+      setAiBriefing(brief);
+    } catch (e) {
+      setAiBriefing("Briefing engine currently unavailable.");
+    } finally {
+      setIsAiLoading(false);
+    }
+  }, [activeOps, reviewQueue, supplyDebtUnits.length, messQueue]);
+
+  useEffect(() => {
+    refreshBriefing();
+  }, [activeOps.length, reviewQueue.length, supplyDebtUnits.length, messQueue.length]);
+
+  const isGlobalAdmin = user.role === 'admin';
+  const pendingLeaves = useMemo(() => (isGlobalAdmin ? (leaveRequests || []).filter(l => l.status === 'pending') : []), [leaveRequests, isGlobalAdmin]);
+
   const handleApproveSupplies = (batch: SupplyRequest[]) => {
     if (!setSupplyRequests || !setShifts) return;
-    
     const ids = batch.map(r => r.id);
     setSupplyRequests(prev => prev.map(r => ids.includes(r.id) ? { ...r, status: 'approved' } : r));
-    
     const now = new Date();
     let deliveryDate = new Date();
-    if (now.getHours() >= 11) {
-        deliveryDate.setDate(deliveryDate.getDate() + 1);
-    }
+    if (now.getHours() >= 11) deliveryDate.setDate(deliveryDate.getDate() + 1);
     const dateStr = deliveryDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase();
-    
-    const cleanerName = batch[0].userName;
-    const itemsList = batch.map(b => `${b.quantity}x ${b.itemName}`).join(', ');
-    
     const newShift: Shift = {
         id: `sd-${Date.now()}-${batch[0].userId}`,
         propertyId: 'supply-drop',
-        propertyName: `SUPPLY DROP: ${cleanerName.toUpperCase()}`,
+        propertyName: `SUPPLY DROP: ${batch[0].userName.toUpperCase()}`,
         userIds: [], 
         date: dateStr,
         startTime: '08:00 AM',
@@ -97,11 +113,9 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({
         status: 'pending',
         approvalStatus: 'pending',
         isPublished: true,
-        notes: `DELIVERY FOR ${cleanerName}: ${itemsList}`
+        notes: `DELIVERY FOR ${batch[0].userName}: ${batch.map(b => `${b.quantity}x ${b.itemName}`).join(', ')}`
     };
-    
     setShifts(prev => [newShift, ...prev]);
-    alert(`Supplies approved for ${cleanerName}. Task routed to drivers for ${dateStr}.`);
   };
 
   const handleSaveManualTask = (taskData: Partial<ManualTask>) => {
@@ -123,25 +137,6 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({
       }
       return s;
     }));
-  };
-
-  const confirmResolveIncident = () => {
-    if (!resolvingReport) return;
-    const { shiftId, report, type } = resolvingReport;
-    setShifts(prev => prev.map(s => {
-      if (s.id === shiftId) {
-        const field = type === 'maintenance' ? 'maintenanceReports' : type === 'damage' ? 'damageReports' : 'missingReports';
-        const updatedReports = (s[field] || []).map(r => r.id === report.id ? { 
-            ...r, 
-            status: 'resolved' as const, 
-            photos: [...(r.photos || []), ...resolutionPhotos]
-        } : r);
-        return { ...s, [field]: updatedReports };
-      }
-      return s;
-    }));
-    setResolvingReport(null);
-    setResolutionPhotos([]);
   };
 
   const handleAssignIncident = (userId: string) => {
@@ -179,8 +174,6 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({
     });
   }, [shifts]);
 
-  const pendingManualTasks = useMemo(() => manualTasks.filter(t => t.status === 'pending'), [manualTasks]);
-
   return (
     <div className="space-y-6 md:space-y-8 animate-in fade-in duration-700 text-left pb-24 w-full overflow-x-hidden">
       <header className="px-1 mb-1">
@@ -188,7 +181,38 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({
         <p className="text-[9px] md:text-[11px] text-teal-600 font-black uppercase tracking-[0.3em] md:tracking-[0.4em] mt-2 md:mt-3 leading-none">REAL-TIME OVERSIGHT</p>
       </header>
 
-      {/* URGENT: SUPPLY DEBT (UNITS READY BUT UNMADE) */}
+      {/* AI OPERATIONS ANALYST */}
+      <section className="bg-[#1E293B] p-6 md:p-8 rounded-[2.5rem] md:rounded-[40px] shadow-2xl relative overflow-hidden group border border-teal-500/20">
+         <div className="absolute top-0 right-0 p-8 opacity-[0.03] pointer-events-none">
+            <svg width="150" height="150" viewBox="0 0 24 24" fill="white"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+         </div>
+         <div className="relative z-10 flex flex-col md:flex-row items-center gap-8">
+            <div className="w-16 h-16 rounded-full bg-teal-500/10 border-2 border-teal-500/30 flex items-center justify-center shrink-0 relative">
+               <div className={`w-3 h-3 rounded-full bg-teal-400 ${isAiLoading ? 'animate-ping' : 'animate-pulse'}`}></div>
+               <div className="absolute inset-0 rounded-full bg-teal-400/5 blur-xl"></div>
+            </div>
+            <div className="space-y-2 flex-1">
+               <div className="flex items-center gap-3">
+                  <h3 className="text-xs font-black text-teal-400 uppercase tracking-[0.4em]">Strategic Ops Briefing</h3>
+                  <span className="bg-teal-500/10 text-teal-400 px-2 py-0.5 rounded text-[7px] font-black uppercase border border-teal-500/20">AI ANALYST ACTIVE</span>
+               </div>
+               <p className={`text-sm md:text-base text-white font-medium italic leading-relaxed tracking-tight transition-opacity duration-500 ${isAiLoading ? 'opacity-30' : 'animate-in fade-in slide-in-from-left-2'}`}>
+                  "{aiBriefing}"
+               </p>
+            </div>
+            <button 
+               onClick={refreshBriefing} 
+               disabled={isAiLoading}
+               className="p-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all text-teal-400 shadow-sm shrink-0 disabled:opacity-20"
+            >
+               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className={isAiLoading ? 'animate-spin' : ''}>
+                  <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+               </svg>
+            </button>
+         </div>
+      </section>
+
+      {/* URGENT: SUPPLY DEBT */}
       {supplyDebtUnits.length > 0 && (
         <section className="bg-white border-2 border-rose-200 p-6 md:p-8 rounded-[2.5rem] md:rounded-[48px] shadow-2xl space-y-6 animate-pulse">
            <div className="flex justify-between items-center px-1">
@@ -213,9 +237,7 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({
                   </div>
                   <div className="flex flex-col gap-2 mt-6">
                     <button 
-                        onClick={() => {
-                            setActiveTab('shifts');
-                        }}
+                        onClick={() => setActiveTab('shifts')}
                         className="w-full bg-amber-600 text-white py-3 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all"
                     >
                         ASSIGN BEDS FOLLOW-UP
@@ -227,76 +249,6 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({
                         TRACK SUPPLIES
                     </button>
                   </div>
-                </div>
-              ))}
-           </div>
-        </section>
-      )}
-
-      {/* PRIMARY ACTION: SUPPLY REQUISITIONS - Only shown to Global Admins */}
-      {pendingSupplies.length > 0 && isGlobalAdmin && (
-        <section className="bg-white border-2 border-indigo-200 p-5 md:p-8 rounded-3xl md:rounded-[40px] shadow-2xl space-y-4 md:space-y-6 animate-in slide-in-from-top-3">
-           <div className="flex justify-between items-center px-1">
-              <div className="flex items-center gap-3 md:gap-4">
-                 <div className="w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-indigo-600 flex items-center justify-center text-white font-black text-xl md:text-2xl shadow-xl">📦</div>
-                 <div className="space-y-0">
-                    <h3 className="text-xs md:text-sm font-black text-indigo-900 uppercase tracking-widest leading-none">Supply Requisitions</h3>
-                    <p className="text-[7px] md:text-[9px] font-bold text-slate-500 uppercase tracking-widest mt-1">Pending Logistics</p>
-                 </div>
-              </div>
-              <span className="text-[8px] md:text-[10px] font-black bg-indigo-600 text-white px-3 md:px-5 py-1.5 md:py-2 rounded-full uppercase tracking-widest shadow-md">{Object.keys(groupedSupplies).length} QUEUED</span>
-           </div>
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-              {(Object.entries(groupedSupplies) as [string, SupplyRequest[]][]).map(([uid, batch]) => (
-                 <div key={uid} className="bg-slate-50 p-4 md:p-6 rounded-[1.5rem] md:rounded-[2.5rem] border border-indigo-100 shadow-sm space-y-4 md:space-y-5 hover:border-indigo-300 transition-colors">
-                    <div className="text-left">
-                       <p className="text-[10px] md:text-xs font-black uppercase text-slate-900 tracking-tight border-b border-indigo-100 pb-1.5 md:pb-2">{batch[0].userName}</p>
-                       <div className="mt-2.5 md:mt-3 space-y-1.5 md:space-y-2">
-                          {batch.map(b => (
-                             <p key={b.id} className="text-[9px] md:text-11px text-indigo-900 font-bold uppercase flex justify-between items-center">
-                                <span className="opacity-70 truncate pr-2">{b.itemName}</span>
-                                <span className="bg-white px-1.5 md:px-2 py-0.5 rounded-lg border border-indigo-50 text-[8px] md:text-[9px] font-black shrink-0">x{b.quantity}</span>
-                             </p>
-                          ))}
-                       </div>
-                    </div>
-                    <div className="flex gap-2 md:gap-3 pt-1">
-                       <button onClick={() => handleApproveSupplies(batch)} className="flex-[2] bg-indigo-600 text-white py-3 md:py-4 rounded-xl md:rounded-2xl text-[8px] md:text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg active:scale-95">APPROVE</button>
-                       <button onClick={() => setSupplyRequests?.(prev => prev.filter(r => !batch.map(b => b.id).includes(r.id)))} className="flex-1 border border-indigo-100 text-indigo-300 py-3 md:py-4 rounded-xl md:rounded-2xl text-[8px] md:text-[10px] font-black uppercase tracking-widest hover:bg-rose-50 hover:text-rose-600 transition-all">DENY</button>
-                    </div>
-                 </div>
-              ))}
-           </div>
-        </section>
-      )}
-
-      {/* LEAVE APPROVAL STRIP - Privacy Update: ONLY Admin role sees this global queue */}
-      {pendingLeaves.length > 0 && isGlobalAdmin && (
-        <section className="bg-[#FDF8EE] border border-slate-200 p-5 md:p-8 rounded-[2rem] md:rounded-[3rem] shadow-sm space-y-6 animate-in slide-in-from-right-4">
-           <div className="flex items-center justify-between px-1">
-              <div className="flex items-center gap-3">
-                 <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center text-xl shadow-sm">⛱️</div>
-                 <div>
-                    <h3 className="text-xs md:text-sm font-black text-slate-800 uppercase tracking-widest leading-none">Absence Requests</h3>
-                    <p className="text-[8px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Pending Approval</p>
-                 </div>
-              </div>
-              <span className="text-[8px] md:text-[10px] font-black bg-amber-100 text-amber-800 px-4 py-2 rounded-full uppercase tracking-widest shadow-sm">{pendingLeaves.length} REQUESTS</span>
-           </div>
-           <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
-              {pendingLeaves.map(l => (
-                <div key={l.id} className="min-w-[320px] bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between gap-6 transition-all hover:border-indigo-100">
-                   <div className="text-left space-y-2">
-                      <p className="text-xs font-black uppercase text-slate-900 tracking-tight">{l.userName}</p>
-                      <div className="flex items-center gap-2">
-                         <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest">{l.type}</span>
-                         <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">• {l.startDate} TO {l.endDate}</span>
-                      </div>
-                   </div>
-                   <div className="flex gap-3">
-                      <button onClick={() => onUpdateLeaveStatus?.(l.id, 'approved')} className="flex-1 bg-emerald-600 text-white py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-md active:scale-95 transition-all">APPROVE</button>
-                      <button onClick={() => onUpdateLeaveStatus?.(l.id, 'rejected')} className="flex-1 border-2 border-rose-100 text-rose-600 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest hover:bg-rose-50 transition-all active:scale-95">DENY</button>
-                   </div>
                 </div>
               ))}
            </div>
@@ -324,7 +276,6 @@ const HousekeeperDashboard: React.FC<HousekeeperDashboardProps> = ({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
-        
         {/* AWAITING AUDIT */}
         <section className="bg-white p-6 md:p-8 rounded-[2rem] md:rounded-[48px] border border-slate-200 shadow-xl space-y-6 md:space-y-8 flex flex-col hover:border-teal-400/30 transition-all">
           <div className="flex justify-between items-center border-b border-slate-100 pb-3 md:pb-4">

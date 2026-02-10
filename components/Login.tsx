@@ -39,16 +39,42 @@ const Login: React.FC<LoginProps> = ({ onLogin, onOpenConsole }) => {
     }
   };
 
+  const handleTestDrive = (role: UserRole) => {
+    const mockUser: User = {
+      id: `sandbox-${role}`,
+      name: `Sandbox ${role.charAt(0).toUpperCase() + role.slice(1)}`,
+      email: 'sandbox@reset.studio',
+      role: role,
+      status: 'active'
+    };
+    
+    // Create a minimal mock organization for the sandbox session
+    const mockOrg = {
+      id: 'org-sandbox',
+      settings: { name: 'SANDBOX STUDIO', address: '123 Operational Way' },
+      users: [mockUser],
+      shifts: [],
+      properties: [
+        {
+          id: 'prop-1',
+          name: 'Sliema Seafront Penthouse',
+          address: 'Tower Road, Sliema',
+          type: 'Penthouse',
+          keyboxCode: '1234',
+          rooms: 2,
+          bathrooms: 2,
+          capacity: 4,
+          status: 'active',
+          entrancePhoto: 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=600&q=80'
+        }
+      ]
+    };
+
+    onLogin(mockUser, mockOrg);
+  };
+
   return (
     <div className="min-h-screen bg-[#F0FDFA] flex items-center justify-center p-4 md:p-8">
-      <button 
-        onClick={onOpenConsole}
-        className="fixed top-6 right-6 w-12 h-12 bg-amber-500 text-black rounded-2xl flex items-center justify-center text-xl shadow-2xl hover:scale-110 active:scale-95 transition-all z-50 border border-amber-600"
-        title="Open Build Console"
-      >
-        🛠️
-      </button>
-
       <div className="max-w-md w-full space-y-10 animate-in slide-in-from-bottom-8 duration-700">
         <div className="text-center space-y-3">
           <div className="w-20 h-20 bg-[#0D9488] rounded-[2rem] mx-auto flex items-center justify-center text-white text-4xl font-black shadow-2xl shadow-teal-900/20 mb-6">R</div>
@@ -101,8 +127,14 @@ const Login: React.FC<LoginProps> = ({ onLogin, onOpenConsole }) => {
             </button>
           </form>
           
-          <div className="pt-4 text-center">
-             <p className="text-[8px] text-slate-300 font-bold uppercase tracking-[0.5em] animate-pulse">Session Encrypted • Production v1.0</p>
+          <div className="pt-6 border-t border-slate-100 space-y-4">
+             <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest text-center">--- Sandbox Launchpad ---</p>
+             <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => handleTestDrive('admin')} className="py-3 bg-slate-50 border border-slate-100 rounded-xl text-[8px] font-black uppercase text-teal-600 hover:bg-teal-50 transition-all">Test Admin</button>
+                <button onClick={() => handleTestDrive('cleaner')} className="py-3 bg-slate-50 border border-slate-100 rounded-xl text-[8px] font-black uppercase text-teal-600 hover:bg-teal-50 transition-all">Test Cleaner</button>
+                <button onClick={() => handleTestDrive('supervisor')} className="py-3 bg-slate-50 border border-slate-100 rounded-xl text-[8px] font-black uppercase text-indigo-600 hover:bg-indigo-50 transition-all">Test Supervisor</button>
+                <button onClick={() => handleTestDrive('driver')} className="py-3 bg-slate-50 border border-slate-100 rounded-xl text-[8px] font-black uppercase text-indigo-600 hover:bg-indigo-50 transition-all">Test Driver</button>
+             </div>
           </div>
         </div>
       </div>

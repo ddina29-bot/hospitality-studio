@@ -23,13 +23,16 @@ const ActivityCenter: React.FC<ActivityCenterProps> = ({ notifications, onClose,
 
         // 3. User-Specific Lock: For any notification linked to a specific entity
         // If it's a personnel-related alert (leave, profile, payslip), it MUST match currentUserId.
-        if (n.linkTab === 'settings' || n.linkTab === 'worksheet') {
+        // Use a casted variable to bypass unintentional narrowing in TypeScript
+        const linkTab = n.linkTab as string | undefined;
+        if (linkTab === 'settings' || linkTab === 'worksheet') {
            return String(n.linkId) === String(currentUserId);
         }
 
         // 4. Role-based visibility for housekeeping managers (operational focus, NO private HR data)
         if (userRole === 'housekeeping') {
-          const isPrivateAlertAboutOthers = n.type === 'alert' && n.linkTab === 'settings' && String(n.linkId) !== String(currentUserId);
+          // Use linkTab casted variable here as well for consistency
+          const isPrivateAlertAboutOthers = n.type === 'alert' && linkTab === 'settings' && String(n.linkId) !== String(currentUserId);
           return !isPrivateAlertAboutOthers;
         }
 

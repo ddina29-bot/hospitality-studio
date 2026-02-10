@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Property, CleaningTask, Shift, User, AttributedPhoto, SpecialReport, SupplyItem } from '../types';
 import { uploadFile } from '../services/storageService';
-import { analyzeCleaningPhoto } from '../services/geminiService';
+import { analyzeCleaningPhoto, getPropertyIntel } from '../services/geminiService';
 
 const FAKE_PHOTOS = {
   kitchen: "https://images.unsplash.com/photo-1556911220-e15b29be8c8f?auto=format&fit=crop&w=600&q=80",
@@ -68,6 +68,9 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
   
+  const [unitIntel, setUnitIntel] = useState<string>('Syncing property metadata...');
+  const [intelLoading, setIntelLoading] = useState(true);
+
   const [keyInBoxPhotos, setKeyInBoxPhotos] = useState<AttributedPhoto[]>([]);
   const [boxClosedPhotos, setBoxClosedPhotos] = useState<AttributedPhoto[]>([]);
 
@@ -98,12 +101,24 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [checkoutTarget, setCheckoutTarget] = useState<'keyInBox' | 'boxClosed' | null>(null);
 
-  const simulationActive = useMemo(() => user.email === 'build@reset.studio', [user.email]);
+  const simulationActive = useMemo(() => user.email === 'build@reset.studio' || user.id.startsWith('sandbox-'), [user.email, user.id]);
   const realTodayISO = useMemo(() => getLocalISO(new Date()), []);
   const [viewedDateISO, setViewedDateISO] = useState(realTodayISO);
 
   const activeShift = useMemo(() => (shifts || []).find(s => s && s.id === selectedShiftId), [shifts, selectedShiftId]);
   const activeProperty = useMemo(() => activeShift ? properties.find(p => p.id === activeShift.propertyId) : null, [activeShift, properties]);
+
+  useEffect(() => {
+    if (activeProperty && currentStep === 'overview') {
+       const fetchIntel = async () => {
+         setIntelLoading(true);
+         const intel = await getPropertyIntel(activeProperty.name, activeProperty.type);
+         setUnitIntel(intel);
+         setIntelLoading(false);
+       };
+       fetchIntel();
+    }
+  }, [activeProperty, currentStep]);
 
   const checkIfTaskIsSkipped = useCallback((task: CleaningTask) => {
     if (!activeShift?.isLinenShortage) return false;
@@ -572,6 +587,25 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     return (
       <div className="space-y-6 md:space-y-8 animate-in slide-in-from-right-5 duration-500 pb-32 max-w-2xl mx-auto px-1 text-left">
         <button onClick={() => { setSelectedShiftId(null); localStorage.removeItem('cleaner_active_shift_id'); setCurrentStep('list'); }} className="text-black/40 hover:text-black flex items-center gap-2 text-[9px] md:text-[10px] font-black uppercase tracking-widest"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg> BACK</button>
+        
+        {/* AI UNIT INTEL */}
+        <section className="bg-[#1E293B] p-6 md:p-8 rounded-[2rem] md:rounded-[32px] border border-teal-500/20 shadow-2xl relative overflow-hidden group">
+           <div className="absolute top-0 right-0 p-8 opacity-[0.05] pointer-events-none group-hover:rotate-12 transition-transform duration-1000">
+              <svg width="100" height="100" viewBox="0 0 24 24" fill="white"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+           </div>
+           <div className="relative z-10 flex items-center gap-6">
+              <div className="w-12 h-12 rounded-full bg-teal-500/10 border border-teal-500/30 flex items-center justify-center shrink-0">
+                 <div className={`w-2 h-2 rounded-full bg-teal-400 ${intelLoading ? 'animate-ping' : 'animate-pulse'}`}></div>
+              </div>
+              <div className="space-y-1">
+                 <p className="text-[7px] font-black text-teal-400 uppercase tracking-[0.4em]">AI Unit Intel</p>
+                 <p className={`text-xs md:text-sm text-white font-medium italic leading-relaxed ${intelLoading ? 'opacity-30' : 'animate-in fade-in'}`}>
+                    "{unitIntel}"
+                 </p>
+              </div>
+           </div>
+        </section>
+
         <div className="space-y-1.5">
           <h1 className="text-2xl md:text-3xl font-brand font-bold text-[#1F2937] uppercase tracking-tight leading-tight">{activeShift.propertyName}</h1>
           <p className="text-[9px] md:text-[10px] font-black text-teal-600 uppercase tracking-[0.3em]">MISSION BRIEFING</p>

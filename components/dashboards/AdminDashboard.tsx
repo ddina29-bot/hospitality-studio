@@ -1,7 +1,8 @@
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { TabType, Shift, User, SupplyRequest, LeaveRequest, ManualTask, SpecialReport, Property } from '../../types';
 import { uploadFile } from '../../services/storageService';
+import { getOperationalBriefing } from '../../services/geminiService';
 import AddTaskModal from '../management/AddTaskModal';
 
 interface AdminDashboardProps {
@@ -43,6 +44,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [showAddTaskModal, setShowAddTaskModal] = useState(false);
   const [savedTaskNames, setSavedTaskNames] = useState<string[]>(['Buy Batteries', 'Replace Lightbulb', 'Check Balcony Drain', 'Linen Inventory Count']);
 
+  const [aiBriefing, setAiBriefing] = useState<string>('Synthesizing operational telemetry...');
+  const [isAiLoading, setIsAiLoading] = useState(true);
+
   const reviewQueue = useMemo(() => shifts.filter(s => s.status === 'completed' && s.approvalStatus === 'pending'), [shifts]);
   const messQueue = useMemo(() => shifts.filter(s => s.messReport && s.messReport.status === 'pending'), [shifts]);
   const activeOps = useMemo(() => shifts.filter(s => s.status === 'active'), [shifts]);
@@ -56,7 +60,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }, {} as Record<string, SupplyRequest[]>);
   }, [pendingSupplies]);
 
-  const pendingLeaves = useMemo(() => leaveRequests.filter(l => l.status === 'pending'), [leaveRequests]);
+  const supplyDebtUnits = useMemo(() => {
+    return shifts.filter(s => 
+      s.status === 'completed' && 
+      s.isLinenShortage && 
+      !s.isDelivered
+    );
+  }, [shifts]);
 
   const leaderboard = useMemo(() => {
     const cleaners = (users || []).filter(u => u.role === 'cleaner');
@@ -71,13 +81,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     .slice(0, 5);
   }, [users, shifts]);
 
-  const supplyDebtUnits = useMemo(() => {
-    return shifts.filter(s => 
-      s.status === 'completed' && 
-      s.isLinenShortage && 
-      !s.isDelivered
-    );
-  }, [shifts]);
+  const refreshBriefing = useCallback(async () => {
+    setIsAiLoading(true);
+    setAiBriefing('Refreshing strategic telemetry...');
+    try {
+      const brief = await getOperationalBriefing({
+        activeShifts: activeOps,
+        pendingAudits: reviewQueue,
+        supplyDebtCount: supplyDebtUnits.length,
+        anomalies: messQueue
+      });
+      setAiBriefing(brief);
+    } catch (e) {
+      setAiBriefing("Briefing engine currently unavailable.");
+    } finally {
+      setIsAiLoading(false);
+    }
+  }, [activeOps, reviewQueue, supplyDebtUnits.length, messQueue]);
+
+  useEffect(() => {
+    refreshBriefing();
+  }, [activeOps.length, reviewQueue.length, supplyDebtUnits.length, messQueue.length]);
 
   const handleForceClockOut = (shiftId: string, propertyName: string) => {
     if (!window.confirm(`EMERGENCY ACTION: Forcefully clock-out staff from ${propertyName}?\n\nUse this only if staff has lost internet or left without clocking out.`)) {
@@ -90,12 +114,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       approvalStatus: 'pending',
       approvalComment: 'SYSTEM: Emergency Admin Force Clock-Out (Staff Offline).'
     } as Shift) : s));
-    alert("Shift terminated. Moving to Audit Queue.");
   };
 
   const handleApproveSupplies = (batch: SupplyRequest[]) => {
     if (!setSupplyRequests || !setShifts) return;
-    
     const ids = batch.map(r => r.id);
     setSupplyRequests(prev => prev.map(r => ids.includes(r.id) ? { ...r, status: 'approved' } : r));
     
@@ -105,7 +127,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         deliveryDate.setDate(deliveryDate.getDate() + 1);
     }
     const dateStr = deliveryDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase();
-    
     const cleanerName = batch[0].userName;
     const itemsList = batch.map(b => `${b.quantity}x ${b.itemName}`).join(', ');
     
@@ -125,7 +146,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     };
     
     setShifts(prev => [newShift, ...prev]);
-    alert(`Supplies approved for ${cleanerName}. Task routed to drivers for ${dateStr}.`);
   };
 
   const handleSaveManualTask = (taskData: Partial<ManualTask>) => {
@@ -147,25 +167,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
       return s;
     }));
-  };
-
-  const confirmResolveIncident = () => {
-    if (!resolvingReport) return;
-    const { shiftId, report, type } = resolvingReport;
-    setShifts(prev => prev.map(s => {
-      if (s.id === shiftId) {
-        const field = type === 'maintenance' ? 'maintenanceReports' : type === 'damage' ? 'damageReports' : 'missingReports';
-        const updatedReports = (s[field] || []).map(r => r.id === report.id ? { 
-            ...r, 
-            status: 'resolved' as const, 
-            photos: [...(r.photos || []), ...resolutionPhotos]
-        } : r);
-        return { ...s, [field]: updatedReports };
-      }
-      return s;
-    }));
-    setResolvingReport(null);
-    setResolutionPhotos([]);
   };
 
   const handleAssignIncident = (userId: string) => {
@@ -203,8 +204,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
   }, [shifts]);
 
-  const pendingManualTasks = useMemo(() => manualTasks.filter(t => t.status === 'pending'), [manualTasks]);
-
   return (
     <div className="space-y-6 md:space-y-8 animate-in fade-in duration-700 text-left pb-24 w-full overflow-x-hidden">
       <header className="px-1 mb-1">
@@ -212,35 +211,63 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <p className="text-[9px] md:text-[11px] text-teal-600 font-black uppercase tracking-[0.3em] md:tracking-[0.4em] mt-2 md:mt-3 leading-none">REAL-TIME OVERSIGHT</p>
       </header>
 
+      {/* AI OPERATIONS ANALYST */}
+      <section className="bg-[#1E293B] p-6 md:p-8 rounded-[2.5rem] md:rounded-[40px] shadow-2xl relative overflow-hidden group border border-teal-500/20">
+         <div className="absolute top-0 right-0 p-8 opacity-[0.03] pointer-events-none">
+            <svg width="150" height="150" viewBox="0 0 24 24" fill="white"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+         </div>
+         <div className="relative z-10 flex flex-col md:flex-row items-center gap-8">
+            <div className="w-16 h-16 rounded-full bg-teal-500/10 border-2 border-teal-500/30 flex items-center justify-center shrink-0 relative">
+               <div className={`w-3 h-3 rounded-full bg-teal-400 ${isAiLoading ? 'animate-ping' : 'animate-pulse'}`}></div>
+               <div className="absolute inset-0 rounded-full bg-teal-400/5 blur-xl"></div>
+            </div>
+            <div className="space-y-2 flex-1">
+               <div className="flex items-center gap-3">
+                  <h3 className="text-xs font-black text-teal-400 uppercase tracking-[0.4em]">Strategic Ops Briefing</h3>
+                  <span className="bg-teal-500/10 text-teal-400 px-2 py-0.5 rounded text-[7px] font-black uppercase border border-teal-500/20">AI ANALYST ACTIVE</span>
+               </div>
+               <p className={`text-sm md:text-base text-white font-medium italic leading-relaxed tracking-tight transition-opacity duration-500 ${isAiLoading ? 'opacity-30' : 'animate-in fade-in slide-in-from-left-2'}`}>
+                  "{aiBriefing}"
+               </p>
+            </div>
+            <button 
+               onClick={refreshBriefing} 
+               disabled={isAiLoading}
+               className="p-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all text-teal-400 shadow-sm shrink-0 disabled:opacity-20"
+            >
+               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className={isAiLoading ? 'animate-spin' : ''}>
+                  <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+               </svg>
+            </button>
+         </div>
+      </section>
+
       {/* OPERATIONAL LEADERBOARD */}
       {leaderboard.length > 0 && (
-         <section className="bg-slate-900 p-8 rounded-[3rem] shadow-2xl relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
-              <svg width="150" height="150" viewBox="0 0 24 24" fill="white"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-            </div>
+         <section className="bg-white p-8 rounded-[3rem] shadow-xl border border-slate-100 relative overflow-hidden group">
             <div className="relative z-10 space-y-6">
-               <div className="flex justify-between items-center border-b border-white/10 pb-4">
+               <div className="flex justify-between items-center border-b border-slate-50 pb-4">
                   <div>
-                    <h3 className="text-lg font-bold text-white uppercase tracking-tight">Operator Leaderboard</h3>
-                    <p className="text-[8px] font-black text-teal-400 uppercase tracking-[0.4em] mt-1">Automatic Quality Ranking</p>
+                    <h3 className="text-lg font-bold text-slate-900 uppercase tracking-tight">Operator Leaderboard</h3>
+                    <p className="text-[8px] font-black text-teal-600 uppercase tracking-[0.4em] mt-1">Automatic Quality Ranking</p>
                   </div>
-                  <span className="text-[9px] font-black bg-teal-500 text-black px-4 py-1 rounded-full uppercase tracking-widest">A+ Performers</span>
+                  <span className="text-[9px] font-black bg-teal-50 text-teal-700 px-4 py-1 rounded-full uppercase tracking-widest border border-teal-100">Top Performers</span>
                </div>
                <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
                   {leaderboard.map((u, i) => (
-                    <div key={u.id} className="min-w-[180px] bg-white/5 border border-white/10 p-5 rounded-3xl flex flex-col items-center text-center gap-4 hover:bg-white/10 transition-all cursor-pointer shadow-lg group">
+                    <div key={u.id} className="min-w-[180px] bg-slate-50 border border-slate-100 p-5 rounded-3xl flex flex-col items-center text-center gap-4 hover:bg-white hover:border-teal-400/40 transition-all cursor-pointer shadow-sm group">
                        <div className="relative">
-                          <div className="w-14 h-14 rounded-2xl bg-teal-500/20 text-teal-400 flex items-center justify-center font-black text-xl border border-teal-500/30 overflow-hidden">
+                          <div className="w-14 h-14 rounded-2xl bg-white text-teal-600 flex items-center justify-center font-black text-xl border border-teal-100 overflow-hidden shadow-sm">
                              {u.photoUrl ? <img src={u.photoUrl} className="w-full h-full object-cover" /> : u.name.charAt(0)}
                           </div>
-                          <div className="absolute -bottom-2 -right-2 w-7 h-7 rounded-full bg-white text-slate-900 border-2 border-slate-900 flex items-center justify-center font-black text-[10px] shadow-lg">#{i+1}</div>
+                          <div className="absolute -bottom-2 -right-2 w-7 h-7 rounded-full bg-slate-900 text-white border-2 border-white flex items-center justify-center font-black text-[10px] shadow-lg">#{i+1}</div>
                        </div>
                        <div>
-                          <p className="text-xs font-bold text-white uppercase tracking-tight truncate w-full">{u.name.split(' ')[0]}</p>
+                          <p className="text-xs font-bold text-slate-900 uppercase tracking-tight truncate w-full">{u.name.split(' ')[0]}</p>
                           <div className="flex items-center justify-center gap-2 mt-2">
-                             <span className="text-[10px] font-black text-teal-400">{u.score}% QI</span>
-                             <span className="w-1 h-1 bg-white/20 rounded-full"></span>
-                             <span className="text-[8px] font-bold text-white/40 uppercase">{u.count} JOBS</span>
+                             <span className="text-[10px] font-black text-teal-600">{u.score}% QI</span>
+                             <span className="w-1 h-1 bg-slate-200 rounded-full"></span>
+                             <span className="text-[8px] font-bold text-slate-400 uppercase">{u.count} JOBS</span>
                           </div>
                        </div>
                     </div>
@@ -271,7 +298,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div key={s.id} className="bg-rose-50/30 border border-rose-100 p-6 rounded-[2rem] md:rounded-[3rem] flex flex-col justify-between gap-8 group hover:bg-white hover:border-rose-300 transition-all shadow-sm">
                    <div className="space-y-4">
                       <div className="space-y-1">
-                        <p className="text-[11px] md:text-xs font-black uppercase text-rose-900 tracking-tight leading-tight">{s.propertyName}</p>
+                        <p className="text-11px md:text-xs font-black uppercase text-rose-900 tracking-tight leading-tight">{s.propertyName}</p>
                         <p className="text-[8px] font-bold text-rose-400 uppercase tracking-widest">Finished: {s.date}</p>
                       </div>
                       <div className="bg-white/60 p-3 rounded-xl border border-rose-100">
@@ -280,9 +307,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                    </div>
                    <div className="flex flex-col gap-2">
                       <button 
-                        onClick={() => {
-                            setActiveTab('shifts');
-                        }} 
+                        onClick={() => setActiveTab('shifts')} 
                         className="w-full bg-rose-600 text-white py-4 rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-xl active:scale-95 transition-all hover:bg-rose-700"
                       >
                         ASSIGN BEDS ONLY SHIFT
@@ -332,39 +357,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                        <button onClick={() => setSupplyRequests?.(prev => prev.filter(r => !batch.map(b => b.id).includes(r.id)))} className="flex-1 border border-indigo-100 text-indigo-300 py-3 md:py-4 rounded-xl md:rounded-2xl text-[8px] md:text-[10px] font-black uppercase tracking-widest hover:bg-rose-50 hover:text-rose-600 transition-all">DENY</button>
                     </div>
                  </div>
-              ))}
-           </div>
-        </section>
-      )}
-
-      {/* LEAVE APPROVAL STRIP */}
-      {pendingLeaves.length > 0 && (
-        <section className="bg-[#FDF8EE] border border-slate-200 p-5 md:p-8 rounded-[2rem] md:rounded-[3rem] shadow-sm space-y-6 animate-in slide-in-from-right-4">
-           <div className="flex items-center justify-between px-1">
-              <div className="flex items-center gap-3">
-                 <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center text-xl shadow-sm">⛱️</div>
-                 <div>
-                    <h3 className="text-xs md:text-sm font-black text-slate-800 uppercase tracking-widest leading-none">Absence Requests</h3>
-                    <p className="text-[8px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Pending Approval</p>
-                 </div>
-              </div>
-              <span className="text-[8px] md:text-[10px] font-black bg-amber-100 text-amber-800 px-4 py-2 rounded-full uppercase tracking-widest shadow-sm">{pendingLeaves.length} REQUESTS</span>
-           </div>
-           <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
-              {pendingLeaves.map(l => (
-                <div key={l.id} className="min-w-[320px] bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between gap-6 transition-all hover:border-indigo-100">
-                   <div className="text-left space-y-2">
-                      <p className="text-xs font-black uppercase text-slate-900 tracking-tight">{l.userName}</p>
-                      <div className="flex items-center gap-2">
-                         <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest">{l.type}</span>
-                         <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">• {l.startDate} TO {l.endDate}</span>
-                      </div>
-                   </div>
-                   <div className="flex gap-3">
-                      <button onClick={() => onUpdateLeaveStatus?.(l.id, 'approved')} className="flex-1 bg-emerald-600 text-white py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-md active:scale-95 transition-all">APPROVE</button>
-                      <button onClick={() => onUpdateLeaveStatus?.(l.id, 'rejected')} className="flex-1 border-2 border-rose-100 text-rose-600 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest hover:bg-rose-50 transition-all active:scale-95">DENY</button>
-                   </div>
-                </div>
               ))}
            </div>
         </section>
