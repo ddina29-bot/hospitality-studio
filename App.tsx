@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
@@ -444,7 +443,7 @@ const App: React.FC = () => {
       case 'finance': return <FinanceDashboard setActiveTab={setActiveTab} onLogout={handleLogout} shifts={shifts} users={users} properties={properties} invoices={invoices} setInvoices={setInvoices} clients={clients} organization={organization} manualTasks={manualTasks} onUpdateUser={setUser} leaveRequests={leaveRequests} />;
       case 'users': return <AdminPortal user={user!} view="users" users={users} setUsers={setUsers} setActiveTab={setActiveTab} setSelectedClientIdFilter={() => {}} orgId={orgId} leaveRequests={leaveRequests} tutorials={tutorials} shifts={shifts} />;
       case 'settings': 
-        return <PersonnelProfile user={user} leaveRequests={leaveRequests} onRequestLeave={handleRequestLeave} shifts={shifts} properties={properties} organization={organization} onUpdateUser={setUser} tutorials={tutorials} setActiveTab={setActiveTab} />;
+        return <PersonnelProfile user={user} leaveRequests={leaveRequests} onRequestLeave={handleRequestLeave} shifts={shifts} properties={properties} organization={organization} setOrganization={setOrganization} userCount={users.length} propertyCount={properties.length} currentOrgId={orgId} onUpdateUser={setUser} tutorials={tutorials} setActiveTab={setActiveTab} />;
       case 'worksheet': return <EmployeeWorksheet user={user!} shifts={shifts} properties={properties} />;
       case 'tutorials': return <TutorialsHub tutorials={tutorials} setTutorials={setTutorials} userRole={user.role} currentUser={user} onUpdateUser={setUser} showToast={showToast} />;
       case 'pulse': return (
@@ -467,182 +466,65 @@ const App: React.FC = () => {
     }
   };
 
-  const navItems = [
-    { id: 'dashboard', label: 'Home', icon: '📊', roles: ['admin', 'driver', 'housekeeping', 'hr', 'finance', 'client', 'supervisor', 'cleaner'] },
-    { id: 'shifts', label: 'Schedule', icon: '🗓️', roles: ['admin', 'cleaner', 'housekeeping', 'supervisor'] },
-    { id: 'worksheet', label: 'Worksheet', icon: '📄', roles: ['cleaner', 'supervisor', 'laundry'] },
-    { id: 'logistics', label: 'Deliveries', icon: '🚚', roles: ['admin', 'driver', 'housekeeping'] },
-    { id: 'laundry', label: 'Laundry', icon: '🧺', roles: ['admin', 'laundry', 'housekeeping'] },
-    { id: 'properties', label: 'Portfolio', icon: '🏠', roles: ['admin', 'housekeeping', 'driver'] },
-    { id: 'clients', label: 'Partners', icon: '🏢', roles: ['admin'] },
-    { id: 'users', label: 'Team', icon: '👥', roles: ['admin', 'hr'] },
-    { id: 'finance', label: 'Finance', icon: '💳', roles: ['admin', 'finance'] },
-    { id: 'tutorials', label: 'Academy', icon: '🎓', roles: ['admin', 'housekeeping', 'supervisor', 'cleaner'] },
-    { id: 'pulse', label: 'Pulse', icon: '📡', roles: ['admin', 'housekeeping', 'supervisor', 'cleaner', 'driver'] },
-    { id: 'settings', label: user?.role === 'admin' ? 'Studio' : 'My Profile', icon: user?.role === 'admin' ? '⚙️' : '👤', roles: ['admin', 'cleaner', 'driver', 'housekeeping', 'supervisor', 'laundry', 'maintenance'] },
-  ];
+  // --- FINAL COMPONENT ASSEMBLY ---
 
-  const visibleItems = navItems.filter(item => item.roles.includes(user?.role || 'admin'));
+  // Safety check for user session. If no session exists, the renderTab() provides the Login component.
+  if (!user) return renderTab();
 
   return (
-    <div className="flex h-screen bg-[#F3F4F6] overflow-hidden w-full selection:bg-teal-100 selection:text-teal-900">
-      
-      {user && (
-        <aside className="hidden md:flex flex-col w-64 bg-[#1E293B] text-white shrink-0 shadow-2xl relative z-50">
-          <div className="p-8 space-y-6">
-            <div className="flex justify-between items-start">
-              <div className="flex flex-col">
-                <h1 className="font-brand text-2xl text-white tracking-tighter uppercase leading-none truncate max-w-[180px]">
-                  {organization?.name.split(' ')[0] || 'STUDIO'}
-                </h1>
-                {organization?.name.split(' ').slice(1).join(' ') && (
-                  <p className="text-[9px] font-bold text-teal-400 uppercase tracking-[0.25em] mt-2 truncate">
-                    {organization.name.split(' ').slice(1).join(' ')}
-                  </p>
-                )}
-              </div>
-              <button onClick={() => setShowBuildConsole(true)} className="p-2 bg-white/10 rounded-lg hover:bg-amber-500/20 hover:text-amber-500 transition-all">🛠️</button>
-            </div>
+    <Layout 
+      activeTab={activeTab} 
+      setActiveTab={setActiveTab} 
+      role={user.role} 
+      onLogout={handleLogout}
+      notificationCount={notifications.length}
+      onOpenNotifications={() => setShowActivityCenter(true)}
+      isSyncing={isSyncing}
+      organization={organization}
+    >
+      {renderTab()}
 
-            <div className={`px-4 py-2 rounded-xl border transition-all duration-500 flex items-center gap-3 ${isSyncing ? 'bg-teal-500/10 border-teal-500/30' : 'bg-slate-800/30 border-slate-700/50'}`}>
-              <div className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-[#0D9488] animate-ping' : 'bg-slate-50'}`}></div>
-              <span className={`text-[7px] font-black uppercase tracking-[0.2em] ${isSyncing ? 'text-[#0D9488]' : 'text-slate-50'}`}>
-                {isSyncing ? 'Syncing...' : 'Cloud Verified'}
-              </span>
-            </div>
-          </div>
-
-          <nav className="flex-1 overflow-y-auto px-4 space-y-1.5 custom-scrollbar mt-4">
-            {visibleItems.map(item => (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id as TabType)}
-                className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-2xl text-sm font-semibold transition-all ${
-                  activeTab === item.id ? 'bg-[#0D9488] text-white shadow-lg' : 'text-slate-300 hover:bg-white/5'
-                }`}
-              >
-                <span className="text-xl">{item.icon}</span>
-                <span>{item.label}</span>
-              </button>
-            ))}
-          </nav>
-
-          <div className="p-4 border-t border-slate-700/50 space-y-2">
-            <button onClick={handleLogout} className="w-full flex items-center gap-4 px-5 py-3 text-slate-400 text-xs font-bold uppercase hover:bg-white/5 rounded-2xl transition-colors hover:text-white">
-              <span>🚪</span>
-              <span>Log out</span>
-            </button>
-          </div>
-        </aside>
-      )}
-
-      <main className="flex-1 flex flex-col min-w-0 relative w-full overflow-hidden">
-        {user && (
-          <header className="md:hidden bg-white border-b border-gray-100 px-5 py-4 flex justify-between items-center sticky top-0 z-40 shadow-sm">
-            <div className="flex flex-col">
-                <h2 className="font-brand font-bold text-[#1E293B] text-lg leading-none tracking-tighter truncate max-w-[150px]">
-                  {(organization?.name || 'STUDIO').toUpperCase()}
-                </h2>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <div className={`w-1 h-1 rounded-full ${isSyncing ? 'bg-teal-500 animate-pulse' : 'bg-slate-300'}`}></div>
-                  <span className="text-[6px] font-black text-slate-400 uppercase tracking-widest">{isSyncing ? 'SYNCING' : 'VERIFIED'}</span>
-                </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button onClick={() => setShowBuildConsole(true)} className="w-10 h-10 flex items-center justify-center rounded-xl bg-amber-50 text-amber-600 border border-amber-100">🛠️</button>
-              <button onClick={() => setShowActivityCenter(true)} className="relative w-10 h-10 flex items-center justify-center rounded-xl bg-slate-50 border border-slate-100">
-                <span className="text-lg">🔔</span>
-                {notifications.length > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center text-[8px] font-black">{notifications.length}</span>}
-              </button>
-              <button onClick={() => setShowMenu(true)} className="w-10 h-10 flex items-center justify-center rounded-xl bg-teal-50 text-[#0D9488] border border-teal-100">
-                <span className="text-xl">☰</span>
-              </button>
-            </div>
-          </header>
-        )}
-
-        <div className={`flex-1 overflow-y-auto ${user ? 'p-4 md:p-10' : ''} custom-scrollbar w-full ${user ? 'pb-24 md:pb-10' : ''}`}>
-          <div className="w-full max-w-[1400px] mx-auto">
-            {renderTab()}
-          </div>
-        </div>
-
-        {showMenu && (
-          <div className="fixed inset-0 bg-black/40 z-[200] md:hidden animate-in fade-in" onClick={() => setShowMenu(false)}>
-            <div className="absolute top-0 right-0 bottom-0 w-4/5 bg-white shadow-2xl p-8 space-y-8 animate-in slide-in-from-right duration-300 flex flex-col" onClick={e => e.stopPropagation()}>
-               <div className="flex justify-between items-center">
-                  <div className="space-y-1">
-                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest leading-none">Navigation</h3>
-                    <p className="text-[8px] font-bold text-teal-600 uppercase tracking-[0.3em]">Studio Terminal</p>
-                  </div>
-                  <button onClick={() => setShowMenu(false)} className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-50 text-slate-300 text-2xl">&times;</button>
-               </div>
-               
-               <div className="flex-1 overflow-y-auto custom-scrollbar -mx-2 px-2 space-y-3">
-                  {visibleItems.map(item => (
-                    <button 
-                      key={item.id} 
-                      onClick={() => { setActiveTab(item.id as TabType); setShowMenu(false); }}
-                      className={`w-full flex items-center gap-4 p-4 rounded-2xl text-xs font-bold uppercase tracking-widest border transition-all ${activeTab === item.id ? 'bg-[#0D9488] border-[#0D9488] text-white shadow-lg' : 'bg-slate-50 border-slate-100 text-slate-500'}`}
-                    >
-                      <span className="text-xl">{item.icon}</span>
-                      {item.label}
-                    </button>
-                  ))}
-               </div>
-
-               <div className="pt-6 border-t border-slate-100">
-                  <button onClick={handleLogout} className="w-full py-4 bg-rose-50 text-rose-600 font-black uppercase text-[10px] tracking-widest rounded-2xl border border-rose-100 flex items-center justify-center gap-3 active:scale-95 transition-all">
-                    <span>🚪</span>
-                    <span>Exit Session</span>
-                  </button>
-               </div>
-            </div>
-          </div>
-        )}
-      </main>
-
+      {/* Activity center overlay for personnel alerts and notifications */}
       {showActivityCenter && (
         <ActivityCenter 
           notifications={notifications} 
           onClose={() => setShowActivityCenter(false)} 
-          onNavigate={setActiveTab} 
-          userRole={user?.role || 'admin'}
-          currentUserId={user?.id || ''}
+          onNavigate={(tab, id) => { setActiveTab(tab); }}
+          userRole={user.role}
+          currentUserId={user.id}
         />
       )}
 
+      {/* Build environment bypass console for rapid impersonation and testing */}
       {showBuildConsole && (
         <BuildModeOverlay 
-          currentUser={user}
+          currentUser={user} 
           onSwitchUser={handleImpersonate}
           onToggleTab={setActiveTab}
+          stats={{ users: users.length, properties: properties.length, shifts: shifts.length }}
           onClose={() => setShowBuildConsole(false)}
-          stats={{
-            users: users.length,
-            properties: properties.length,
-            shifts: shifts.length
-          }}
         />
       )}
 
+      {/* Persistent global feedback toast system */}
       {toast && (
-        <div key={toast.id} className="fixed top-8 left-1/2 -translate-x-1/2 z-[9999] animate-in slide-in-from-top duration-300">
-          <div className={`px-8 py-4 rounded-[2rem] shadow-2xl text-white font-black uppercase text-[10px] tracking-widest flex items-center gap-4 ${
-            toast.type === 'error' || toast.type === 'alert' ? 'bg-rose-600' : 
-            toast.type === 'success' ? 'bg-[#0D9488]' : 
-            toast.type === 'warning' ? 'bg-amber-500' : 'bg-slate-900'
-          }`}>
-            <span className="text-lg">
-                {toast.type === 'success' ? '✓' : toast.type === 'error' || toast.type === 'alert' ? '!' : 'ℹ'}
-            </span>
-            <span>{toast.message}</span>
-            <button onClick={() => setToast(null)} className="ml-4 opacity-50 hover:opacity-100">×</button>
-          </div>
+        <div className="fixed top-24 right-10 z-[3000] animate-in slide-in-from-right duration-500">
+           <div className={`px-8 py-4 rounded-2xl shadow-2xl border-l-4 flex items-center gap-4 ${
+             toast.type === 'success' ? 'bg-emerald-50 border-emerald-500 text-emerald-900' :
+             toast.type === 'error' ? 'bg-rose-50 border-rose-500 text-rose-900' :
+             toast.type === 'warning' ? 'bg-orange-50 border-orange-500 text-orange-900' :
+             'bg-slate-900 border-teal-500 text-white'
+           }`}>
+             <span className="text-xl">
+                {toast.type === 'success' ? '✅' : toast.type === 'error' ? '❌' : 'ℹ️'}
+             </span>
+             <p className="text-[10px] font-black uppercase tracking-widest">{toast.message}</p>
+           </div>
         </div>
       )}
-    </div>
+    </Layout>
   );
 };
 
+// Satisfy module requirements in root index.tsx by providing the default export
 export default App;

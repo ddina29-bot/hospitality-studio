@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { User, LeaveRequest, LeaveType, Shift, Property, OrganizationSettings, SavedPayslip, PaymentType, EmploymentType, Tutorial } from '../types';
 import ScorecardView from './management/ScorecardView';
 import OnboardingPathView from './management/OnboardingPathView';
+import StudioSettings from './management/StudioSettings';
 
 interface PersonnelProfileProps {
   user: User;
@@ -12,6 +13,10 @@ interface PersonnelProfileProps {
   properties?: Property[];
   onUpdateUser?: (user: User) => void;
   organization?: OrganizationSettings;
+  setOrganization?: React.Dispatch<React.SetStateAction<OrganizationSettings>>;
+  userCount?: number;
+  propertyCount?: number;
+  currentOrgId?: string | null;
   tutorials?: Tutorial[];
   setActiveTab?: (tab: any) => void;
   initialDocView?: 'fs3' | 'payslip' | 'worksheet' | null;
@@ -26,6 +31,10 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({
   properties = [], 
   onUpdateUser, 
   organization,
+  setOrganization,
+  userCount = 0,
+  propertyCount = 0,
+  currentOrgId = null,
   tutorials = [],
   setActiveTab,
   initialDocView, 
@@ -34,6 +43,8 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({
   const currentUserObj = JSON.parse(localStorage.getItem('current_user_obj') || '{}');
   const isCurrentUserAdmin = currentUserObj.role === 'admin';
   const canManageFinancials = isCurrentUserAdmin;
+  const isViewingSelf = user.id === currentUserObj.id;
+  const showStudioConfig = isViewingSelf && user.role === 'admin' && !!setOrganization;
 
   // Roles excluded from training and performance tracking (logistics/mgmt roles)
   const isRoadmapIrrelevant = ['admin', 'housekeeping', 'driver', 'laundry'].includes(user.role);
@@ -41,8 +52,8 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({
   const [viewingDoc, setViewingDoc] = useState<'payslip' | 'worksheet' | 'fs3' | null>(initialDocView || null);
   const [activeHistoricalPayslip, setActiveHistoricalPayslip] = useState<SavedPayslip | null>(initialHistoricalPayslip || null);
   
-  const [activeSubTab, setActiveSubTab] = useState<'ONBOARDING' | 'PERFORMANCE' | 'PENDING PAYOUTS' | 'PAYSLIP REGISTRY' | 'LEAVE REQUESTS'>(
-    isRoadmapIrrelevant ? 'PAYSLIP REGISTRY' : 'ONBOARDING'
+  const [activeSubTab, setActiveSubTab] = useState<'STUDIO CONFIG' | 'ONBOARDING' | 'PERFORMANCE' | 'PENDING PAYOUTS' | 'PAYSLIP REGISTRY' | 'LEAVE REQUESTS'>(
+    showStudioConfig ? 'STUDIO CONFIG' : (isRoadmapIrrelevant ? 'PAYSLIP REGISTRY' : 'ONBOARDING')
   );
   
   const [selectedDocMonth, setSelectedDocMonth] = useState<string>('MAR 2026'); 
@@ -262,13 +273,14 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({
 
   const visibleSubTabs = useMemo(() => {
     return [
+      showStudioConfig && 'STUDIO CONFIG',
       !isRoadmapIrrelevant && 'ONBOARDING',
       !isRoadmapIrrelevant && 'PERFORMANCE',
       canManageFinancials && 'PENDING PAYOUTS',
       'PAYSLIP REGISTRY',
       'LEAVE REQUESTS'
     ].filter(Boolean) as any[];
-  }, [isRoadmapIrrelevant, canManageFinancials]);
+  }, [isRoadmapIrrelevant, canManageFinancials, showStudioConfig]);
 
   return (
     <div className="bg-[#F8FAFC] min-h-full text-left pb-24 font-brand animate-in fade-in duration-500">
@@ -284,7 +296,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({
                  <p className="text-[8px] font-bold text-slate-400 uppercase mt-0.5">Start: {user.activationDate || '---'} • ID: {user.idPassportNumber || 'PENDING'}</p>
               </div>
            </div>
-           {canManageFinancials && (
+           {canManageFinancials && activeSubTab !== 'STUDIO CONFIG' && (
              <div className="flex flex-col gap-2 items-end">
                <label className="text-[7px] font-black text-slate-400 uppercase tracking-widest">Spouse Works?</label>
                <div className="flex bg-slate-100 p-1 rounded-xl">
@@ -308,6 +320,16 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({
                  </button>
               ))}
            </div>
+
+           {activeSubTab === 'STUDIO CONFIG' && showStudioConfig && organization && setOrganization && (
+             <StudioSettings 
+               organization={organization} 
+               setOrganization={setOrganization} 
+               userCount={userCount} 
+               propertyCount={propertyCount} 
+               currentOrgId={currentOrgId} 
+             />
+           )}
 
            {activeSubTab === 'ONBOARDING' && !isRoadmapIrrelevant && (
              <OnboardingPathView user={user} tutorials={tutorials} onNavigateToTutorials={() => setActiveTab?.('tutorials')} />
