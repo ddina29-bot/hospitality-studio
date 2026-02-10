@@ -4,7 +4,7 @@ import PropertyPortfolio from './management/PropertyPortfolio';
 import ClientRegistry from './management/ClientRegistry';
 import StaffHub from './management/StaffHub';
 import SchedulingCenter from './management/SchedulingCenter';
-import { Property, Client, User, Shift, TabType, LeaveRequest } from '../types';
+import { Property, Client, User, Shift, TabType, LeaveRequest, Tutorial } from '../types';
 
 interface AdminPortalProps {
   user: User;
@@ -26,6 +26,7 @@ interface AdminPortalProps {
   initialSelectedShiftId?: string | null;
   onConsumedDeepLink?: () => void;
   orgId?: string | null;
+  tutorials?: Tutorial[];
 }
 
 const AdminPortal: React.FC<AdminPortalProps> = ({ 
@@ -36,7 +37,8 @@ const AdminPortal: React.FC<AdminPortalProps> = ({
   leaveRequests = [],
   initialSelectedShiftId,
   onConsumedDeepLink,
-  orgId
+  orgId,
+  tutorials = []
 }) => {
   if (view === 'properties' && setProperties && setClients) return (
     <PropertyPortfolio 
@@ -59,7 +61,7 @@ const AdminPortal: React.FC<AdminPortalProps> = ({
       onSelectPropertyToEdit={onSelectPropertyToEdit}
     />
   );
-  if (view === 'users' && setUsers) return <StaffHub users={users} setUsers={setUsers} orgId={orgId} />;
+  if (view === 'users' && setUsers) return <StaffHub users={users} setUsers={setUsers} orgId={orgId} tutorials={tutorials} shifts={shifts} />;
   
   if (view === 'scheduling' && setShifts) return (
     <SchedulingCenter 

@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Property, CleaningTask, Shift, User, AttributedPhoto, SpecialReport, SupplyItem } from '../types';
 import { uploadFile } from '../services/storageService';
+import { analyzeCleaningPhoto } from '../services/geminiService';
 
 const FAKE_PHOTOS = {
   kitchen: "https://images.unsplash.com/photo-1556911220-e15b29be8c8f?auto=format&fit=crop&w=600&q=80",
@@ -66,10 +67,16 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   const [isVerifying, setIsVerifying] = useState(false);
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
-  const [attemptedNext, setAttemptedNext] = useState(false);
   
   const [keyInBoxPhotos, setKeyInBoxPhotos] = useState<AttributedPhoto[]>([]);
   const [boxClosedPhotos, setBoxClosedPhotos] = useState<AttributedPhoto[]>([]);
+
+  const [operationalChecks, setOperationalChecks] = useState({
+    acOff: false,
+    waterHeaterOn: false,
+    lightsOff: false,
+    doorsLocked: false
+  });
 
   const [showMessReport, setShowMessReport] = useState(false);
   const [messDescription, setMessDescription] = useState('');
@@ -81,7 +88,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   const [missingCategory, setMissingCategory] = useState<'laundry' | 'apartment'>('apartment');
   
   const [showSupplyModal, setShowSupplyModal] = useState(false);
-  
   const [notification, setNotification] = useState<{message: string, type: 'error' | 'success'} | null>(null);
 
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -92,13 +98,18 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [checkoutTarget, setCheckoutTarget] = useState<'keyInBox' | 'boxClosed' | null>(null);
 
-  // Simulation strictly restricted to testing accounts
   const simulationActive = useMemo(() => user.email === 'build@reset.studio', [user.email]);
   const realTodayISO = useMemo(() => getLocalISO(new Date()), []);
   const [viewedDateISO, setViewedDateISO] = useState(realTodayISO);
 
   const activeShift = useMemo(() => (shifts || []).find(s => s && s.id === selectedShiftId), [shifts, selectedShiftId]);
   const activeProperty = useMemo(() => activeShift ? properties.find(p => p.id === activeShift.propertyId) : null, [activeShift, properties]);
+
+  const checkIfTaskIsSkipped = useCallback((task: CleaningTask) => {
+    if (!activeShift?.isLinenShortage) return false;
+    const searchStr = (task.id + " " + task.label).toLowerCase();
+    return searchStr.includes('room') || searchStr.includes('bed') || searchStr.includes('linen') || searchStr.includes('welcome');
+  }, [activeShift?.isLinenShortage]);
 
   useEffect(() => {
     if (selectedShiftId) {
@@ -108,16 +119,14 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
         if (shift.status === 'active') {
           setCurrentStep('active');
           setIsLocationVerified(true);
-        } else if (shift.status === 'completed' && currentStep !== 'list') {
-          if (currentStep !== 'review') {
-            setCurrentStep('list');
-            setSelectedShiftId(null);
-            localStorage.removeItem('cleaner_active_shift_id');
-          }
+        } else if (shift.status === 'completed') {
+          setCurrentStep('list');
+          setSelectedShiftId(null);
+          localStorage.removeItem('cleaner_active_shift_id');
         }
       }
     }
-  }, [selectedShiftId, shifts, currentStep]);
+  }, [selectedShiftId]);
 
   const showNotification = (message: string, type: 'error' | 'success' = 'error') => {
     setNotification({ message, type });
@@ -135,7 +144,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     const base = new Date();
     base.setHours(0, 0, 0, 0);
     base.setDate(base.getDate() - 3); 
-    for (let i = 0; i < 11; i++) {
+    for (let i = 0; i < 10; i++) {
       const d = new Date(base);
       d.setDate(base.getDate() + i);
       const iso = getLocalISO(d);
@@ -143,7 +152,8 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
         iso,
         dayName: d.toLocaleDateString('en-GB', { weekday: 'short' }),
         dateNum: d.getDate(),
-        isToday: iso === realTodayISO
+        isToday: iso === realTodayISO,
+        displayStr: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase()
       });
     }
     return days;
@@ -260,7 +270,6 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     setSelectedShiftId(shift.id);
     localStorage.setItem('cleaner_active_shift_id', shift.id);
     setIsLocationVerified(false);
-    setAttemptedNext(false);
     if (shift.status === 'active' || simulationActive) {
         setIsLocationVerified(true);
         setCurrentStep(shift.status === 'active' ? 'active' : 'overview');
@@ -275,15 +284,30 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     setCurrentStep('active');
   };
 
-  const isChecklistComplete = useMemo(() => {
-    if (simulationActive) return true;
+  const incompleteTasks = useMemo(() => {
     const mandatoryTasks = tasks.filter(t => {
       if (!t.isMandatory) return false;
-      if (activeShift?.isLinenShortage && (t.id.startsWith('room-task') || t.id === 'welcome-task')) return false;
+      if (checkIfTaskIsSkipped(t)) return false;
       return true;
     });
-    return mandatoryTasks.every(t => t.photos.length > 0);
-  }, [tasks, activeShift?.isLinenShortage, simulationActive]);
+    return mandatoryTasks.filter(t => t.photos.length === 0);
+  }, [tasks, checkIfTaskIsSkipped]);
+
+  const isOperationalReady = useMemo(() => {
+    if (simulationActive) return true;
+    return operationalChecks.acOff && operationalChecks.waterHeaterOn && operationalChecks.lightsOff && operationalChecks.doorsLocked;
+  }, [operationalChecks, simulationActive]);
+
+  const isChecklistComplete = useMemo(() => {
+    if (simulationActive) return true;
+    return incompleteTasks.length === 0 && isOperationalReady;
+  }, [incompleteTasks, isOperationalReady, simulationActive]);
+
+  const toggleLinenShortage = () => {
+    if (!selectedShiftId) return;
+    setShifts(prev => prev.map(s => s.id === selectedShiftId ? { ...s, isLinenShortage: !s.isLinenShortage } : s));
+    showNotification(activeShift?.isLinenShortage ? "Linen Status: Standard" : "Linen Status: SHORTAGE REPORTED", 'success');
+  };
 
   const handleFinishShift = () => {
     if (!selectedShiftId || isFinishing) return;
@@ -311,8 +335,8 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
 
   const handleSubmitMessReport = () => {
     if (!selectedShiftId) return;
-    if (!messDescription.trim() || messPhotos.length === 0) {
-        showNotification("Description and Photo required.", 'error');
+    if (!messDescription.trim()) {
+        showNotification("Description required.", 'error');
         return;
     }
     setShifts(prev => prev.map(s => {
@@ -324,16 +348,13 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     setShowMessReport(false);
     setMessDescription('');
     setMessPhotos([]);
-    showNotification("Report submitted for review.", 'success');
+    showNotification("Report submitted.", 'success');
   };
 
   const handleIncidentSubmit = () => {
     if (!selectedShiftId || !reportModalType) return;
     if (!reportDescription.trim()) { showNotification("Description required.", 'error'); return; }
-    if (reportModalType !== 'missing' && reportPhotos.length === 0) {
-        showNotification("Camera photo required.", 'error');
-        return;
-    }
+    
     const report: SpecialReport = { 
       id: `rep-${Date.now()}`, 
       description: reportDescription, 
@@ -353,7 +374,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     setReportModalType(null);
     setReportDescription('');
     setReportPhotos([]);
-    showNotification("Incident successfully logged.", 'success');
+    showNotification("Incident logged.", 'success');
   };
 
   const generateDynamicTasks = (property: Property, serviceType: string, isBuild: boolean): CleaningTask[] => {
@@ -361,7 +382,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     
     if (serviceType === 'REFRESH') {
       return [
-        { id: 'refresh-dusting', label: 'DUSTING: All surfaces and electronics wiped', isMandatory: true, minPhotos: 1, photos: createPlaceholder('dusting') },
+        { id: 'refresh-dusting', label: 'DUSTING: All surfaces and electronics wiped', isMandatory: true, minPhotos: 1, photos: createPlaceholder('dusting'), referenceUrl: property.livingRoomPhoto },
         { id: 'refresh-outside', label: 'OUTSIDE AREA: Swept and organized', isMandatory: true, minPhotos: 1, photos: createPlaceholder('general') },
         { id: 'refresh-floors', label: 'FLOORS: Vacuumed and washed', isMandatory: true, minPhotos: 1, photos: createPlaceholder('general') }
       ];
@@ -370,27 +391,27 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
       const dynamicTasks: CleaningTask[] = [];
       const roomCount = property.rooms || 0;
       for (let i = 1; i <= roomCount; i++) {
-        dynamicTasks.push({ id: `room-task-${i}`, label: `BEDROOM ${i}: Beds styled & made`, isMandatory: true, minPhotos: 1, photos: createPlaceholder('beds') });
+        dynamicTasks.push({ id: `room-task-${i}`, label: `BEDROOM ${i}: Beds styled & made`, isMandatory: true, minPhotos: 1, photos: createPlaceholder('beds'), referenceUrl: property.roomPhotos?.[i-1] });
       }
-      dynamicTasks.push({ id: 'welcome-task', label: 'WELCOME PACK: Final styling', isMandatory: true, minPhotos: 1, photos: createPlaceholder('welcome') });
+      dynamicTasks.push({ id: 'welcome-task', label: 'WELCOME PACK: Final styling', isMandatory: true, minPhotos: 1, photos: createPlaceholder('welcome'), referenceUrl: property.welcomePackPhoto });
       return dynamicTasks;
     }
 
     const dynamicTasks: CleaningTask[] = [];
-    dynamicTasks.push({ id: 'kitchen-task', label: 'KITCHEN: Surfaces & Appliances sanitized', isMandatory: true, minPhotos: 1, photos: createPlaceholder('kitchen') });
+    dynamicTasks.push({ id: 'kitchen-task', label: 'KITCHEN: Surfaces & Appliances sanitized', isMandatory: true, minPhotos: 1, photos: createPlaceholder('kitchen'), referenceUrl: property.kitchenPhoto });
     dynamicTasks.push({ id: 'fridge-task', label: 'FRIDGE AND FREEZER IMPORTANT: Cleaned & Odor-free', isMandatory: true, minPhotos: 1, photos: createPlaceholder('kitchen') });
     const roomCount = property.rooms || 0;
     for (let i = 1; i <= roomCount; i++) {
-      dynamicTasks.push({ id: `room-task-${i}`, label: `BEDROOM ${i}: Bed linens changed & styled`, isMandatory: true, minPhotos: 1, photos: createPlaceholder('beds') });
+      dynamicTasks.push({ id: `room-task-${i}`, label: `BEDROOM ${i}: Bed linens changed & styled`, isMandatory: true, minPhotos: 1, photos: createPlaceholder('beds'), referenceUrl: property.roomPhotos?.[i-1] });
     }
     const bathCount = property.bathrooms || 0;
     for (let i = 1; i <= bathCount; i++) {
-      dynamicTasks.push({ id: `bath-task-${i}`, label: `BATHROOM ${i}: Toilet & Shower deep cleaned`, isMandatory: true, minPhotos: 1, photos: createPlaceholder('bath') });
+      dynamicTasks.push({ id: `bath-task-${i}`, label: `BATHROOM ${i}: Toilet & Shower deep cleaned`, isMandatory: true, minPhotos: 1, photos: createPlaceholder('bath'), referenceUrl: property.bathroomPhotos?.[i-1] });
     }
-    dynamicTasks.push({ id: 'living-task', label: 'LIVING/DINING AREA: Dusting & Mirror check', isMandatory: true, minPhotos: 1, photos: createPlaceholder('living') });
+    dynamicTasks.push({ id: 'living-task', label: 'LIVING/DINING AREA: Dusting & Mirror check', isMandatory: true, minPhotos: 1, photos: createPlaceholder('living'), referenceUrl: property.livingRoomPhoto });
     dynamicTasks.push({ id: 'windows-task', label: 'WINDOWS AND WINDOW SILLS: Cleaned & Smudge-free', isMandatory: true, minPhotos: 1, photos: createPlaceholder('general') });
     dynamicTasks.push({ id: 'balcony-task', label: 'BALCONY/TERRACE: Cleaned', isMandatory: false, minPhotos: 0, photos: [] });
-    dynamicTasks.push({ id: 'welcome-task', label: 'WELCOME PACK: Replenished', isMandatory: true, minPhotos: 1, photos: createPlaceholder('welcome') });
+    dynamicTasks.push({ id: 'welcome-task', label: 'WELCOME PACK: Replenished', isMandatory: true, minPhotos: 1, photos: createPlaceholder('welcome'), referenceUrl: property.welcomePackPhoto });
     dynamicTasks.push({ id: 'soaps-task', label: 'SOAP BOTTLES: Checked', isMandatory: false, minPhotos: 0, photos: [] });
     return dynamicTasks;
   };
@@ -402,6 +423,27 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     if (taskId.includes('welcome') || taskId.includes('inventory')) return FAKE_PHOTOS.general;
     if (taskId.includes('living') || taskId.includes('dusting')) return FAKE_PHOTOS.living;
     return FAKE_PHOTOS.general;
+  };
+
+  const runAIAuditOnTask = async (taskId: string, photoUrl: string, taskLabel: string) => {
+    setTasks(prev => prev.map(t => t.id === taskId ? {
+      ...t,
+      photos: t.photos.map(p => p.url === photoUrl ? { ...p, aiAuditStatus: 'pending' as const, aiFeedback: undefined } : p)
+    } : t));
+    
+    try {
+      const result = await analyzeCleaningPhoto(photoUrl, taskLabel);
+      setTasks(prev => prev.map(t => t.id === taskId ? {
+        ...t,
+        photos: t.photos.map(p => p.url === photoUrl ? { ...p, aiAuditStatus: result.status, aiFeedback: result.feedback } : p)
+      } : t));
+    } catch (e: any) {
+      console.warn("AI Analysis Failed", e);
+      setTasks(prev => prev.map(t => t.id === taskId ? {
+        ...t,
+        photos: t.photos.map(p => p.url === photoUrl ? { ...p, aiAuditStatus: 'error' as const, aiFeedback: "Analysis unavailable. Please retry or proceed." } : p)
+      } : t));
+    }
   };
 
   const handleSimulatePhoto = (target: 'task' | 'mess' | 'report' | 'checkout', tId?: string) => {
@@ -416,9 +458,15 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
     }
     else if (target === 'task') {
         const idToUpdate = tId || activeTaskId || tasks.find(t => t.photos.length === 0)?.id || tasks[0].id;
-        setTasks(prev => prev.map(t => t.id === idToUpdate ? { ...t, photos: [...t.photos, attributed] } : t));
+        const task = tasks.find(t => t.id === idToUpdate);
+        setTasks(prev => {
+          return prev.map(t => t.id === idToUpdate ? { ...t, photos: [...t.photos, { ...attributed, aiAuditStatus: 'pending' as const }] } : t);
+        });
+        if (task) {
+          runAIAuditOnTask(idToUpdate, url, task.label);
+        }
     }
-    showNotification("Simulated Photo Attached Instantly", 'success');
+    showNotification("Evidence Attached Instantly", 'success');
   };
 
   const handleCapture = async (e: React.ChangeEvent<HTMLInputElement>, target: 'task' | 'mess' | 'report' | 'checkout') => {
@@ -439,7 +487,11 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
           }
           else if (target === 'task') {
             const tId = activeTaskId || tasks.find(t => t.photos.length === 0)?.id || tasks[0].id;
-            setTasks(prev => prev.map(t => t.id === tId ? { ...t, photos: [...t.photos, attributed] } : t));
+            const task = tasks.find(t => t.id === tId);
+            setTasks(prev => prev.map(t => t.id === tId ? { ...t, photos: [...t.photos, { ...attributed, aiAuditStatus: 'pending' as const }] } : t));
+            if (task) {
+              runAIAuditOnTask(tId, finalUrl, task.label);
+            }
           }
       }
     } catch (error) { 
@@ -463,29 +515,13 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 px-1">
             <div className="flex flex-col space-y-1">
               <p className="text-[#0D9488] font-black uppercase tracking-[0.4em] text-[8px] md:text-[10px]">OPERATIONS TERMINAL ACTIVE</p>
-              <h1 className="text-2xl md:text-4xl font-brand text-[#1E293B] tracking-tighter uppercase leading-none font-extrabold">Welcome, {user.name.split(' ')[0]}</h1>
+              <h1 className="text-2xl md:text-4xl font-brand text-[#1F2937] tracking-tighter uppercase leading-none font-extrabold">Welcome, {user.name.split(' ')[0]}</h1>
             </div>
-            <button onClick={() => setShowSupplyModal(true)} disabled={user.lastSupplyRequestDate && Date.now() - user.lastSupplyRequestDate < 86400000} className={`w-full md:w-auto px-6 md:px-8 py-3.5 md:py-4 rounded-2xl text-[9px] md:text-[10px] font-black uppercase tracking-widest shadow-2xl active:scale-95 transition-transform flex items-center justify-center gap-3 bg-indigo-600 text-white hover:bg-indigo-700`}>
+            <button onClick={() => setShowSupplyModal(true)} disabled={user.lastSupplyRequestDate && Date.now() - user.lastSupplyRequestDate < 86400000} className={`w-full md:w-auto px-6 md:px-8 py-3.5 md:py-4 rounded-2xl text-[9px] md:text-[10px] font-black uppercase tracking-widest shadow-2xl active:scale-95 transition-transform flex items-center justify-center gap-3 bg-teal-600 text-white hover:bg-teal-700`}>
                 <span className="text-xl">📦</span>
                 <span>Request Supplies</span>
             </button>
           </div>
-
-          <section className="bg-[#1E293B] rounded-3xl md:rounded-[40px] p-5 md:p-10 text-white shadow-2xl relative overflow-hidden group">
-             <div className="relative z-10 flex flex-col lg:flex-row justify-between items-stretch gap-8 md:gap-10">
-                <div className="flex-1 space-y-6 md:space-y-8">
-                    <div className="flex items-center gap-2">
-                        <div className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-pulse"></div>
-                        <p className="text-[9px] font-black uppercase tracking-[0.4em] text-[#2DD4BF]">Monthly Intelligence</p>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 md:gap-8">
-                        <div><p className="text-[8px] font-black text-[#CBD5E1] uppercase tracking-widest">Score</p><p className="text-3xl md:text-5xl font-bold font-brand tracking-tighter text-[#F59E0B]">{performanceStats.score}%</p></div>
-                        <div><p className="text-[8px] font-black text-[#CBD5E1] uppercase tracking-widest">Units</p><p className="text-3xl md:text-5xl font-bold font-brand tracking-tighter text-white">{performanceStats.monthlyJobs}</p></div>
-                        <div><p className="text-[8px] font-black text-[#CBD5E1] uppercase tracking-widest">Hours</p><p className="text-3xl md:text-5xl font-bold font-brand tracking-tighter text-white">{performanceStats.monthlyHours}</p></div>
-                    </div>
-                </div>
-             </div>
-          </section>
 
           <div className="flex justify-between items-center gap-2 overflow-x-auto no-scrollbar pb-2 px-1">
             {weekDays.map((wd) => (
@@ -502,10 +538,10 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
             <h2 className="text-[9px] md:text-[10px] font-black text-black/30 uppercase tracking-[0.4em] px-2">UNITS TO CLEAN ({cleanTasks.length})</h2>
             <div className="space-y-3 md:space-y-4">
                 {cleanTasks.length === 0 ? <p className="p-10 text-center opacity-20 uppercase font-black tracking-widest text-[10px]">No sessions found</p> : cleanTasks.map(shift => (
-                  <div key={shift.id} onClick={() => setSelectedIdAndStart(shift)} className={`p-4 md:p-6 rounded-2xl md:rounded-[32px] border transition-all relative overflow-hidden group active:scale-[0.98] ${shift.status === 'active' ? 'bg-teal-50 border-teal-600 shadow-lg ring-2 ring-teal-600/20' : 'bg-white border-gray-200'}`}>
+                  <div key={shift.id} onClick={() => setSelectedIdAndStart(shift)} className={`p-4 md:p-6 rounded-2xl md:rounded-[32px] border transition-all relative overflow-hidden group active:scale-[0.98] ${shift.status === 'active' ? 'bg-teal-50 border-teal-600 shadow-lg ring-2 ring-teal-600/20' : 'bg-white border-gray-200 shadow-sm'}`}>
                     <div className="flex justify-between items-start">
                       <div className="space-y-1 text-left">
-                        <h3 className="text-sm md:text-base font-bold text-black uppercase tracking-tight leading-tight">{shift.propertyName}</h3>
+                        <h3 className="text-sm md:text-base font-bold text-[#1F2937] uppercase tracking-tight leading-tight">{shift.propertyName}</h3>
                         <p className="text-[8px] md:text-[9px] font-black text-teal-600 uppercase tracking-widest">{shift.startTime} • {shift.serviceType}</p>
                       </div>
                       {shift.status === 'active' && <span className="text-[7px] md:text-[8px] font-black bg-teal-600 text-white px-2 py-1 rounded-full animate-pulse uppercase">Live</span>}
@@ -519,8 +555,8 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                 <h2 className="text-[9px] md:text-[10px] font-black text-black/30 uppercase tracking-[0.4em] px-2">UNITS TO INSPECT ({inspectionTasks.length})</h2>
                 <div className="space-y-3 md:space-y-4">
                    {inspectionTasks.map(shift => (
-                      <div key={shift.id} onClick={() => setSelectedIdAndStart(shift)} className="p-4 md:p-6 bg-white border border-gray-200 rounded-2xl md:rounded-[32px] hover:border-indigo-400 transition-all cursor-pointer">
-                        <h3 className="text-sm md:text-base font-bold text-black uppercase tracking-tight leading-tight">{shift.propertyName}</h3>
+                      <div key={shift.id} onClick={() => setSelectedIdAndStart(shift)} className="p-4 md:p-6 bg-white border border-gray-200 rounded-2xl md:rounded-[32px] hover:border-indigo-400 transition-all cursor-pointer shadow-sm">
+                        <h3 className="text-sm md:text-base font-bold text-[#1F2937] uppercase tracking-tight leading-tight">{shift.propertyName}</h3>
                         <p className="text-[8px] md:text-[9px] font-black text-indigo-600 uppercase tracking-widest mt-1">Inspection Mission</p>
                       </div>
                    ))}
@@ -537,7 +573,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
       <div className="space-y-6 md:space-y-8 animate-in slide-in-from-right-5 duration-500 pb-32 max-w-2xl mx-auto px-1 text-left">
         <button onClick={() => { setSelectedShiftId(null); localStorage.removeItem('cleaner_active_shift_id'); setCurrentStep('list'); }} className="text-black/40 hover:text-black flex items-center gap-2 text-[9px] md:text-[10px] font-black uppercase tracking-widest"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg> BACK</button>
         <div className="space-y-1.5">
-          <h1 className="text-2xl md:text-3xl font-brand font-bold text-black uppercase tracking-tight leading-tight">{activeShift.propertyName}</h1>
+          <h1 className="text-2xl md:text-3xl font-brand font-bold text-[#1F2937] uppercase tracking-tight leading-tight">{activeShift.propertyName}</h1>
           <p className="text-[9px] md:text-[10px] font-black text-teal-600 uppercase tracking-[0.3em]">MISSION BRIEFING</p>
         </div>
         <div className="bg-white border border-teal-100 p-5 md:p-8 rounded-[2.5rem] md:rounded-[40px] shadow-xl">
@@ -555,7 +591,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
            </div>
            <div className="pt-6 space-y-4 mt-6">
               {!isLocationVerified ? (
-                <button onClick={verifyLocation} disabled={isVerifying} className="w-full py-4 md:py-5 rounded-2xl md:rounded-3xl bg-black text-[#C5A059] font-black uppercase text-[10px] md:text-[11px] tracking-[0.4em] shadow-2xl active:scale-95 transition-all">
+                <button onClick={verifyLocation} disabled={isVerifying} className="w-full py-4 md:py-5 rounded-2xl md:rounded-3xl bg-[#1F2937] text-white font-black uppercase text-[10px] md:text-[11px] tracking-[0.4em] shadow-2xl active:scale-95 transition-all">
                   {isVerifying ? 'Locating...' : 'Verify GPS to Unlock'}
                 </button>
               ) : (
@@ -568,14 +604,17 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   }
 
   if (currentStep === 'active' && activeShift) {
+    const messStatus = activeShift.messReport?.status;
+    const hasMessReport = !!messStatus;
+
     return (
       <div className="pb-32 animate-in fade-in duration-500 max-w-3xl mx-auto text-left">
-         <div className={`p-6 md:p-10 mb-6 md:mb-8 rounded-b-[2.5rem] md:rounded-b-[60px] text-white shadow-2xl space-y-3 transition-colors ${activeShift.isLinenShortage ? 'bg-amber-600' : 'bg-[#0D9488]'}`}>
+         <div className={`p-6 md:p-10 mb-6 md:mb-8 rounded-b-[2.5rem] md:rounded-b-[60px] text-white shadow-2xl space-y-3 transition-colors ${activeShift.isLinenShortage ? 'bg-orange-600' : 'bg-[#1F2937]'}`}>
             <div className="flex justify-between items-start">
                <div className="space-y-0.5">
                   <h2 className="text-2xl md:text-3xl font-bold uppercase tracking-tight leading-none">{activeShift.propertyName}</h2>
                   <div className="flex items-center gap-2">
-                     <span className={`w-1.5 h-1.5 rounded-full animate-pulse bg-green-400`}></span>
+                     <span className={`w-1.5 h-1.5 rounded-full animate-pulse bg-teal-400`}></span>
                      <p className="text-[8px] md:text-[9px] font-black text-white/60 uppercase tracking-[0.3em]">Live Mission • {Math.floor(timer / 3600)}h {Math.floor((timer % 3600) / 60)}m</p>
                   </div>
                </div>
@@ -584,42 +623,198 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
 
          <div className="px-3 md:px-4 space-y-8 md:space-y-12">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3">
-               <button onClick={() => simulationActive ? handleSimulatePhoto('mess') : setShowMessReport(true)} className="h-20 md:h-24 bg-rose-50 border-2 border-rose-200 text-rose-700 flex flex-col items-center justify-center gap-1.5 md:gap-2 rounded-2xl md:rounded-[28px] transition-all active:scale-95 hover:bg-rose-100 shadow-sm">
-                  <span className="text-[8px] font-black uppercase tracking-widest">Extra Hours</span>
+               <button 
+                  onClick={() => !hasMessReport && setShowMessReport(true)} 
+                  disabled={hasMessReport}
+                  className={`h-20 md:h-24 flex flex-col items-center justify-center gap-1.5 md:gap-2 rounded-2xl md:rounded-[28px] transition-all active:scale-95 shadow-sm border-2 ${
+                    messStatus === 'pending' ? 'bg-amber-50 border-amber-300 text-amber-700 opacity-80 cursor-default' :
+                    messStatus === 'approved' ? 'bg-emerald-50 border-emerald-300 text-emerald-700 opacity-80 cursor-default' :
+                    messStatus === 'rejected' ? 'bg-rose-50 border-rose-300 text-rose-700 opacity-80 cursor-default' :
+                    'bg-white border-slate-100 text-rose-700 hover:bg-rose-50'
+                  }`}
+               >
+                  <span className="text-[8px] font-black uppercase tracking-widest text-center">
+                    {messStatus === 'pending' ? 'Pending approval' :
+                     messStatus === 'approved' ? 'Report Approved' :
+                     messStatus === 'rejected' ? 'Report Rejected' :
+                     'Report Mess'}
+                  </span>
                </button>
-               <button onClick={() => simulationActive ? handleSimulatePhoto('report') : setReportModalType('maintenance')} className="h-20 md:h-24 bg-slate-50 border-2 border-slate-300 text-slate-700 flex flex-col items-center justify-center gap-1.5 md:gap-2 rounded-2xl md:rounded-[28px] transition-all active:scale-95 hover:bg-slate-100 shadow-sm">
-                  <span className="text-[7px] font-black uppercase tracking-tight text-center leading-none">Maintenance & Damages</span>
+               <button onClick={() => setReportModalType('maintenance')} className="h-20 md:h-24 bg-white border-2 border-slate-100 text-[#1F2937] flex flex-col items-center justify-center gap-1.5 md:gap-2 rounded-2xl md:rounded-[28px] transition-all active:scale-95 hover:bg-slate-50 shadow-sm">
+                  <span className="text-[7px] font-black uppercase tracking-tight text-center leading-none">Maintenance and damages</span>
                </button>
-               <button onClick={() => simulationActive ? handleSimulatePhoto('report') : setReportModalType('missing')} className="h-20 md:h-24 bg-indigo-50 border-2 border-indigo-200 text-indigo-700 flex flex-col items-center justify-center gap-1.5 md:gap-2 rounded-2xl md:rounded-[28px] transition-all active:scale-95 hover:bg-indigo-100 shadow-sm">
-                  <span className="text-[8px] font-black uppercase tracking-widest">Missing</span>
+               <button onClick={() => setReportModalType('missing')} className="h-20 md:h-24 bg-white border-2 border-slate-100 text-indigo-700 flex flex-col items-center justify-center gap-1.5 md:gap-2 rounded-2xl md:rounded-[28px] transition-all active:scale-95 hover:bg-indigo-50 shadow-sm">
+                  <span className="text-[8px] font-black uppercase tracking-widest text-center">Missing items</span>
+               </button>
+               <button 
+                  onClick={toggleLinenShortage} 
+                  className={`h-20 md:h-24 flex flex-col items-center justify-center gap-1.5 md:gap-2 rounded-2xl md:rounded-[28px] transition-all active:scale-95 shadow-sm border-2 ${activeShift.isLinenShortage ? 'bg-orange-600 border-orange-400 text-white animate-pulse' : 'bg-white border-slate-100 text-orange-700 hover:bg-orange-50'}`}
+               >
+                  <span className="text-xl">{activeShift.isLinenShortage ? '⚠️' : '🧺'}</span>
+                  <span className="text-[8px] font-black uppercase tracking-widest">{activeShift.isLinenShortage ? 'EXCLUSION ON' : 'NO LINENS'}</span>
                </button>
             </div>
 
             <div className="space-y-3.5 md:space-y-4">
                {tasks.map(task => {
                   const hasPhoto = task.photos.length > 0;
+                  const lastPhoto = hasPhoto ? task.photos[task.photos.length - 1] : null;
+                  const aiStatus = lastPhoto?.aiAuditStatus;
+                  const aiFeedback = lastPhoto?.aiFeedback;
+                  const isSkippedDueToShortage = checkIfTaskIsSkipped(task);
+
                   return (
-                     <div key={task.id} className={`border rounded-3xl md:rounded-[32px] p-5 md:p-6 transition-all shadow-sm ${hasPhoto ? 'bg-teal-50 border-teal-500' : 'bg-white border-slate-200'}`}>
+                     <div key={task.id} className={`border rounded-3xl md:rounded-[32px] p-5 md:p-6 transition-all shadow-sm ${
+                        hasPhoto ? 'bg-teal-50 border-teal-500' : 
+                        isSkippedDueToShortage ? 'bg-orange-50 border-orange-500 border-2 shadow-inner' :
+                        'bg-white border-slate-100'
+                     }`}>
                         <div className="flex justify-between items-start mb-4">
-                           <div className="space-y-1 flex-1">
-                              <p className={`text-xs md:text-sm font-bold uppercase leading-tight ${hasPhoto ? 'text-teal-900' : 'text-slate-700'}`}>{task.label}</p>
-                              {hasPhoto ? <p className="text-[7px] md:text-[8px] font-black text-teal-600 uppercase tracking-[0.3em]">Satisfied</p> : <p className="text-[7px] md:text-[8px] font-black text-slate-400 uppercase tracking-[0.3em]">Evidence Pending</p>}
+                           <div className="space-y-2 flex-1 pr-4">
+                              <div className="flex items-center gap-2">
+                                <p className={`text-xs md:text-sm font-bold uppercase leading-tight ${
+                                   hasPhoto ? 'text-teal-900' : 
+                                   isSkippedDueToShortage ? 'text-orange-900 font-black' :
+                                   'text-[#1F2937]'
+                                }`}>{task.label}</p>
+                                {task.referenceUrl && !isSkippedDueToShortage && (
+                                  <button onClick={() => setZoomedImage(task.referenceUrl!)} className="w-6 h-6 rounded-full bg-slate-100 text-[#1F2937] flex items-center justify-center text-[10px] shadow-sm hover:bg-slate-200" title="View Standard">
+                                    🔍
+                                  </button>
+                                )}
+                              </div>
+                              
+                              <div className="flex items-center gap-3">
+                                {hasPhoto ? (
+                                  <p className="text-[7px] md:text-[8px] font-black text-teal-600 uppercase tracking-[0.3em]">Evidence Attached</p>
+                                ) : isSkippedDueToShortage ? (
+                                  <div className="flex items-center gap-1.5 px-2 py-0.5 bg-orange-600 rounded-full shadow-sm">
+                                    <span className="text-[6px] font-black text-white uppercase tracking-widest">✓ BYPASSED: NO LINENS</span>
+                                  </div>
+                                ) : (
+                                  <p className="text-[7px] md:text-[8px] font-black text-slate-400 uppercase tracking-[0.3em]">Evidence Pending</p>
+                                )}
+                                
+                                {aiStatus === 'pending' && (
+                                  <div className="flex items-center gap-1.5">
+                                    <div className="w-1.5 h-1.5 bg-teal-500 rounded-full animate-bounce"></div>
+                                    <span className="text-[7px] font-black text-teal-500 uppercase tracking-widest">✨ AI AUDITING...</span>
+                                  </div>
+                                )}
+
+                                {aiStatus === 'pass' && (
+                                  <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-500 rounded-full">
+                                    <span className="text-[6px] font-black text-white uppercase tracking-widest">✨ AI VERIFIED</span>
+                                  </div>
+                                )}
+
+                                {aiStatus === 'fail' && (
+                                  <div className="flex items-center gap-1.5 px-2 py-0.5 bg-amber-500 rounded-full">
+                                    <span className="text-[6px] font-black text-white uppercase tracking-widest">⚠️ AI FEEDBACK</span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {isSkippedDueToShortage && !hasPhoto && (
+                                <div className="mt-3 p-4 bg-white border border-orange-200 rounded-2xl animate-in slide-in-from-left-2 shadow-sm ring-1 ring-orange-500/10">
+                                  <p className="text-[9px] font-black text-orange-600 uppercase tracking-widest flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse"></span>
+                                    Operational Note
+                                  </p>
+                                  <p className="text-[10px] text-orange-900/60 mt-1 italic font-medium leading-relaxed">
+                                    Bypassed from mandatory protocol. Management notified: unit requires manual linen deployment before next check-in.
+                                  </p>
+                                </div>
+                              )}
+
+                              {aiFeedback && (aiStatus === 'fail' || aiStatus === 'error') && (
+                                <p className={`text-[9px] italic font-medium p-2 rounded-xl border mt-2 animate-in slide-in-from-top-1 ${aiStatus === 'error' ? 'bg-slate-50 border-slate-100 text-slate-400' : 'bg-amber-50 border-amber-100 text-amber-700'}`}>
+                                  "{aiFeedback}"
+                                </p>
+                              )}
                            </div>
-                           <button 
-                              onClick={() => { if(simulationActive) { handleSimulatePhoto('task', task.id); } else { setActiveTaskId(task.id); cameraInputRef.current?.click(); } }} 
-                              className={`w-16 h-16 rounded-xl md:rounded-2xl border-2 border-dashed flex flex-col items-center justify-center transition-all ${hasPhoto ? 'bg-white border-teal-200 text-teal-400' : 'bg-slate-50 border-slate-200 text-slate-300'}`}
-                           >
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-                           </button>
+                           
+                           <div className="flex flex-col items-center gap-2">
+                             {hasPhoto && (
+                               <img src={lastPhoto.url} onClick={() => setZoomedImage(lastPhoto.url)} className="w-16 h-16 rounded-xl object-cover border-2 border-teal-500 shadow-sm cursor-zoom-in" />
+                             )}
+                             {!isSkippedDueToShortage && (
+                               <button 
+                                  onClick={() => { if(simulationActive) { handleSimulatePhoto('task', task.id); } else { setActiveTaskId(task.id); cameraInputRef.current?.click(); } }} 
+                                  className={`w-16 h-16 rounded-xl md:rounded-2xl border-2 border-dashed flex flex-col items-center justify-center transition-all ${hasPhoto ? 'bg-white border-teal-200 text-teal-400' : 'bg-slate-50 border-slate-200 text-slate-300'}`}
+                               >
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                                    <span className="text-[6px] font-black uppercase mt-1">{hasPhoto ? 'RE-TAKE' : 'CAPTURE'}</span>
+                               </button>
+                             )}
+                             {isSkippedDueToShortage && !hasPhoto && (
+                                <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 shadow-inner border-2 border-orange-500/20 animate-in zoom-in duration-500">
+                                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><polyline points="20 6 9 17 4 12"/></svg>
+                                </div>
+                             )}
+                           </div>
                         </div>
                      </div>
                   );
                })}
             </div>
 
-            <div className="pb-10 pt-4">
-               <button onClick={() => { if(isChecklistComplete) setCurrentStep('review'); else showNotification("Incomplete Checklist"); }} className={`w-full font-black py-5 md:py-6 rounded-2xl md:rounded-[32px] text-[10px] md:text-xs uppercase tracking-[0.4em] shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3 ${isChecklistComplete ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-400 shadow-none'}`}>
-                 {isChecklistComplete ? 'PROCEED TO CLOCK-OUT' : 'LOCKED: Checklist Pending'}
+            <div className="bg-[#1F2937] p-6 md:p-10 rounded-[2rem] shadow-2xl space-y-6">
+                <div className="flex items-center gap-3 border-b border-white/5 pb-4">
+                    <div className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-pulse"></div>
+                    <p className="text-[9px] font-black uppercase tracking-[0.4em] text-teal-400">Operational Lockdown</p>
+                </div>
+                <div className="space-y-6">
+                  {[
+                    { id: 'acOff', label: 'ALL AC UNITS TURNED OFF' },
+                    { id: 'waterHeaterOn', label: 'ALL SWITCHES FOR APPLIANCES ARE ON' },
+                    { id: 'lightsOff', label: 'ALL LIGHTS ARE OFF' },
+                    { id: 'doorsLocked', label: 'WINDOWS AND BALCONY DOORS LOCKED' }
+                  ].map(item => (
+                    <button 
+                      key={item.id}
+                      onClick={() => setOperationalChecks(prev => ({ ...prev, [item.id]: !(prev as any)[item.id] }))}
+                      className="w-full flex items-center gap-6 group text-left"
+                    >
+                      <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all ${ (operationalChecks as any)[item.id] ? 'bg-teal-500/20 border-teal-400 shadow-[0_0_15px_rgba(20,184,166,0.4)]' : 'border-white/20 group-hover:border-white/40'}`}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={(operationalChecks as any)[item.id] ? '#2DD4BF' : 'transparent'} strokeWidth="4" className="transition-all duration-300"><polyline points="20 6 9 17 4 12"/></svg>
+                      </div>
+                      <span className={`text-[11px] md:text-sm font-extrabold tracking-widest uppercase transition-colors duration-300 ${ (operationalChecks as any)[item.id] ? 'text-white' : 'text-white/30 group-hover:text-white/50'}`}>{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+            </div>
+
+            <div className="pb-10 pt-4 space-y-4">
+               {!isChecklistComplete && !simulationActive && (
+                  <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
+                     <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2">Missing Mandatory Requirements:</p>
+                     <div className="flex flex-wrap gap-2">
+                        {incompleteTasks.map(t => (
+                           <span key={t.id} className={`text-[7px] font-bold px-2 py-1 rounded border uppercase tracking-tighter ${checkIfTaskIsSkipped(t) ? 'bg-orange-50 border-orange-200 text-orange-600 line-through' : 'bg-slate-50 border-slate-100 text-slate-500'}`}>
+                             {checkIfTaskIsSkipped(t) ? 'EXCLUDED: ' : 'Missing: '}
+                             {t.label.split(':')[0]}
+                           </span>
+                        ))}
+                        {!operationalChecks.acOff && <span className="text-[7px] font-bold bg-rose-50 px-2 py-1 rounded border border-rose-100 text-rose-500 uppercase tracking-tighter">AC Check Required</span>}
+                        {!operationalChecks.waterHeaterOn && <span className="text-[7px] font-bold bg-rose-50 px-2 py-1 rounded border border-rose-100 text-rose-500 uppercase tracking-tighter">Appliance Switches Check</span>}
+                        {!operationalChecks.lightsOff && <span className="text-[7px] font-bold bg-rose-50 px-2 py-1 rounded border border-rose-100 text-rose-500 uppercase tracking-tighter">Lights Check</span>}
+                        {!operationalChecks.doorsLocked && <span className="text-[7px] font-bold bg-rose-50 px-2 py-1 rounded border border-rose-100 text-rose-500 uppercase tracking-tighter">Secure Doors Check</span>}
+                     </div>
+                  </div>
+               )}
+
+               <button 
+                  onClick={() => { 
+                    if(isChecklistComplete || simulationActive) {
+                      setCurrentStep('review'); 
+                    } else {
+                      showNotification(`Incomplete Protocol: Please verify all tasks and safety checks.`, 'error');
+                    }
+                  }} 
+                  className={`w-full font-black py-5 md:py-6 rounded-2xl md:rounded-[32px] text-[10px] md:text-xs uppercase tracking-[0.4em] shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3 ${isChecklistComplete || simulationActive ? 'bg-[#1F2937] text-white' : 'bg-white text-slate-300 border border-slate-100'}`}
+               >
+                 { (isChecklistComplete || simulationActive) ? (activeShift.isLinenShortage ? 'PROCEED TO CLOCK-OUT (WITH SHORTAGE)' : 'PROCEED TO CLOCK-OUT') : 'LOCKED: Protocol Pending'}
                </button>
             </div>
          </div>
@@ -636,13 +831,30 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
          {(reportModalType || showMessReport) && (
             <div className="fixed inset-0 bg-black/90 z-[1000] flex items-end sm:items-center justify-center p-2 sm:p-4 backdrop-blur-md">
                <div className="bg-white w-full max-w-md rounded-[2.5rem] p-8 space-y-6 shadow-2xl relative text-center">
-                  <h3 className="text-xl font-bold uppercase text-slate-900">{showMessReport ? 'Extra Hours Report' : 'Technical Report'}</h3>
-                  <textarea className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-5 text-sm font-medium outline-none h-32" placeholder="Details..." value={showMessReport ? messDescription : reportDescription} onChange={e => showMessReport ? setMessDescription(e.target.value) : setReportDescription(e.target.value)} />
+                  <h3 className="text-xl font-bold uppercase text-[#1F2937]">{showMessReport ? 'Report Mess' : 'Technical Report'}</h3>
+                  <textarea className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-5 text-sm font-medium outline-none h-32" placeholder="Describe the issue..." value={showMessReport ? messDescription : reportDescription} onChange={e => showMessReport ? setMessDescription(e.target.value) : setReportDescription(e.target.value)} />
+                  
+                  <div className="flex items-center gap-3 justify-center mb-2">
+                    <button 
+                      onClick={() => { if(simulationActive) handleSimulatePhoto(showMessReport ? 'mess' : 'report'); else (showMessReport ? messCameraRef : reportCameraRef).current?.click(); }}
+                      className="flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-xl text-[9px] font-black uppercase text-slate-600 hover:bg-slate-200 transition-all"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                      { (showMessReport ? messPhotos : reportPhotos).length > 0 ? 'Add more photos' : 'Attach Photo'}
+                    </button>
+                  </div>
+
                   <div className="flex gap-3">
                      <button onClick={() => { setShowMessReport(false); setReportModalType(null); }} className="flex-1 py-4 bg-slate-100 text-slate-400 font-black rounded-xl uppercase text-[10px]">Cancel</button>
-                     <button onClick={showMessReport ? handleSubmitMessReport : handleIncidentSubmit} className="flex-[2] py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-[10px] tracking-widest shadow-xl">Submit</button>
+                     <button onClick={showMessReport ? handleSubmitMessReport : handleIncidentSubmit} className="flex-[2] py-4 bg-[#1F2937] text-white font-black rounded-xl uppercase text-[10px] tracking-widest shadow-xl">Submit</button>
                   </div>
                </div>
+            </div>
+         )}
+
+         {zoomedImage && (
+            <div className="fixed inset-0 bg-black/98 z-[2000] flex items-center justify-center p-4 cursor-pointer" onClick={() => setZoomedImage(null)}>
+              <img src={zoomedImage} className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-2xl border-4 border-white/5" alt="Evidence Preview" />
             </div>
          )}
       </div>
@@ -650,15 +862,18 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
   }
 
   if (currentStep === 'review') {
+    const isReady = (simulationActive || (keyInBoxPhotos.length > 0 && boxClosedPhotos.length > 0));
+
     return (
       <div className="pb-32 px-2 md:px-4 pt-6 md:pt-10 max-w-2xl mx-auto text-left space-y-8 animate-in fade-in">
          <div className="space-y-1.5">
-            <h2 className="text-2xl md:text-3xl font-brand font-extrabold text-slate-900 uppercase tracking-tighter">Security Debrief</h2>
+            <h2 className="text-2xl md:text-3xl font-brand font-extrabold text-[#1F2937] uppercase tracking-tighter">Security Debrief</h2>
             <p className="text-[9px] md:text-[10px] font-black text-teal-600 uppercase tracking-[0.4em]">Final Checkout Protocol</p>
          </div>
-         <div className="bg-white border border-slate-100 p-6 md:p-10 rounded-3xl space-y-8 shadow-2xl">
+
+         <div className="bg-white border border-slate-100 p-6 md:p-10 rounded-3xl space-y-8 shadow-xl">
             <div className="space-y-4">
-               <p className="text-[9px] md:text-[10px] font-black text-slate-900 uppercase tracking-[0.4em]">Phase 1: Deployment Proof (Key in Box)</p>
+               <p className="text-[9px] md:text-[10px] font-black text-[#1F2937] uppercase tracking-[0.4em]">Phase 1: Deployment Proof (Key in Box)</p>
                <button 
                   onClick={() => { setCheckoutTarget('keyInBox'); if(simulationActive) handleSimulatePhoto('checkout'); else checkoutKeyRef.current?.click(); }} 
                   className={`w-full py-4 rounded-xl font-black uppercase text-[10px] border-2 border-dashed ${keyInBoxPhotos.length > 0 ? 'bg-teal-50 border-teal-200 text-teal-700' : 'bg-slate-50 border-slate-200 text-slate-400'}`}
@@ -667,7 +882,7 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                </button>
             </div>
             <div className="space-y-4">
-               <p className="text-[9px] md:text-[10px] font-black text-slate-900 uppercase tracking-[0.4em]">Phase 2: Secure Enclosure (Box Closed)</p>
+               <p className="text-[9px] md:text-[10px] font-black text-[#1F2937] uppercase tracking-[0.4em]">Phase 2: Secure Enclosure (Box Closed)</p>
                <button 
                   onClick={() => { setCheckoutTarget('boxClosed'); if(simulationActive) handleSimulatePhoto('checkout'); else checkoutKeyRef.current?.click(); }} 
                   className={`w-full py-4 rounded-xl font-black uppercase text-[10px] border-2 border-dashed ${boxClosedPhotos.length > 0 ? 'bg-teal-50 border-teal-200 text-teal-700' : 'bg-slate-50 border-slate-200 text-slate-400'}`}
@@ -676,10 +891,15 @@ const CleanerPortal: React.FC<CleanerPortalProps> = ({
                </button>
             </div>
          </div>
+
          <div className="flex flex-col sm:flex-row gap-3 pt-6">
             <button onClick={() => setCurrentStep('active')} className="flex-1 py-5 bg-white text-slate-400 font-black rounded-2xl text-[10px] uppercase tracking-widest border border-slate-100">Back</button>
-            <button onClick={handleFinishShift} disabled={isFinishing} className={`flex-[2] py-5 font-black rounded-2xl uppercase text-[10px] tracking-[0.3em] shadow-2xl active:scale-95 ${isFinishing ? 'bg-slate-300' : 'bg-teal-600 text-white'}`}>
-                {isFinishing ? 'Processing...' : 'Secure & Clock out'}
+            <button 
+              onClick={handleFinishShift} 
+              disabled={isFinishing || !isReady} 
+              className={`flex-[2] py-5 font-black rounded-2xl uppercase text-[10px] tracking-[0.3em] shadow-2xl active:scale-95 transition-all ${isFinishing ? 'bg-slate-300' : (isReady || simulationActive) ? 'bg-teal-600 text-white' : 'bg-white text-slate-300 cursor-not-allowed shadow-none'}`}
+            >
+                {isFinishing ? 'Processing...' : (isReady || simulationActive) ? 'Secure & Clock out' : 'LOCKED: AUDIT PENDING'}
             </button>
          </div>
       </div>

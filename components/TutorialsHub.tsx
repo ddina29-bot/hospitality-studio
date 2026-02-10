@@ -1,15 +1,18 @@
+
 import React, { useState, useRef } from 'react';
-import { Tutorial, UserRole } from '../types';
+import { Tutorial, UserRole, User } from '../types';
 import { uploadFile } from '../services/storageService';
 
 interface TutorialsHubProps {
   tutorials: Tutorial[];
   setTutorials: React.Dispatch<React.SetStateAction<Tutorial[]>>;
   userRole: UserRole;
+  currentUser?: User;
+  onUpdateUser?: (u: User) => void;
   showToast?: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
-const TutorialsHub: React.FC<TutorialsHubProps> = ({ tutorials, setTutorials, userRole, showToast }) => {
+const TutorialsHub: React.FC<TutorialsHubProps> = ({ tutorials, setTutorials, userRole, currentUser, onUpdateUser, showToast }) => {
   const [selected, setSelected] = useState<Tutorial | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [editingTutorial, setEditingTutorial] = useState<Tutorial | null>(null);
@@ -94,6 +97,15 @@ const TutorialsHub: React.FC<TutorialsHubProps> = ({ tutorials, setTutorials, us
     setShowNewCatInput(false);
   };
 
+  const markCompleted = (tut: Tutorial) => {
+    if (!currentUser || !onUpdateUser) return;
+    const progress = { ...(currentUser.onboardingProgress || {}) };
+    progress[tut.id] = true;
+    onUpdateUser({ ...currentUser, onboardingProgress: progress });
+    if (showToast) showToast(`MODULE COMPLETED: ${tut.title}`, 'success');
+    setSelected(null);
+  };
+
   const labelStyle = "text-[7px] font-black text-slate-500 uppercase tracking-[0.4em] opacity-80 mb-1.5 block px-1";
   const inputStyle = "w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-slate-800 text-[10px] font-bold uppercase tracking-widest outline-none focus:border-teal-500 transition-all placeholder:text-slate-300";
 
@@ -122,12 +134,20 @@ const TutorialsHub: React.FC<TutorialsHubProps> = ({ tutorials, setTutorials, us
               <div className="h-px flex-1 bg-slate-200"></div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-               {tutorials.filter(t => t.category === cat).map(t => (
-                 <div key={t.id} onClick={() => setSelected(t)} className="bg-white rounded-[32px] overflow-hidden border border-slate-200 hover:border-teal-500/40 transition-all group cursor-pointer shadow-xl relative">
+               {tutorials.filter(t => t.category === cat).map(t => {
+                 const isDone = currentUser?.onboardingProgress?.[t.id];
+                 return (
+                 <div key={t.id} onClick={() => setSelected(t)} className={`bg-white rounded-[32px] overflow-hidden border border-slate-200 hover:border-teal-500/40 transition-all group cursor-pointer shadow-xl relative ${isDone ? 'ring-2 ring-emerald-500/50' : ''}`}>
                     {isManager && (
                       <div className="absolute top-4 right-4 z-10 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                          <button onClick={(e) => handleEdit(e, t)} className="w-8 h-8 bg-white/80 rounded-full flex items-center justify-center text-black hover:text-teal-600 backdrop-blur-md border border-slate-200"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
                          <button onClick={(e) => handleDelete(e, t.id)} className="w-8 h-8 bg-red-50/80 rounded-full flex items-center justify-center text-red-600 hover:text-red-700 backdrop-blur-md border border-red-500/20"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
+                      </div>
+                    )}
+                    {isDone && (
+                      <div className="absolute top-4 left-4 z-10 bg-emerald-500 text-white px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest shadow-lg flex items-center gap-1.5 animate-in zoom-in">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><polyline points="20 6 9 17 4 12"/></svg>
+                        COMPLETED
                       </div>
                     )}
                     <div className="h-44 relative overflow-hidden">
@@ -143,7 +163,7 @@ const TutorialsHub: React.FC<TutorialsHubProps> = ({ tutorials, setTutorials, us
                        <p className="text-[10px] text-slate-400 mt-2 line-clamp-2 leading-relaxed italic">"{t.description}"</p>
                     </div>
                  </div>
-               ))}
+               )})}
                {tutorials.filter(t => t.category === cat).length === 0 && (
                  <div className="col-span-full py-10 border border-dashed border-slate-200 rounded-[32px] text-center italic text-[10px] uppercase text-slate-400">No protocols listed.</div>
                )}
@@ -179,6 +199,15 @@ const TutorialsHub: React.FC<TutorialsHubProps> = ({ tutorials, setTutorials, us
                    <p className="text-[8px] font-black text-slate-500 uppercase tracking-[0.4em] mb-4">Summary & Protocol</p>
                    <p className="text-slate-700 text-sm leading-relaxed italic font-serif-brand whitespace-pre-line">{selected.description}</p>
                 </div>
+
+                {!currentUser?.onboardingProgress?.[selected.id] && (
+                  <button 
+                    onClick={() => markCompleted(selected)}
+                    className="w-full bg-emerald-600 text-white font-black py-5 rounded-2xl uppercase tracking-[0.4em] text-[10px] shadow-xl active:scale-95 transition-all hover:bg-emerald-700"
+                  >
+                    ACKNOWLEDGE MODULE & COMPLETE
+                  </button>
+                )}
               </div>
            </div>
         </div>
@@ -188,7 +217,7 @@ const TutorialsHub: React.FC<TutorialsHubProps> = ({ tutorials, setTutorials, us
       {showModal && (
         <div className="fixed inset-0 bg-black/40 z-[400] flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
           <div className="bg-white border border-slate-200 rounded-[48px] w-full max-w-2xl p-10 space-y-10 shadow-2xl relative my-auto text-left">
-            <button onClick={closeModal} className="absolute top-10 right-10 text-slate-400 hover:text-black"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+            <button onClick={closeModal} className="absolute top-10 right-10 text-slate-300 hover:text-slate-900"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
             
             <div className="space-y-2">
               <h2 className="text-2xl font-serif-brand font-bold text-slate-900 uppercase tracking-tight">{editingTutorial ? 'Refine Tutorial' : 'New Tutorial Registration'}</h2>

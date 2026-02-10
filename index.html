@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#0D9488">
+  <meta name="theme-color" content="#1F2937">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="RESET STUDIO">
@@ -16,15 +16,15 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
-      --brand-teal: #0D9488;
-      --brand-slate: #1E293B;
-      --bg-mint: #F0FDFA;
-      --text-main: #0F172A;
-      --text-muted: #475569;
+      --brand-teal: #0D9488; /* Rich Tiffany/Ocean Teal */
+      --brand-charcoal: #1F2937; /* Deep Charcoal */
+      --bg-light: #F3F4F6; /* Off-white / Light Grey */
+      --text-main: #1F2937; /* Deep Charcoal */
+      --text-muted: #6B7280;
     }
     body {
       font-family: 'Inter', sans-serif;
-      background-color: var(--bg-mint);
+      background-color: var(--bg-light);
       color: var(--text-main);
       font-size: 14px;
       -webkit-tap-highlight-color: transparent;
@@ -49,22 +49,24 @@
       background-color: var(--brand-teal);
       color: white;
       border-radius: 1rem;
-      font-weight: 600;
+      font-weight: 700;
       transition: all 0.2s ease;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
     }
     .btn-teal:active {
       transform: scale(0.95);
     }
     .glass-dock {
-      background: rgba(240, 253, 250, 0.9);
+      background: rgba(255, 255, 255, 0.95);
       backdrop-filter: blur(10px);
-      border-top: 1px solid #CCFBF1;
+      border-top: 1px solid #E5E7EB;
     }
-    .shadow-soft {
-      shadow-color: rgba(30, 41, 59, 0.05);
-      shadow-offset: {width: 0, height: 4};
-      shadow-opacity: 1;
-      shadow-radius: 20;
+    .soft-card {
+      background-color: #FFFFFF;
+      border: 1px solid rgba(0,0,0,0.05);
+      box-shadow: 0 4px 20px -5px rgba(0, 0, 0, 0.08);
+      border-radius: 2.5rem;
     }
   </style>
 <script type="importmap">

@@ -1,6 +1,8 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { User, LeaveRequest, LeaveType, Shift, Property, OrganizationSettings, SavedPayslip, PaymentType, EmploymentType } from '../types';
+import { User, LeaveRequest, LeaveType, Shift, Property, OrganizationSettings, SavedPayslip, PaymentType, EmploymentType, Tutorial } from '../types';
+import ScorecardView from './management/ScorecardView';
+import OnboardingPathView from './management/OnboardingPathView';
 
 interface PersonnelProfileProps {
   user: User;
@@ -10,6 +12,8 @@ interface PersonnelProfileProps {
   properties?: Property[];
   onUpdateUser?: (user: User) => void;
   organization?: OrganizationSettings;
+  tutorials?: Tutorial[];
+  setActiveTab?: (tab: any) => void;
   initialDocView?: 'fs3' | 'payslip' | 'worksheet' | null;
   initialHistoricalPayslip?: SavedPayslip | null;
 }
@@ -21,7 +25,9 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({
   shifts = [], 
   properties = [], 
   onUpdateUser, 
-  organization, 
+  organization,
+  tutorials = [],
+  setActiveTab,
   initialDocView, 
   initialHistoricalPayslip 
 }) => {
@@ -31,7 +37,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({
   
   const [viewingDoc, setViewingDoc] = useState<'payslip' | 'worksheet' | 'fs3' | null>(initialDocView || null);
   const [activeHistoricalPayslip, setActiveHistoricalPayslip] = useState<SavedPayslip | null>(initialHistoricalPayslip || null);
-  const [activeSubTab, setActiveSubTab] = useState<'PENDING PAYOUTS' | 'PAYSLIP REGISTRY' | 'LEAVE REQUESTS'>(isCurrentUserAdmin ? 'PENDING PAYOUTS' : 'PAYSLIP REGISTRY');
+  const [activeSubTab, setActiveSubTab] = useState<'ONBOARDING' | 'PERFORMANCE' | 'PENDING PAYOUTS' | 'PAYSLIP REGISTRY' | 'LEAVE REQUESTS'>('ONBOARDING');
   
   const [selectedDocMonth, setSelectedDocMonth] = useState<string>('MAR 2026'); 
   const [payPeriodFrom, setPayPeriodFrom] = useState('2026-03-01');
@@ -147,12 +153,13 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({
             const prop = properties?.find(p => p.id === s.propertyId);
             const dur = (s.actualEndTime || 0) - (s.actualStartTime || 0);
             const hours = dur / 3600000;
-            const hourlyBase = hours * (user.payRate || 5);
-            totalBasic += hourlyBase;
+            const hourlyRate = user.payRate || 5;
+            totalBasic += hours * hourlyRate;
 
             if (s.approvalStatus === 'approved' && prop && user.paymentType === 'Per Clean') {
                 const teamCount = s.userIds.length || 1;
                 const targetPieceRate = (prop.serviceRates?.[s.serviceType] || prop.cleanerPrice) / teamCount;
+                const hourlyBase = hours * hourlyRate;
                 if (targetPieceRate > hourlyBase) {
                     totalPerformance += (targetPieceRate - hourlyBase);
                 }
@@ -241,7 +248,6 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({
     }
   };
 
-  // Hardened Privacy Filter: Strict string-based comparison of User IDs
   const myLeaveRequests = useMemo(() => {
     if (!user?.id) return [];
     const viewedUserId = String(user.id);
@@ -275,7 +281,7 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({
 
         <div className="space-y-6">
            <div className="flex gap-8 border-b border-slate-200 w-full md:w-auto px-2 overflow-x-auto no-scrollbar">
-              {['PENDING PAYOUTS', 'PAYSLIP REGISTRY', 'LEAVE REQUESTS'].map(tab => (
+              {['ONBOARDING', 'PERFORMANCE', 'PENDING PAYOUTS', 'PAYSLIP REGISTRY', 'LEAVE REQUESTS'].map(tab => (
                  (tab === 'PENDING PAYOUTS' && !canManageFinancials) ? null :
                  <button 
                    key={tab}
@@ -287,6 +293,14 @@ const PersonnelProfile: React.FC<PersonnelProfileProps> = ({
                  </button>
               ))}
            </div>
+
+           {activeSubTab === 'ONBOARDING' && (
+             <OnboardingPathView user={user} tutorials={tutorials} onNavigateToTutorials={() => setActiveTab?.('tutorials')} />
+           )}
+
+           {activeSubTab === 'PERFORMANCE' && (
+             <ScorecardView user={user} shifts={shifts} />
+           )}
 
            {activeSubTab === 'PENDING PAYOUTS' && canManageFinancials && (
              <section className="bg-white border border-slate-100 rounded-[2rem] p-6 md:p-8 shadow-sm space-y-8 text-left">

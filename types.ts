@@ -25,7 +25,36 @@ export type TabType =
   | 'settings'
   | 'inventory_admin'
   | 'tutorials'
-  | 'worksheet';
+  | 'worksheet'
+  | 'pulse';
+
+export interface Scorecard {
+  qualityIndex: number;
+  reliabilityScore: number;
+  avgDurationHours: number;
+  totalPoints: number;
+  level: number;
+  grade: 'A+' | 'A' | 'B' | 'C' | 'D';
+  trends: {
+    month: string;
+    score: number;
+  }[];
+}
+
+export interface FeedItem {
+  id: string;
+  userId: string;
+  userName: string;
+  userPhoto?: string;
+  type: 'milestone' | 'achievement' | 'alert' | 'update';
+  title: string;
+  content: string;
+  timestamp: number;
+  likes: string[]; // array of user IDs
+  imageUrl?: string;
+  linkTab?: TabType;
+  linkId?: string;
+}
 
 export interface Message {
   id: string;
@@ -37,6 +66,8 @@ export interface Message {
 export interface AttributedPhoto {
   url: string;
   userId: string;
+  aiAuditStatus?: 'pending' | 'pass' | 'fail' | 'error';
+  aiFeedback?: string;
 }
 
 export interface CleaningTask {
@@ -45,6 +76,7 @@ export interface CleaningTask {
   isMandatory: boolean;
   minPhotos: number;
   photos: AttributedPhoto[];
+  referenceUrl?: string;
 }
 
 export interface SpecialReport {
@@ -174,6 +206,7 @@ export interface AppNotification {
   timestamp: number;
   linkTab?: TabType;
   linkId?: string;
+  imageUrl?: string;
 }
 
 export interface Tutorial {
@@ -293,6 +326,8 @@ export interface User {
   dateOfBirth?: string;
   lastSupplyRequestDate?: number;
   payslips?: SavedPayslip[];
+  scorecard?: Scorecard;
+  onboardingProgress?: Record<string, boolean>; // key: moduleId or tutorialId
 }
 
 export interface Shift {

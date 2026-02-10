@@ -4,9 +4,10 @@ import { User, UserRole } from '../types';
 
 interface LoginProps {
   onLogin: (user: User, orgData?: any) => void;
+  onOpenConsole: () => void;
 }
 
-const Login: React.FC<LoginProps> = ({ onLogin }) => {
+const Login: React.FC<LoginProps> = ({ onLogin, onOpenConsole }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -40,6 +41,14 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
   return (
     <div className="min-h-screen bg-[#F0FDFA] flex items-center justify-center p-4 md:p-8">
+      <button 
+        onClick={onOpenConsole}
+        className="fixed top-6 right-6 w-12 h-12 bg-amber-500 text-black rounded-2xl flex items-center justify-center text-xl shadow-2xl hover:scale-110 active:scale-95 transition-all z-50 border border-amber-600"
+        title="Open Build Console"
+      >
+        🛠️
+      </button>
+
       <div className="max-w-md w-full space-y-10 animate-in slide-in-from-bottom-8 duration-700">
         <div className="text-center space-y-3">
           <div className="w-20 h-20 bg-[#0D9488] rounded-[2rem] mx-auto flex items-center justify-center text-white text-4xl font-black shadow-2xl shadow-teal-900/20 mb-6">R</div>

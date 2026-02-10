@@ -58,7 +58,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const pendingLeaves = useMemo(() => leaveRequests.filter(l => l.status === 'pending'), [leaveRequests]);
 
-  // UNITS THAT NEED A FOLLOW UP (CLEANER GONE, BEDS UNMADE)
+  const leaderboard = useMemo(() => {
+    const cleaners = (users || []).filter(u => u.role === 'cleaner');
+    return cleaners.map(u => {
+      const myShifts = shifts.filter(s => s.userIds.includes(u.id) && s.status === 'completed');
+      const approved = myShifts.filter(s => s.approvalStatus === 'approved').length;
+      const score = myShifts.length === 0 ? 0 : Math.round((approved / myShifts.length) * 100);
+      return { ...u, score, count: myShifts.length };
+    })
+    .filter(u => u.count > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5);
+  }, [users, shifts]);
+
   const supplyDebtUnits = useMemo(() => {
     return shifts.filter(s => 
       s.status === 'completed' && 
@@ -200,7 +212,45 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <p className="text-[9px] md:text-[11px] text-teal-600 font-black uppercase tracking-[0.3em] md:tracking-[0.4em] mt-2 md:mt-3 leading-none">REAL-TIME OVERSIGHT</p>
       </header>
 
-      {/* URGENT: SUPPLY DEBT (UNITS READY BUT UNMADE) */}
+      {/* OPERATIONAL LEADERBOARD */}
+      {leaderboard.length > 0 && (
+         <section className="bg-slate-900 p-8 rounded-[3rem] shadow-2xl relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
+              <svg width="150" height="150" viewBox="0 0 24 24" fill="white"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            </div>
+            <div className="relative z-10 space-y-6">
+               <div className="flex justify-between items-center border-b border-white/10 pb-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-white uppercase tracking-tight">Operator Leaderboard</h3>
+                    <p className="text-[8px] font-black text-teal-400 uppercase tracking-[0.4em] mt-1">Automatic Quality Ranking</p>
+                  </div>
+                  <span className="text-[9px] font-black bg-teal-500 text-black px-4 py-1 rounded-full uppercase tracking-widest">A+ Performers</span>
+               </div>
+               <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
+                  {leaderboard.map((u, i) => (
+                    <div key={u.id} className="min-w-[180px] bg-white/5 border border-white/10 p-5 rounded-3xl flex flex-col items-center text-center gap-4 hover:bg-white/10 transition-all cursor-pointer shadow-lg group">
+                       <div className="relative">
+                          <div className="w-14 h-14 rounded-2xl bg-teal-500/20 text-teal-400 flex items-center justify-center font-black text-xl border border-teal-500/30 overflow-hidden">
+                             {u.photoUrl ? <img src={u.photoUrl} className="w-full h-full object-cover" /> : u.name.charAt(0)}
+                          </div>
+                          <div className="absolute -bottom-2 -right-2 w-7 h-7 rounded-full bg-white text-slate-900 border-2 border-slate-900 flex items-center justify-center font-black text-[10px] shadow-lg">#{i+1}</div>
+                       </div>
+                       <div>
+                          <p className="text-xs font-bold text-white uppercase tracking-tight truncate w-full">{u.name.split(' ')[0]}</p>
+                          <div className="flex items-center justify-center gap-2 mt-2">
+                             <span className="text-[10px] font-black text-teal-400">{u.score}% QI</span>
+                             <span className="w-1 h-1 bg-white/20 rounded-full"></span>
+                             <span className="text-[8px] font-bold text-white/40 uppercase">{u.count} JOBS</span>
+                          </div>
+                       </div>
+                    </div>
+                  ))}
+               </div>
+            </div>
+         </section>
+      )}
+
+      {/* URGENT: SUPPLY DEBT */}
       {supplyDebtUnits.length > 0 && (
         <section className="bg-white border-2 border-rose-200 p-6 md:p-10 rounded-[2.5rem] md:rounded-[60px] shadow-2xl space-y-8 animate-in slide-in-from-top-4">
            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 px-1">
@@ -270,7 +320,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                        <p className="text-[10px] md:text-xs font-black uppercase text-slate-900 tracking-tight border-b border-indigo-100 pb-1.5 md:pb-2">{batch[0].userName}</p>
                        <div className="mt-2.5 md:mt-3 space-y-1.5 md:space-y-2">
                           {batch.map(b => (
-                             <p key={b.id} className="text-[9px] md:text-[11px] text-indigo-900 font-bold uppercase flex justify-between items-center">
+                             <p key={b.id} className="text-[9px] md:text-11px text-indigo-900 font-bold uppercase flex justify-between items-center">
                                 <span className="opacity-70 truncate pr-2">{b.itemName}</span>
                                 <span className="bg-white px-1.5 md:px-2 py-0.5 rounded-lg border border-indigo-50 text-[8px] md:text-[9px] font-black shrink-0">x{b.quantity}</span>
                              </p>
@@ -287,7 +337,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </section>
       )}
 
-      {/* LEAVE APPROVAL STRIP - RESTYLED */}
+      {/* LEAVE APPROVAL STRIP */}
       {pendingLeaves.length > 0 && (
         <section className="bg-[#FDF8EE] border border-slate-200 p-5 md:p-8 rounded-[2rem] md:rounded-[3rem] shadow-sm space-y-6 animate-in slide-in-from-right-4">
            <div className="flex items-center justify-between px-1">
@@ -341,7 +391,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
-        
         {/* AWAITING AUDIT */}
         <section className="bg-white p-6 md:p-8 rounded-[2rem] md:rounded-[48px] border border-slate-200 shadow-xl space-y-6 md:space-y-8 flex flex-col hover:border-teal-400/30 transition-all">
           <div className="flex justify-between items-center border-b border-slate-100 pb-3 md:pb-4">

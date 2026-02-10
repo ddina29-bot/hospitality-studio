@@ -7,14 +7,17 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, (process as any).cwd(), '');
   return {
     plugins: [react()],
-    // Removed 'define: { process.env: env }' to prevent leaking secrets. 
     // Vite automatically exposes VITE_ prefixed vars via import.meta.env
     build: {
-      chunkSizeWarningLimit: 1000, // Increased to 1000kB to stop the warning
+      chunkSizeWarningLimit: 1000, 
     },
     server: {
       proxy: {
         '/api': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+        },
+        '/uploads': {
           target: 'http://localhost:3000',
           changeOrigin: true,
         },

@@ -20,11 +20,11 @@ const BuildModeOverlay: React.FC<BuildModeOverlayProps> = ({
   const roles: UserRole[] = ['admin', 'supervisor', 'cleaner', 'driver', 'housekeeping', 'laundry', 'finance', 'hr'];
 
   const features = [
-    { name: 'Top Right Navigation', status: 'Implemented' },
-    { name: 'Employee Worksheet', status: 'Implemented' },
-    { name: 'Piece-Rate Logic', status: 'Implemented' },
-    { name: 'Geofence Logic', status: 'Implemented' },
-    { name: 'Cloud Sync (SQLite)', status: 'Active' },
+    { name: '✨ Gemini AI Audit', status: 'Implemented' },
+    { name: '📸 Task Standards', status: 'Implemented' },
+    { name: '🛠️ Build Console', status: 'Implemented' },
+    { name: '📍 GPS Verifier', status: 'Implemented' },
+    { name: '🚪 Login Bypass', status: 'Active' },
   ];
 
   return (
@@ -37,7 +37,7 @@ const BuildModeOverlay: React.FC<BuildModeOverlayProps> = ({
               <div className="w-8 h-8 rounded-lg bg-black flex items-center justify-center text-amber-500 font-black text-xs">🛠️</div>
               <div>
                 <h2 className="text-black font-black uppercase text-sm tracking-[0.2em] leading-none">Studio Build Console</h2>
-                <p className="text-[10px] text-black/60 font-bold uppercase tracking-widest mt-1">Version 1.0.4-beta • Active Session</p>
+                <p className="text-[10px] text-black/60 font-bold uppercase tracking-widest mt-1">Impersonation & Telemetry</p>
               </div>
            </div>
            <button onClick={onClose} className="bg-black/10 hover:bg-black/20 w-10 h-10 rounded-full text-black font-black text-xl transition-all">×</button>
@@ -49,7 +49,7 @@ const BuildModeOverlay: React.FC<BuildModeOverlayProps> = ({
            <section className="space-y-4">
               <div className="flex items-center gap-3">
                  <span className="text-amber-500 text-xs">👤</span>
-                 <h3 className="text-amber-500 font-black uppercase text-[10px] tracking-[0.4em]">Identity Overwrite</h3>
+                 <h3 className="text-amber-500 font-black uppercase text-[10px] tracking-[0.4em]">Identity Impersonation (Bypass)</h3>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                  {roles.map(role => (
@@ -62,14 +62,14 @@ const BuildModeOverlay: React.FC<BuildModeOverlayProps> = ({
                     </button>
                  ))}
               </div>
-              <p className="text-[8px] text-slate-500 italic uppercase">* Clicking a role will instantly refresh the UI state for that persona.</p>
+              <p className="text-[8px] text-slate-500 italic uppercase">* Clicking a role will instantly refresh the UI state for that persona and inject mock data if needed.</p>
            </section>
 
            {/* FEATURE AUDIT */}
            <section className="space-y-4">
               <div className="flex items-center gap-3">
                  <span className="text-amber-500 text-xs">📜</span>
-                 <h3 className="text-amber-500 font-black uppercase text-[10px] tracking-[0.4em]">Feature Roadmap Check</h3>
+                 <h3 className="text-amber-500 font-black uppercase text-[10px] tracking-[0.4em]">Feature Status</h3>
               </div>
               <div className="bg-black/40 border border-slate-800 rounded-3xl p-6 space-y-3">
                  {features.map((f, i) => (
@@ -104,7 +104,7 @@ const BuildModeOverlay: React.FC<BuildModeOverlayProps> = ({
              onClick={() => { localStorage.clear(); window.location.reload(); }}
              className="text-rose-500 text-[9px] font-black uppercase tracking-[0.3em] hover:underline"
            >
-             Hard Reset Environment (Clear Cache)
+             Hard Reset (Clear Cache)
            </button>
         </footer>
       </div>
